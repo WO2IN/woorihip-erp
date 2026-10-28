@@ -1,0 +1,30 @@
+services:
+  woorihip-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: woorihip-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./public/storage:/app/public/storage
+      - ./public/uploads:/app/public/uploads
+      - ./data:/app/data
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --protocol
+      - http2
+      - --url
+      - http://127.0.0.1:3000

@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+npm-debug.log*
+pnpm-debug.log*
+*.log
+
+# 운영 데이터는 compose 볼륨(호스트 ./data, ./public/storage, ./public/uploads)으로만 사용
+data
+public/storage
+public/uploads
+backups
+deploy.nas.env

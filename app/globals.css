@@ -1,0 +1,853 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+@custom-variant data-horizontal (&[data-orientation="horizontal"]);
+@custom-variant data-vertical (&[data-orientation="vertical"]);
+
+@theme inline {
+  --font-sans: 'Pretendard', 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  color-scheme: light;
+  --background: oklch(0.972 0.004 240);
+  --foreground: oklch(0.13 0.012 240);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.13 0.012 240);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.13 0.012 240);
+  --primary: oklch(0.52 0.19 258);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.945 0.008 240);
+  --secondary-foreground: oklch(0.25 0.012 240);
+  --muted: oklch(0.945 0.006 240);
+  --muted-foreground: oklch(0.50 0.012 240);
+  --accent: oklch(0.93 0.03 258);
+  --accent-foreground: oklch(0.52 0.19 258);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.87 0.006 240);
+  --input: oklch(0.92 0.006 240);
+  --ring: oklch(0.52 0.19 258);
+  --chart-1: oklch(0.52 0.19 258);
+  --chart-2: oklch(0.60 0.17 210);
+  --chart-3: oklch(0.68 0.14 170);
+  --chart-4: oklch(0.72 0.16 140);
+  --chart-5: oklch(0.78 0.14 30);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0.002 240);
+  --sidebar-foreground: oklch(0.18 0.012 240);
+  --sidebar-primary: oklch(0.52 0.19 258);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.93 0.03 258);
+  --sidebar-accent-foreground: oklch(0.52 0.19 258);
+  --sidebar-border: oklch(0.88 0.005 240);
+  --sidebar-ring: oklch(0.52 0.19 258);
+  /* stat card accent colors */
+  --stat-blue: oklch(0.52 0.19 258);
+  --stat-emerald: oklch(0.55 0.17 162);
+  --stat-violet: oklch(0.55 0.18 288);
+  --stat-amber: oklch(0.68 0.17 55);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: oklch(0.175 0.012 240);
+  --foreground: oklch(0.94 0.006 240);
+
+  --card: oklch(0.215 0.012 240);
+  --card-foreground: oklch(0.94 0.006 240);
+
+  --popover: oklch(0.215 0.012 240);
+  --popover-foreground: oklch(0.94 0.006 240);
+
+  --primary: oklch(0.62 0.18 258);
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary: oklch(0.275 0.012 240);
+  --secondary-foreground: oklch(0.90 0.006 240);
+
+  --muted: oklch(0.275 0.012 240);
+  --muted-foreground: oklch(0.62 0.010 240);
+
+  --accent: oklch(0.32 0.04 258);
+  --accent-foreground: oklch(0.76 0.16 258);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 10%);
+
+  --sidebar: oklch(0.155 0.012 240);
+  --sidebar-foreground: oklch(0.92 0.006 240);
+  --sidebar-primary: oklch(0.62 0.18 258);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.28 0.04 258);
+  --sidebar-accent-foreground: oklch(0.76 0.16 258);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.62 0.18 258);
+
+  --stat-blue: oklch(0.62 0.18 258);
+  --stat-emerald: oklch(0.62 0.17 162);
+  --stat-violet: oklch(0.62 0.18 288);
+  --stat-amber: oklch(0.74 0.16 55);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.80 0.01 240);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.65 0.01 240);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.25s ease-out both;
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 0.2s ease-out both;
+}
+
+
+@media print {
+  .app-shell,
+  .app-shell-column,
+  .app-shell-main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+}
+
+.print-only {
+  display: none;
+}
+
+.today-col {
+  background-color: oklch(0.93 0.04 85);
+  color: oklch(0.35 0.08 70);
+  font-weight: 700;
+}
+
+.missing-today {
+  background-color: oklch(0.94 0.07 85);
+  box-shadow: inset 0 0 0 2px oklch(0.72 0.14 70);
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 4mm;
+  }
+
+  .temp-humidity-page main.print-page {
+    height: auto !important;
+    min-height: 0 !important;
+    gap: 4px !important;
+  }
+
+  .temp-humidity-page .print-banner {
+    padding: 8px 10px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .temp-humidity-page .print-banner .print-logo {
+    width: 108px !important;
+  }
+
+  .temp-humidity-page .print-banner h1 {
+    font-size: 17px !important;
+    line-height: 1.25 !important;
+  }
+
+  .temp-humidity-page .print-banner p {
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+  }
+
+  .temp-humidity-page .print-banner .print-compact-label {
+    font-size: 10px !important;
+    padding: 2px 6px !important;
+  }
+
+  .temp-humidity-page .print-banner .print-compact-input {
+    height: 26px !important;
+    width: 72px !important;
+    font-size: 10px !important;
+  }
+
+  .temp-humidity-page .print-sheet,
+  .temp-humidity-page .temp-humidity-chart {
+    break-inside: avoid;
+  }
+
+  .temp-humidity-page .temp-humidity-body {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    gap: 0 !important;
+  }
+
+  .temp-humidity-page table {
+    font-size: 10px !important;
+  }
+
+  .temp-humidity-page th,
+  .temp-humidity-page td {
+    padding: 3px 4px !important;
+  }
+
+  .temp-humidity-page input {
+    height: 20px !important;
+    min-height: 0 !important;
+    font-size: 10px !important;
+  }
+
+  .temp-humidity-page .temp-humidity-chart {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 6px 8px 2px !important;
+    gap: 4px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .temp-humidity-page .temp-humidity-chart h2 {
+    font-size: 11px !important;
+    margin: 0 !important;
+  }
+
+  .temp-humidity-page .temp-humidity-print-chart {
+    height: 46mm !important;
+    min-height: 46mm !important;
+    max-height: 46mm !important;
+    aspect-ratio: auto !important;
+    flex: 0 0 auto !important;
+  }
+
+  .temp-humidity-page .temp-humidity-print-chart>[data-slot="chart"],
+  .temp-humidity-page .temp-humidity-print-chart>div {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 46mm !important;
+    width: 100% !important;
+    aspect-ratio: auto !important;
+  }
+
+  .temp-humidity-page .temp-humidity-print-chart svg {
+    height: 100% !important;
+    max-height: 46mm !important;
+  }
+
+  .temp-humidity-page .temp-humidity-table-wrap {
+    min-height: 0 !important;
+    margin-top: 0 !important;
+    flex: 0 0 auto !important;
+  }
+
+  .temp-humidity-page .print-sheet {
+    overflow: visible !important;
+    min-height: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  .temp-humidity-page .print-only {
+    display: table !important;
+  }
+
+  .temp-humidity-page .print-sheet table.print-only {
+    font-size: 10px !important;
+  }
+
+  .temp-humidity-page .print-only th,
+  .temp-humidity-page .print-only td {
+    padding: 5px 4px !important;
+    font-size: 10px !important;
+  }
+
+  html,
+  body {
+    background: white !important;
+  }
+
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .weekend-cell {
+    background-color: #d4d4d8 !important;
+  }
+
+  .today-col,
+  .missing-today {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    color: inherit !important;
+  }
+
+  .monthly-cell {
+    background-color: #fde68a !important;
+  }
+
+  .no-break {
+    break-inside: avoid;
+  }
+
+  .print-page {
+    min-height: calc(100vh - 8mm) !important;
+    height: calc(100vh - 8mm) !important;
+    gap: 6px !important;
+    padding: 0 !important;
+  }
+
+  .print-page>.print-issue-table {
+    margin-top: 4px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .print-page>.print-inspector-table {
+    flex: 0 0 auto !important;
+  }
+
+  .print-page>.print-sheet-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+  }
+
+  .print-sheet-wrapper>.print-sheet,
+  .print-page>.print-sheet {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+  }
+
+  .print-page>.print-grid {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+  }
+
+  .print-grid>.print-sheet {
+    height: 100% !important;
+  }
+
+  .print-sheet table {
+    height: 100% !important;
+  }
+
+  .print-inspector-table table {
+    font-size: 9px !important;
+    line-height: 1.15 !important;
+  }
+
+  .print-inspector-table th,
+  .print-inspector-table td {
+    padding: 2px !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+  }
+
+  .print-inspector-table td:first-child,
+  .print-inspector-table td:nth-child(2) {
+    text-align: left !important;
+  }
+
+  .print-inspector-table th:first-child,
+  .print-inspector-table td:first-child {
+    width: 20px !important;
+    min-width: 20px !important;
+    padding-left: 0px !important;
+    padding-right: 0px !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+  }
+
+  .print-logo {
+    width: 88px !important;
+    height: auto !important;
+  }
+
+  .print-page h1 {
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+    align-items: center !important;
+  }
+
+  .print-page p {
+    font-size: 8px !important;
+    line-height: 1.25 !important;
+    margin: 0 !important;
+  }
+
+  .print-page figcaption {
+    font-size: 8px !important;
+    line-height: 1.2 !important;
+    text-align: center !important;
+  }
+
+  .print-compact-box {
+    padding: 6px !important;
+    gap: 6px !important;
+  }
+
+  .print-compact-label {
+    padding: 1px 4px !important;
+    font-size: 9px !important;
+  }
+
+  .print-approval-box input,
+  .print-compact-input {
+    height: 20px !important;
+    min-height: 0 !important;
+    padding: 0 2px !important;
+    font-size: 9px !important;
+  }
+
+  .print-remarks textarea {
+    min-height: 28px !important;
+    padding: 2px 4px !important;
+    font-size: 9px !important;
+  }
+
+  .print-issue-table table {
+    font-size: 9px !important;
+  }
+
+  .print-photo-box {
+    flex: 0 0 auto !important;
+    max-height: none !important;
+    border: 1.5px solid #000 !important;
+    padding: 4px 6px !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+    overflow: hidden !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-photo-box figure {
+    float: none !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+  }
+
+  .print-photo-overview {
+    flex: 0 0 48mm !important;
+    width: 48mm !important;
+  }
+
+  .print-photo-parts {
+    display: flex !important;
+    flex: 1 1 0 !important;
+    flex-wrap: nowrap !important;
+    min-width: 0 !important;
+    gap: 2px !important;
+  }
+
+  .print-photo-parts figure {
+    flex: 0 1 28mm !important;
+    width: 28mm !important;
+    max-width: 28mm !important;
+  }
+
+  .print-photo-box figcaption {
+    font-size: 7px !important;
+    line-height: 1.2 !important;
+  }
+
+  .print-photo-box img {
+    height: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    object-fit: cover !important;
+  }
+
+  .print-photo-overview img {
+    aspect-ratio: 16 / 10 !important;
+  }
+
+  .print-photo-parts img {
+    aspect-ratio: 1 !important;
+  }
+
+  .print-sheet {
+    box-shadow: none !important;
+    border: 1.5px solid #000 !important;
+    overflow: visible !important;
+  }
+
+  .print-sheet table {
+    width: 100% !important;
+    font-size: 8px !important;
+    line-height: 1.15 !important;
+    border-collapse: collapse !important;
+  }
+
+  .print-sheet th,
+  .print-sheet td {
+    padding: 1px 2px !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+  }
+
+  .print-page table,
+  .print-page th,
+  .print-page td,
+  .print-page .print-compact-box {
+    border-color: #000 !important;
+  }
+
+  .print-page table {
+    border: 1.5px solid #000 !important;
+  }
+
+  .print-page th,
+  .print-page td {
+    border-width: 1.5px !important;
+  }
+
+  .print-day-cell {
+    height: 15px !important;
+    width: 16px !important;
+    min-width: 16px !important;
+  }
+
+  .print-category-cell {
+    width: 58px !important;
+    min-width: 58px !important;
+    white-space: nowrap !important;
+  }
+
+.print-content-cell {
+  min-width: 0 !important;
+  width: 180px !important;
+  }
+
+  .print-content-cell input {
+  width: 100% !important;
+  min-width: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  font-size: 7px !important;
+  letter-spacing: -0.25px !important;
+  }
+
+  .print-method-cell {
+    width: 64px !important;
+    min-width: 64px !important;
+    white-space: nowrap !important;
+  }
+
+  .print-cycle-cell {
+    width: 52px !important;
+    min-width: 52px !important;
+    white-space: nowrap !important;
+  }
+
+  .print-compact-select {
+    height: 20px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    font-size: 9px !important;
+    appearance: none !important;
+    background: transparent !important;
+    text-align: center !important;
+  }
+
+  /* 온/습도 인쇄 — 공통 print 규칙보다 아래에서 다시 덮어씀 */
+  .temp-humidity-page main.print-page {
+    height: auto !important;
+    min-height: 0 !important;
+    gap: 3px !important;
+    padding: 0 !important;
+  }
+
+  .temp-humidity-page .print-compact-box.print-banner {
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+
+  .temp-humidity-page .print-banner .print-logo {
+    width: 120px !important;
+    height: auto !important;
+  }
+
+  .temp-humidity-page .print-banner h1 {
+    font-size: 18px !important;
+    line-height: 1.25 !important;
+  }
+
+  .temp-humidity-page .print-banner p {
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  .temp-humidity-page .print-banner .print-compact-label {
+    font-size: 10px !important;
+    padding: 2px 8px !important;
+  }
+
+  .temp-humidity-page .print-banner .print-compact-input {
+    height: 28px !important;
+    width: 76px !important;
+    font-size: 10px !important;
+  }
+
+  .temp-humidity-page .temp-humidity-body {
+    flex: none !important;
+    flex-grow: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    gap: 0 !important;
+  }
+
+  .temp-humidity-page .temp-humidity-chart {
+    flex: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 6px 8px 0 !important;
+    gap: 0 !important;
+  }
+
+  .temp-humidity-page .temp-humidity-print-chart {
+    display: block !important;
+    flex: none !important;
+    height: 42mm !important;
+    max-height: 42mm !important;
+    min-height: 0 !important;
+    aspect-ratio: auto !important;
+  }
+
+  .temp-humidity-page .temp-humidity-print-chart .recharts-responsive-container,
+  .temp-humidity-page .temp-humidity-print-chart>div {
+    height: 42mm !important;
+    max-height: 42mm !important;
+    min-height: 0 !important;
+    width: 100% !important;
+  }
+
+  .temp-humidity-page .temp-humidity-print-chart svg {
+    max-height: 42mm !important;
+  }
+
+  .temp-humidity-page .temp-humidity-table-wrap {
+    flex: none !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    gap: 0 !important;
+  }
+
+  .temp-humidity-page .temp-humidity-table-wrap .print-sheet {
+    flex: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  .temp-humidity-page .temp-humidity-table-wrap .print-sheet table {
+    height: auto !important;
+  }
+
+  /* ID 선택자 — 공통 .print-page(100vh) / h1(13px) 보다 우선 */
+  #temp-humidity-print-sheet.print-page {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    gap: 3px !important;
+    padding: 0 !important;
+  }
+
+  #temp-humidity-print-sheet .temp-humidity-body {
+    flex: none !important;
+    flex-grow: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    gap: 0 !important;
+  }
+
+  #temp-humidity-print-sheet .print-compact-box.print-banner {
+    padding: 3px 8px !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+  }
+
+  #temp-humidity-print-sheet .print-banner .print-logo {
+    width: 58px !important;
+    max-width: 58px !important;
+    height: auto !important;
+    max-height: 26px !important;
+  }
+
+  #temp-humidity-print-sheet .print-banner h1 {
+    font-size: 13px !important;
+    line-height: 1.15 !important;
+  }
+
+  #temp-humidity-print-sheet .print-banner p {
+    font-size: 8px !important;
+    line-height: 1.2 !important;
+  }
+
+  #temp-humidity-print-sheet .temp-humidity-chart {
+    flex: none !important;
+    flex-grow: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    padding: 6px 8px 0 !important;
+    gap: 2px !important;
+    overflow: hidden !important;
+  }
+
+  #temp-humidity-print-sheet .temp-humidity-print-chart[data-slot='chart'] {
+    display: block !important;
+    flex: none !important;
+    aspect-ratio: unset !important;
+    height: 42mm !important;
+    max-height: 42mm !important;
+    min-height: 0 !important;
+    width: 100% !important;
+  }
+
+  #temp-humidity-print-sheet .temp-humidity-print-chart .recharts-responsive-container {
+    height: 42mm !important;
+    max-height: 42mm !important;
+    min-height: 0 !important;
+    width: 100% !important;
+  }
+
+  #temp-humidity-print-sheet .temp-humidity-print-chart svg.recharts-surface {
+    max-height: 42mm !important;
+  }
+
+  #temp-humidity-print-sheet .temp-humidity-table-wrap {
+    flex: none !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  #temp-humidity-print-sheet .temp-humidity-table-wrap .print-sheet {
+    flex: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  #temp-humidity-print-sheet .temp-humidity-table-wrap .print-sheet table {
+    height: auto !important;
+  }
+
+  .temp-humidity-page {
+    min-height: 0 !important;
+  }
+}
+
+/* 입고분 상세와 같은 카드·표. 점검표(border-collapse)는 그대로 둔다. */
+.rounded-xl.border.bg-card,
+.rounded-lg.border.bg-card {
+  border-radius: calc(var(--radius) * 1.8);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 0.06), 0 4px 12px oklch(0 0 0 / 0.04);
+}
+
+table:not(.border-collapse) thead {
+  background: transparent;
+}
+
+table:not(.border-collapse) thead.sticky th {
+  background-color: var(--card);
+}
+
+table:not(.border-collapse) thead th {
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

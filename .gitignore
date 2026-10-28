@@ -1,0 +1,22 @@
+# v0 sandbox internal files
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/
+
+# Environment variables
+.env*.local
+deploy.nas.env
+
+# 운영 데이터 (사용자·문서·감사 로그)
+/data/
+/backups/
+/public/storage/
+/public/uploads/
+
+# Common ignores
+node_modules
+.next/
+.DS_Store
