@@ -320,16 +320,17 @@ export function ConfigManager({
       <AlertDialogContent className="sm:max-w-md">
         <AlertDialogHeader>
           <AlertDialogTitle>사용 중인 항목 삭제</AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div className="space-y-2 text-left text-sm text-muted-foreground">
-              <p>
-                <span className="font-semibold text-foreground">{forceDeleteTarget}</span>
-                은(는) 등록된 문서에서 사용 중입니다. 목록에서 제거하시겠습니까?
-              </p>
-              <p className="text-xs">
-                이미 등록된 문서의 값은 그대로 남고, 선택 목록에서만 제거됩니다.
-              </p>
-            </div>
+          <AlertDialogDescription
+            render={<div />}
+            className="space-y-2 text-left text-sm text-muted-foreground"
+          >
+            <p>
+              <span className="font-semibold text-foreground">{forceDeleteTarget}</span>
+              은(는) 등록된 문서에서 사용 중입니다. 목록에서 제거하시겠습니까?
+            </p>
+            <p className="text-xs">
+              이미 등록된 문서의 값은 그대로 남고, 선택 목록에서만 제거됩니다.
+            </p>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

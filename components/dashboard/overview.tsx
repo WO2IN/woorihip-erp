@@ -303,7 +303,7 @@ export function CustomerPanel({ data }: { data: DashboardStats }) {
   const c = data.customer
   const menus = navSection('customer')?.children ?? []
   return (
-    <Panel no={2} tone="blue" title="고객관리" en="CUSTOMER" href="/customer/qsa-qpa"
+    <Panel no={2} tone="blue" title="고객관리" en="CUSTOMER" href="/customer/audit-status"
       hero={{ label: '거래처', value: num(c.companies), unit: '개사', sub: `품목 ${num(c.products)}종` }}>
       <div className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="grid grid-cols-2 gap-2">

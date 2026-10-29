@@ -1108,7 +1108,7 @@ export function ShipmentView() {
               }}
             />
           </div>
-          <div ref={ledgerScrollRef} className={`${ledgerSheetClass} h-[42vh] shrink-0 overflow-y-auto`}>
+          <div ref={ledgerScrollRef} className={`${ledgerSheetClass} max-h-[42vh] shrink-0 overflow-y-auto`}>
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b">

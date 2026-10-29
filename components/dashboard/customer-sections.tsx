@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown } from 'lucide-react'
 import { asKind, openOf, SAMPLE_AUDIT_ROWS, statusOf, type AuditRow } from '@/lib/customer-audit'
@@ -82,14 +82,14 @@ function Section({
         onClick={onToggle}
         className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-sm hover:bg-muted/50"
       >
-        <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out motion-reduce:transition-none', !expanded && '-rotate-90')} />
+        <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', !expanded && '-rotate-90')} />
         <span className="shrink-0 font-semibold">{label}</span>
         {soon && <span className="rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-700 dark:bg-amber-400/15 dark:text-amber-300">예정</span>}
         {testing && <span className="rounded bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/15 dark:text-sky-300">테스트</span>}
-        <span className={cn('min-w-0 flex-1 truncate text-xs text-muted-foreground transition-opacity duration-300 motion-reduce:transition-none', expanded && 'opacity-0')}>{hint}</span>
+        <span className={cn('min-w-0 flex-1 truncate text-xs text-muted-foreground transition-opacity duration-500 motion-reduce:transition-none', expanded ? 'opacity-0' : 'opacity-100')}>{hint}</span>
       </button>
       <Collapse open={expanded}>
-        <div className={cn('border-t bg-muted/20 px-3.5 py-3 transition-opacity duration-300 ease-out motion-reduce:transition-none', expanded ? 'opacity-100' : 'opacity-0')}>
+        <div className={cn('border-t bg-muted/20 px-3.5 py-3 transition-opacity duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', expanded ? 'opacity-100 delay-75' : 'opacity-0')}>
           {children}
         </div>
       </Collapse>
@@ -98,36 +98,13 @@ function Section({
 }
 
 function Collapse({ open, children }: { open: boolean; children: React.ReactNode }) {
-  const inner = useRef<HTMLDivElement>(null)
-  const [height, setHeight] = useState<number | null>(null)
-  const [animate, setAnimate] = useState(false)
-
-  useLayoutEffect(() => {
-    const el = inner.current
-    if (!el) return
-    const fit = () => setHeight(open ? el.scrollHeight : 0)
-    fit()
-    const observer = new ResizeObserver(fit)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [open])
-
-  useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    const frame = requestAnimationFrame(() => setAnimate(true))
-    return () => cancelAnimationFrame(frame)
-  }, [])
-
   return (
     <div
-      className="overflow-hidden"
+      className="grid transition-[grid-template-rows] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+      style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
       inert={open ? undefined : true}
-      style={{
-        height: height == null ? (open ? 'auto' : 0) : height,
-        transition: animate ? 'height 320ms ease' : 'none',
-      }}
     >
-      <div ref={inner}>{children}</div>
+      <div className="min-h-0 overflow-hidden">{children}</div>
     </div>
   )
 }
