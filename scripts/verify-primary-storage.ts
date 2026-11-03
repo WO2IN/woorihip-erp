@@ -1,6 +1,7 @@
 /**
  * legacy 없이 docs/media만으로 모든 등록 파일을 읽을 수 있는지 검증합니다.
  * npx tsx --env-file=.env.local scripts/verify-primary-storage.ts
+ * (일회성 마이그레이션은 scripts/archive/ 참고)
  */
 import { query } from '@/lib/db'
 import { getObjectBytes, isObjectStorageEnabled, loadDocumentFile } from '@/lib/object-storage'

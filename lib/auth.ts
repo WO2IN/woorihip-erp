@@ -31,6 +31,8 @@ interface UserRow {
   status: 'pending' | null
   nav_order: string | null
   has_signature: boolean
+  last_seen_at: Date | null
+  job_title: string | null
   created_at: Date
 }
 
@@ -42,10 +44,12 @@ function fromRow(row: UserRow): User {
     displayName: row.display_name,
     passwordHash: row.password_hash,
     role: row.role,
+    ...(row.job_title?.trim() ? { jobTitle: row.job_title.trim() } : {}),
     ...(row.floor ? { floor: row.floor as 1 | 2 | 3 } : {}),
     ...(row.status ? { status: row.status } : {}),
     ...(navOrder ? { navOrder } : {}),
     hasSignature: Boolean(row.has_signature),
+    ...(row.last_seen_at ? { lastSeenAt: row.last_seen_at.toISOString() } : {}),
     createdAt: row.created_at.toISOString(),
   }
 }
@@ -96,9 +100,31 @@ async function usersReady() {
   await ensureSetup('users-signature', async (client) => {
     await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS signature bytea')
   })
+  await ensureSetup('users-last-seen', async (client) => {
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz')
+  })
+  await ensureSetup('users-job-title', async (client) => {
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS job_title text')
+  })
 }
 
-const USER_COLUMNS = 'id, username, display_name, password_hash, role, floor, status, nav_order, (signature IS NOT NULL) AS has_signature, created_at'
+const USER_COLUMNS =
+  'id, username, display_name, password_hash, role, floor, status, nav_order, (signature IS NOT NULL) AS has_signature, last_seen_at, job_title, created_at'
+
+const lastSeenTouchAt = new Map<string, number>()
+const LAST_SEEN_TOUCH_INTERVAL_MS = 60_000
+
+/** 로그인·API 요청마다 호출. DB 부하를 줄이기 위해 사용자당 1분에 한 번만 갱신 */
+export async function touchUserLastSeen(id: string, options?: { force?: boolean }) {
+  const now = Date.now()
+  if (!options?.force) {
+    const prev = lastSeenTouchAt.get(id) ?? 0
+    if (now - prev < LAST_SEEN_TOUCH_INTERVAL_MS) return
+  }
+  lastSeenTouchAt.set(id, now)
+  await usersReady()
+  await query('UPDATE users SET last_seen_at = now() WHERE id = $1', [id])
+}
 
 export async function listUsers(): Promise<User[]> {
   await usersReady()
@@ -128,11 +154,21 @@ export async function isUsernameTaken(username: string) {
 export async function insertUser(user: User): Promise<boolean> {
   await usersReady()
   const rows = await query(
-    `INSERT INTO users (id, username, display_name, password_hash, role, floor, status, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO users (id, username, display_name, password_hash, role, floor, status, job_title, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT DO NOTHING
      RETURNING id`,
-    [user.id, user.username, user.displayName, user.passwordHash, user.role, user.floor ?? null, user.status ?? null, user.createdAt],
+    [
+      user.id,
+      user.username,
+      user.displayName,
+      user.passwordHash,
+      user.role,
+      user.floor ?? null,
+      user.status ?? null,
+      user.jobTitle?.trim() || null,
+      user.createdAt,
+    ],
   )
   return rows.length > 0
 }
@@ -144,6 +180,7 @@ export interface UserPatch {
   passwordHash?: string
   status?: 'pending' | null
   navOrder?: string[] | null
+  jobTitle?: string | null
 }
 
 const PATCH_COLUMNS: Record<keyof UserPatch, string> = {
@@ -153,6 +190,7 @@ const PATCH_COLUMNS: Record<keyof UserPatch, string> = {
   passwordHash: 'password_hash',
   status: 'status',
   navOrder: 'nav_order',
+  jobTitle: 'job_title',
 }
 
 export async function updateUser(id: string, patch: UserPatch): Promise<User | null> {
@@ -161,8 +199,14 @@ export async function updateUser(id: string, patch: UserPatch): Promise<User | n
   if (entries.length === 0) return findUserById(id)
   const sets = entries.map((key, index) => `${PATCH_COLUMNS[key]} = $${index + 2}`)
   const values = entries.map((key) => {
-    if (key !== 'navOrder') return patch[key]
-    return patch.navOrder?.length ? JSON.stringify(patch.navOrder) : null
+    if (key === 'navOrder') return patch.navOrder?.length ? JSON.stringify(patch.navOrder) : null
+    if (key === 'jobTitle') {
+      const raw = patch.jobTitle
+      if (raw === null || raw === undefined) return null
+      const trimmed = String(raw).trim()
+      return trimmed || null
+    }
+    return patch[key]
   })
   const [row] = await query<UserRow>(
     `UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING ${USER_COLUMNS}`,
@@ -320,6 +364,11 @@ export function canManageUsers(role: UserRole): boolean {
   return hasPermission(role, 'admin')
 }
 
+/** 부적합·4M·KPI·고객심사 등 품질 기록의 등록·수정·삭제 */
+export function canManageQualityRecords(role: UserRole): boolean {
+  return canManageUsers(role)
+}
+
 // ─── Request user ────────────────────────────────────────────────────────────
 
 export async function getUserFromHeaders(headers: Headers): Promise<{
@@ -330,5 +379,6 @@ export async function getUserFromHeaders(headers: Headers): Promise<{
 } | null> {
   const user = await verifySessionToken(readCookie(headers.get('cookie'), SESSION_COOKIE))
   if (!user) return null
+  void touchUserLastSeen(user.id)
   return { id: user.id, displayName: user.displayName, role: user.role, floor: user.floor }
 }

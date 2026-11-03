@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { canEdit, getUserFromHeaders } from '@/lib/auth'
+import { canManageQualityRecords, getUserFromHeaders } from '@/lib/auth'
 import { appendAuditLog } from '@/lib/storage'
 import { getSetting, setSetting } from '@/lib/records'
 import type { UserRole } from '@/lib/types'
@@ -34,8 +34,8 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   const user = await getUserFromHeaders(request.headers)
   const role = user?.role as UserRole | undefined
-  if (!user || !role || !canEdit(role)) {
-    return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 })
+  if (!user || !role || !canManageQualityRecords(role)) {
+    return NextResponse.json({ error: '관리자만 수정할 수 있습니다.' }, { status: 403 })
   }
 
   const body = await request.json().catch(() => null)

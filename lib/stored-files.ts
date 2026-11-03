@@ -136,7 +136,14 @@ export function buildChangeRequestObjectKey(requestId: string, side: string, fil
   return `quality/change-request/${safeId}/${side}/${safeName}`
 }
 
+export function buildEquipmentPhotoKey(fileName: string) {
+  return `uploads/equipment-photos/${sanitizeStorageSegment(fileName.replace(/[\\/]/g, '_'), 200)}`
+}
+
 export function resolveObjectKey(input: PutStoredFileInput): string {
+  if (input.domain === 'equipment' && input.category === 'photo' && input.storageFileName) {
+    return buildEquipmentPhotoKey(input.storageFileName)
+  }
   if (input.domain === 'quality' && input.category === 'certificate' && input.company && input.issueYear && input.storageFileName) {
     return buildCertificateObjectKey(input.company, input.issueYear, input.storageFileName)
   }
@@ -171,15 +178,9 @@ export function scopeForLegacyPath(key: string): StorageScope {
   return scopeForObjectKey(key)
 }
 
-export async function readStoredFileBytes(row: Pick<StoredFileRow, 'bucket_scope' | 'object_key' | 'legacy_key'>) {
+export async function readStoredFileBytes(row: Pick<StoredFileRow, 'bucket_scope' | 'object_key'>) {
   const scope = row.bucket_scope === 'legacy' ? 'docs' : row.bucket_scope
-  const primary = await getObjectBytes(scope, row.object_key)
-  if (primary?.length) return primary
-  if (scope !== 'media') {
-    const fromMedia = await getObjectBytes('media', row.object_key)
-    if (fromMedia?.length) return fromMedia
-  }
-  return null
+  return getObjectBytes(scope, row.object_key)
 }
 
 export async function getStoredFileByLegacyKey(legacyKey: string) {
@@ -316,21 +317,20 @@ export async function putStoredFile(input: PutStoredFileInput) {
   return { id, objectKey, scope }
 }
 
+/** 일회성 마이그레이션 스크립트용 */
 export function storedFileNeedsObjectMigration(row: Pick<StoredFileRow, 'bucket_scope' | 'object_key' | 'legacy_key' | 'category'>) {
   const key = row.object_key
   if (row.category === 'certificate' && certificateObjectKeyMatchesLayout(key) && row.bucket_scope === 'docs') {
     return false
   }
+  if (row.category === 'change-request' && key.startsWith('quality/change-request/') && row.bucket_scope === 'docs') {
+    return false
+  }
   const uuidMonthLayout = /^(quality|engineering|office|equipment)\/[^/]+\/\d{4}\/\d{2}\/[0-9a-f-]{36}\./i.test(key)
   if (uuidMonthLayout && (row.bucket_scope === 'docs' || row.bucket_scope === 'media')) {
-    if (row.legacy_key && row.legacy_key !== key) return false
-    if (!row.legacy_key) return false
+    return Boolean(row.legacy_key && row.legacy_key === key)
   }
-  if (row.legacy_key && row.legacy_key === key) return true
-  if (row.bucket_scope === 'legacy') return true
-  if (key.startsWith('change-requests/')) return true
-  if (!newLayout && row.bucket_scope !== 'docs' && row.bucket_scope !== 'media') return true
-  return false
+  return row.bucket_scope !== 'docs' && row.bucket_scope !== 'media'
 }
 
 export function targetScopeForStoredFile(row: Pick<StoredFileRow, 'domain' | 'category'>) {
@@ -359,11 +359,8 @@ export async function softDeleteStoredFile(id: string) {
   await query('UPDATE stored_files SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL', [id])
 }
 
-/** 새 레이아웃 파일만 객체 삭제. legacy 경로는 MinIO에서 지우지 않습니다. */
 export async function removeStoredFileObject(row: StoredFileRow) {
   if (row.bucket_scope === 'docs' || row.bucket_scope === 'media') {
-    if (row.object_key && !row.object_key.startsWith('change-requests/')) {
-      await removeObjectBytes(row.bucket_scope, row.object_key).catch(() => undefined)
-    }
+    await removeObjectBytes(row.bucket_scope, row.object_key).catch(() => undefined)
   }
 }

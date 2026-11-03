@@ -20,7 +20,6 @@ export async function POST(request: NextRequest) {
     }
 
     const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`
-    const legacyKey = `uploads/equipment-photos/${fileName}`
     const buffer = Buffer.from(await file.arrayBuffer())
     const ext = fileName.includes(".") ? fileName.split(".").pop()! : "jpg"
     const stored = await putStoredFile({
@@ -30,12 +29,12 @@ export async function POST(request: NextRequest) {
       mime: file.type || "application/octet-stream",
       ext,
       originalName: file.name,
-      legacyKey,
+      storageFileName: fileName,
       uploadedBy: requestUser.id,
       uploadedByName: requestUser.displayName,
     })
 
-    return NextResponse.json({ url: `/${legacyKey}`, fileId: stored.id })
+    return NextResponse.json({ url: `/${stored.objectKey}`, fileId: stored.id })
   } catch (error) {
     console.error("[v0] Upload error:", error)
     return NextResponse.json({ error: "Upload failed" }, { status: 500 })

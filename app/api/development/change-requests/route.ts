@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { canEdit, getUserFromHeaders } from '@/lib/auth'
+import { canManageQualityRecords, getUserFromHeaders } from '@/lib/auth'
 import { normalizeChangeRequest, type ChangeRequest } from '@/lib/change-request'
 import { decodeAttachments, removeRequestAttachments, storeUploadedAttachments } from '@/lib/change-request-files'
 import { getSetting, setSetting } from '@/lib/records'
@@ -13,10 +13,10 @@ async function readRows() {
   return Array.isArray(rows) ? rows.filter((row): row is ChangeRequest => !!row && typeof row === 'object' && typeof (row as ChangeRequest).id === 'string') : []
 }
 
-async function editor(request: NextRequest) {
+async function qualityAdmin(request: NextRequest) {
   const user = await getUserFromHeaders(request.headers)
   const role = user?.role as UserRole | undefined
-  if (!user || !role || !canEdit(role)) return null
+  if (!user || !role || !canManageQualityRecords(role)) return null
   return user
 }
 
@@ -26,8 +26,8 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
-  const user = await editor(request)
-  if (!user) return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 })
+  const user = await qualityAdmin(request)
+  if (!user) return NextResponse.json({ error: '관리자만 저장할 수 있습니다.' }, { status: 403 })
 
   const body = await request.json().catch(() => null)
   const rows = await readRows()
@@ -55,8 +55,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const user = await editor(request)
-  if (!user) return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 })
+  const user = await qualityAdmin(request)
+  if (!user) return NextResponse.json({ error: '관리자만 삭제할 수 있습니다.' }, { status: 403 })
 
   const body = await request.json().catch(() => null)
   const id = typeof body?.id === 'string' ? body.id : ''

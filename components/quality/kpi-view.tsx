@@ -57,7 +57,7 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
     { key: 'close', label: '월마감' },
   ].filter((item) => !(kind === 'outgoing' && item.key === 'lots'))
   const { user } = useAuth()
-  const canManage = user?.role === 'editor' || user?.role === 'admin'
+  const canManage = user?.role === 'admin'
   const [state, setState] = useState<KpiState>(EMPTY_STATE)
   const [sample, setSample] = useState(false)
   const [loading, setLoading] = useState(true)

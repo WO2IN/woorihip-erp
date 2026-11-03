@@ -3,18 +3,17 @@ import path from 'path'
 import { Client } from 'minio'
 import { getDocumentFilePath } from '@/lib/storage'
 
-export type StorageScope = 'legacy' | 'docs' | 'media' | 'backup' | 'attachments'
+/** legacy: 예전 단일 버킷(마이그레이션·purge 스크립트용). 앱 런타임은 docs/media만 사용 */
+export type StorageScope = 'legacy' | 'docs' | 'media' | 'backup'
 
 export function bucketForScope(scope: StorageScope) {
   switch (scope) {
     case 'docs':
-      return process.env.MINIO_DOCS_BUCKET?.trim() || process.env.MINIO_ATTACHMENTS_BUCKET?.trim() || 'woorihip-docs'
+      return process.env.MINIO_DOCS_BUCKET?.trim() || 'woorihip-docs'
     case 'media':
       return process.env.MINIO_MEDIA_BUCKET?.trim() || 'woorihip-media'
     case 'backup':
       return process.env.MINIO_BACKUP_BUCKET?.trim() || 'woorihip-backup'
-    case 'attachments':
-      return process.env.MINIO_ATTACHMENTS_BUCKET?.trim() || process.env.MINIO_DOCS_BUCKET?.trim() || 'woorihip-docs'
     default:
       return process.env.MINIO_BUCKET?.trim() || 'woorihip'
   }
@@ -49,15 +48,13 @@ export function toObjectKey(relativePath: string) {
 }
 
 export function scopeForObjectKey(key: string): StorageScope {
-  if (/^(quality|engineering|office)\//.test(key)) return 'docs'
   if (/^uploads\//.test(key)) return 'media'
-  if (/^change-requests\//.test(key)) return 'legacy'
-  return 'legacy'
+  return 'docs'
 }
 
 function isMissingObject(error: unknown) {
   const code = (error as { code?: string })?.code
-  return code === 'NotFound' || code === 'NoSuchKey'
+  return code === 'NotFound' || code === 'NoSuchKey' || code === 'NoSuchBucket'
 }
 
 function readLocalFile(relativePath: string) {
@@ -119,45 +116,12 @@ export async function removeObjectBytes(scope: StorageScope, relativePath: strin
   await removeObject(scope, relativePath)
 }
 
-async function loadWithFallback(relativePath: string) {
-  const primaryScope = scopeForObjectKey(relativePath)
-  const data = await getObjectBytes(primaryScope, relativePath)
-  if (data?.length) return data
-  if (relativePath.startsWith('change-requests/')) {
-    return getObjectBytes('docs', relativePath)
-  }
-  return null
-}
-
 export async function removeDocumentFile(relativePath: string) {
   await removeObject(scopeForObjectKey(relativePath), relativePath)
 }
 
-export async function saveDocumentFile(relativePath: string, body: Buffer, contentType: string) {
-  const scope = scopeForObjectKey(relativePath)
-  await putObjectBytes(scope, relativePath, body, contentType)
-}
-
 export async function loadDocumentFile(relativePath: string) {
-  return loadWithFallback(relativePath)
-}
-
-export async function saveAttachmentFile(relativePath: string, body: Buffer, contentType: string) {
-  await putObjectBytes('docs', relativePath, body, contentType)
-}
-
-export async function loadAttachmentFile(relativePath: string) {
-  const fromDocs = await getObjectBytes('docs', relativePath)
-  if (fromDocs?.length) return fromDocs
-  return loadWithFallback(relativePath)
-}
-
-export async function removeAttachmentFile(relativePath: string) {
-  await removeObject('docs', relativePath)
-}
-
-export async function saveMediaFile(relativePath: string, body: Buffer, contentType: string) {
-  await putObjectBytes('media', relativePath, body, contentType)
+  return getObjectBytes(scopeForObjectKey(relativePath), relativePath)
 }
 
 export async function loadMediaFile(relativePath: string) {

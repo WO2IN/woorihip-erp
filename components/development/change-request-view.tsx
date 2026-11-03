@@ -43,7 +43,7 @@ function currentRow(form: ChangeRequest, beforeFiles: string[] | null, afterFile
 
 export function ChangeRequestView() {
   const { user } = useAuth()
-  const canManage = user?.role === 'editor' || user?.role === 'admin'
+  const canManage = user?.role === 'admin'
   const [form, setForm] = useState<ChangeRequest>(() => emptyChangeRequest())
   const [saved, setSaved] = useState<ChangeRequest[]>([])
   const [loading, setLoading] = useState(true)

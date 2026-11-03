@@ -71,7 +71,7 @@ function byAuditDate(a: AuditRow, b: AuditRow) {
 
 export function AuditStatusView() {
   const { user } = useAuth()
-  const canManage = user?.role === 'editor' || user?.role === 'admin'
+  const canManage = user?.role === 'admin'
   const [rows, setRows] = useState<AuditRow[]>([])
   const [sample, setSample] = useState(false)
   const [loading, setLoading] = useState(true)

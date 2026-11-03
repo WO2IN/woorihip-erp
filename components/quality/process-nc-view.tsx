@@ -142,7 +142,7 @@ function ProcessNcFormFields({
 
 export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth()
-  const editable = Boolean(user && ['editor', 'admin'].includes(user.role))
+  const editable = user?.role === 'admin'
   const [rows, setRows] = useState<ProcessNonconformity[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)

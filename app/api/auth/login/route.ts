@@ -5,6 +5,7 @@ import {
   SESSION_COOKIE,
   sessionCookieOptions,
   toPublicUser,
+  touchUserLastSeen,
 } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
@@ -33,6 +34,8 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     )
   }
+
+  await touchUserLastSeen(user.id, { force: true })
 
   const response = NextResponse.json({
     success: true,

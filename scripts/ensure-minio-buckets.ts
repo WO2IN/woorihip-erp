@@ -6,9 +6,7 @@ import { Client } from 'minio'
 
 function bucketsToEnsure() {
   const names = new Set<string>()
-  const legacy = process.env.MINIO_BUCKET?.trim() || 'woorihip'
-  names.add(legacy)
-  names.add(process.env.MINIO_DOCS_BUCKET?.trim() || process.env.MINIO_ATTACHMENTS_BUCKET?.trim() || 'woorihip-docs')
+  names.add(process.env.MINIO_DOCS_BUCKET?.trim() || 'woorihip-docs')
   names.add(process.env.MINIO_MEDIA_BUCKET?.trim() || 'woorihip-media')
   const backup = process.env.MINIO_BACKUP_BUCKET?.trim()
   if (backup) names.add(backup)

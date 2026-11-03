@@ -7,7 +7,7 @@ import {
   readCustomerNonconformities,
   updateCustomerNonconformity,
 } from '@/lib/storage'
-import { canEdit, getUserFromHeaders } from '@/lib/auth'
+import { canManageQualityRecords, getUserFromHeaders } from '@/lib/auth'
 import type { CustomerNonconformity, WorkflowStatus } from '@/lib/non-conformity'
 import { parseOccurrenceDate, WORKFLOW_STATUS_ORDER } from '@/lib/non-conformity'
 
@@ -42,8 +42,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const user = await getUserFromHeaders(req.headers)
-  if (!user || !canEdit(user.role)) {
-    return NextResponse.json({ error: '등록 권한이 없습니다.' }, { status: 403 })
+  if (!user || !canManageQualityRecords(user.role)) {
+    return NextResponse.json({ error: '관리자만 등록할 수 있습니다.' }, { status: 403 })
   }
   const body = await req.json().catch(() => ({}))
   const occurrenceCompany = typeof body.occurrenceCompany === 'string' ? body.occurrenceCompany.trim() : ''
@@ -79,8 +79,8 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const user = await getUserFromHeaders(req.headers)
-  if (!user || !canEdit(user.role)) {
-    return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 })
+  if (!user || !canManageQualityRecords(user.role)) {
+    return NextResponse.json({ error: '관리자만 수정할 수 있습니다.' }, { status: 403 })
   }
   const body = await req.json().catch(() => ({}))
   const id = typeof body.id === 'string' ? body.id : ''
@@ -104,8 +104,8 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const user = await getUserFromHeaders(req.headers)
-  if (!user || !canEdit(user.role)) {
-    return NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 })
+  if (!user || !canManageQualityRecords(user.role)) {
+    return NextResponse.json({ error: '관리자만 삭제할 수 있습니다.' }, { status: 403 })
   }
   const { id } = await req.json().catch(() => ({}))
   if (!id || typeof id !== 'string') {

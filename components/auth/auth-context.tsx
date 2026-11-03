@@ -54,6 +54,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, router])
 
+  // 탭만 열어 둔 상태에서도 접속 중으로 잡히도록 주기적으로 세션 확인(= last_seen 갱신)
+  useEffect(() => {
+    if (!user) return
+    const tick = () => {
+      fetch('/api/auth/session', { method: 'POST' }).catch(() => {})
+    }
+    const id = window.setInterval(tick, 90_000)
+    return () => window.clearInterval(id)
+  }, [user?.id])
+
   const logout = useCallback(() => {
     clearSession()
     setUser(null)

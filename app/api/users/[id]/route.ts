@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { findUserById, updateUser, deleteUser, hashPassword, getUserFromHeaders, canManageUsers, type UserPatch } from '@/lib/auth'
 import { appendAuditLog } from '@/lib/storage'
+import { isAllowedJobTitle, parseJobTitle } from '@/lib/user-job-titles'
 
 export async function PATCH(
   req: NextRequest,
@@ -13,7 +14,7 @@ export async function PATCH(
 
   const { id } = await params
   const body = await req.json()
-  const { displayName, role, password, floor, approve } = body
+  const { displayName, role, password, floor, jobTitle, approve } = body
 
   const targetUser = await findUserById(id)
   if (!targetUser) {
@@ -48,6 +49,17 @@ export async function PATCH(
     patch.passwordHash = await hashPassword(password)
     changes.push('비밀번호 변경')
   }
+  if (jobTitle !== undefined) {
+    if (!isAllowedJobTitle(jobTitle)) {
+      return NextResponse.json({ error: '유효하지 않은 직급입니다.' }, { status: 400 })
+    }
+    const next = parseJobTitle(jobTitle) ?? ''
+    const current = targetUser.jobTitle?.trim() ?? ''
+    if (next !== current) {
+      changes.push(`직급 ${current || '미지정'} -> ${next || '미지정'}`)
+      patch.jobTitle = next || null
+    }
+  }
   if (approve === true && targetUser.status === 'pending') {
     patch.status = null
     changes.push('가입 승인')
@@ -73,6 +85,8 @@ export async function PATCH(
       role: updated.role,
       floor: updated.floor,
       status: updated.status,
+      hasSignature: Boolean(updated.hasSignature),
+      jobTitle: updated.jobTitle ?? null,
       createdAt: updated.createdAt,
     },
   })
