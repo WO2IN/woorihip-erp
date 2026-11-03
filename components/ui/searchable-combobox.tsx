@@ -15,6 +15,8 @@ interface SearchableComboboxProps {
   options: string[]
 
   recentOptions?: string[]
+  /** 검색 전에도 options 전체를 보여 준다. 없으면 최근 5개만 보인다. */
+  listAll?: boolean
 
   value: string
   onChange: (value: string) => void
@@ -24,18 +26,24 @@ interface SearchableComboboxProps {
   className?: string
   required?: boolean
   clearable?: boolean
+  /** 목록에 없는 값을 새로 만들지 않는다 */
+  creatable?: boolean
+  disabled?: boolean
 }
 
 export function SearchableCombobox({
   configName,
   options,
   recentOptions = [],
+  listAll = false,
   value,
   onChange,
   onOptionsChange,
   placeholder = '선택 또는 입력...',
   className,
   clearable = true,
+  creatable = true,
+  disabled = false,
 }: SearchableComboboxProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -56,18 +64,18 @@ export function SearchableCombobox({
   const filtered = useMemo(() => {
     // 검색어가 없으면 최근 사용 항목 5개만 표시
     if (!query.trim()) {
-      return recentOptions.slice(0, 5)
+      return listAll ? options : recentOptions.slice(0, 5)
     }
   
     // 검색하면 전체 options에서 검색
     return options.filter(o =>
       chosungSearch(o, query.trim())
     )
-  }, [options, recentOptions, query])
+  }, [listAll, options, recentOptions, query])
 
   const trimmed = query.trim()
   const exactMatch = options.some(o => o.toLowerCase() === trimmed.toLowerCase())
-  const showCreateOption = trimmed.length > 0 && !exactMatch
+  const showCreateOption = creatable && trimmed.length > 0 && !exactMatch
 
   const totalItems = filtered.length + (showCreateOption ? 1 : 0)
 
@@ -139,8 +147,9 @@ export function SearchableCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
+        disabled={disabled}
         className={cn(
-          "w-full h-9 rounded-lg border border-input bg-background px-3 flex items-center justify-between text-sm cursor-pointer hover:bg-accent transition-colors",
+          "w-full h-9 rounded-lg border border-input bg-background px-3 flex items-center justify-between text-sm cursor-pointer hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-60",
           className
         )}
       >
@@ -179,7 +188,7 @@ export function SearchableCombobox({
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="검색 또는 직접 입력..."
+            placeholder={creatable ? '검색 또는 직접 입력...' : '검색'}
             className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
           />
           {query && (

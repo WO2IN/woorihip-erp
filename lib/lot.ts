@@ -36,6 +36,17 @@ export function formatIssueDateInput(value?: string): string {
   return normalized.replace(/-/g, '')
 }
 
+/** 탐색기·저장 경로용 연도. 발행일 우선, 실패 시 숫자 4자리 */
+export function yearFromIssueDate(value?: string): string {
+  if (!value?.trim()) return ''
+  try {
+    return normalizeIssueDate(value).slice(0, 4)
+  } catch {
+    const digits = value.replace(/[^0-9]/g, '')
+    return digits.length >= 4 ? digits.slice(0, 4) : ''
+  }
+}
+
 /** LOT 번호 앞뒤 공백 제거 */
 /** 시작 LOT 기준으로 종료 순번을 전체 LOT 형식으로 조합 */
 export function buildLotEnd(start: string, endSuffix: string): string {

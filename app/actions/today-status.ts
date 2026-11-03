@@ -1,9 +1,8 @@
 "use server"
 
 import { selectAll } from "@/lib/local-store"
-import { FIVE_S_CATALOG } from "@/lib/constants/five-s-catalog"
 import { isDayOffDate, isWeekend } from "@/lib/date-utils"
-import { filledValue, isDueOnDay, statusFromSlots, type TodayStatus } from "@/lib/today-check"
+import { filledValue, statusFromSlots, type TodayStatus } from "@/lib/today-check"
 
 function dayOffChecker(year: number, month: number, holidays: number[] | undefined, workdays: number[] | undefined) {
   return (day: number) => isDayOffDate(year, month, day, holidays ?? [], workdays ?? [])
@@ -16,11 +15,9 @@ export async function getTodayCheckStatuses() {
   const day = now.getDate()
 
   const equipment = await selectAll<any>("equipment")
-  const dailyItems = await selectAll<any>("dailyCheckItems")
   const dailySheets = await selectAll<any>("dailyCheckSheets")
   const dailyEntries = await selectAll<any>("dailyCheckEntries")
   const fiveSTargets = await selectAll<any>("fiveSTargets")
-  const fiveSItems = await selectAll<any>("fiveSCheckItems")
   const fiveSSheets = await selectAll<any>("fiveSSheets")
   const fiveSEntries = await selectAll<any>("fiveSEntries")
   const tempTargets = await selectAll<any>("tempHumidityTargets")
@@ -31,54 +28,19 @@ export async function getTodayCheckStatuses() {
   for (const equip of equipment) {
     const sheet = dailySheets.find((row) => row.equipmentId === equip.id && row.year === year && row.month === month)
     const isDayOff = dayOffChecker(year, month, sheet?.holidays, sheet?.workdays)
-    const filledItems = new Set(
-      dailyEntries
-        .filter((row) => row.sheetId === sheet?.id && row.day === day && filledValue(row.value))
-        .map((row) => row.itemId),
+    const filledToday = dailyEntries.some(
+      (row) => row.sheetId === sheet?.id && row.day === day && filledValue(row.value),
     )
-    const slots = dailyItems
-      .filter((item) => item.equipmentId === equip.id)
-      .map((item) => ({
-        due: isDueOnDay(year, month, day, item.cycle || "일", isDayOff),
-        filled: filledItems.has(item.id),
-      }))
-    const marks = {
-      inspector: new Set<number>(sheet?.inspectorMarks ?? []),
-      manager: new Set<number>(sheet?.managerMarks ?? []),
-    }
-    slots.push(
-      {
-        due: isDueOnDay(year, month, day, equip.inspectorCycle || "1회/일", isDayOff),
-        filled: marks.inspector.has(day),
-      },
-      {
-        due: isDueOnDay(year, month, day, equip.managerCycle || "1회/주", isDayOff),
-        filled: marks.manager.has(day),
-      },
-    )
-    daily[equip.id] = statusFromSlots(slots)
+    daily[equip.id] = statusFromSlots([{ due: !isDayOff(day), filled: filledToday }])
   }
 
   const fiveS: Record<number, TodayStatus> = {}
   for (const target of fiveSTargets) {
     const sheet = fiveSSheets.find((row) => row.targetId === target.id && row.year === year && row.month === month)
     const isDayOff = dayOffChecker(year, month, sheet?.holidays, sheet?.workdays)
-    const ownItems = fiveSItems.filter((item) => item.targetId === target.id)
-    const items = ownItems.length > 0 ? ownItems : FIVE_S_CATALOG.map((item) => ({ ...item, code: `t${target.id}-${item.code}` }))
     const sheetEntries = fiveSEntries.filter((row) => row.sheetId === sheet?.id)
-    const filledCodes = new Set(
-      sheetEntries.filter((row) => row.day === day && filledValue(row.value)).map((row) => row.itemCode),
-    )
-    // 칸 하나라도 N/A면 그 항목은 이번 달 해당없음이다. 점검표와 같이 오늘 미점검에서 뺀다.
-    const notApplicable = new Set(
-      sheetEntries.filter((row) => row.value === "N/A").map((row) => row.itemCode),
-    )
-    fiveS[target.id] = statusFromSlots(
-      items.map((item) => ({
-        due: !notApplicable.has(item.code) && isDueOnDay(year, month, day, item.cycle || "일", isDayOff),
-        filled: filledCodes.has(item.code),
-      })),
-    )
+    const filledToday = sheetEntries.some((row) => row.day === day && filledValue(row.value) && row.value !== "N/A")
+    fiveS[target.id] = statusFromSlots([{ due: !isDayOff(day), filled: filledToday }])
   }
 
   const temp: Record<number, TodayStatus> = {}
@@ -88,9 +50,7 @@ export async function getTodayCheckStatuses() {
     const entry = tempEntries.find((row) => row.sheetId === sheet?.id && row.day === day)
     const due = !isDayOff(day)
     temp[target.id] = statusFromSlots([
-      { due, filled: filledValue(entry?.temperature) },
-      { due, filled: filledValue(entry?.humidity) },
-      { due, filled: filledValue(entry?.checker) },
+      { due, filled: filledValue(entry?.temperature) || filledValue(entry?.humidity) },
     ])
   }
 

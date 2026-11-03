@@ -11,6 +11,8 @@ export interface User {
   status?: 'pending'
   /** 사이드바 메뉴 id 순서. 없으면 기본 순서. */
   navOrder?: string[]
+  /** 결재에 쓸 서명이 저장되어 있는지. 그림 자체는 계정에만 둔다. */
+  hasSignature?: boolean
   createdAt: string
 }
 
@@ -21,6 +23,7 @@ export interface SessionUser {
   role: UserRole
   floor?: 1 | 2 | 3
   navOrder?: string[] | null
+  hasSignature?: boolean
 }
 
 export interface DocumentMetadata {
@@ -46,7 +49,8 @@ export interface DocumentMetadata {
   note?: string
   fileSize: number          // bytes
   year: string              // extracted from issueDate
-  storagePath: string       // relative path inside /storage
+  storagePath: string       // MinIO object key (legacy 또는 quality/certificate/…)
+  storedFileId?: string     // stored_files.id
   createdAt: string         // ISO timestamp
   createdBy?: string        // displayName of uploader
   createdById?: string      // user id of uploader

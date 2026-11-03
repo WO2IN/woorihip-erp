@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { saveDocumentFile } from "@/lib/object-storage"
+import { putStoredFile } from "@/lib/stored-files"
 import { canEdit, getUserFromHeaders } from "@/lib/auth"
 
 function sanitizeFileName(name: string) {
@@ -20,11 +20,22 @@ export async function POST(request: NextRequest) {
     }
 
     const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`
-    const key = `uploads/equipment-photos/${fileName}`
+    const legacyKey = `uploads/equipment-photos/${fileName}`
     const buffer = Buffer.from(await file.arrayBuffer())
-    await saveDocumentFile(key, buffer, file.type || "application/octet-stream")
+    const ext = fileName.includes(".") ? fileName.split(".").pop()! : "jpg"
+    const stored = await putStoredFile({
+      domain: "equipment",
+      category: "photo",
+      buffer,
+      mime: file.type || "application/octet-stream",
+      ext,
+      originalName: file.name,
+      legacyKey,
+      uploadedBy: requestUser.id,
+      uploadedByName: requestUser.displayName,
+    })
 
-    return NextResponse.json({ url: `/${key}` })
+    return NextResponse.json({ url: `/${legacyKey}`, fileId: stored.id })
   } catch (error) {
     console.error("[v0] Upload error:", error)
     return NextResponse.json({ error: "Upload failed" }, { status: 500 })

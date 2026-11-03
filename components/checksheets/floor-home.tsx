@@ -32,6 +32,7 @@ type SummaryCard = {
   href: string
   tone: 'sky' | 'amber' | 'violet' | 'emerald'
   icon: 'clipboard' | 'wrench' | 'thermometer' | 'factory'
+  missingCount?: number
   items: SummaryItem[]
 }
 
@@ -200,7 +201,7 @@ export function FloorHome({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
           {cards.map((card) => {
             const Icon = ICONS[card.icon]
-            const missingCount = card.items.filter((item) => item.status === 'missing').length
+            const missingCount = card.missingCount ?? card.items.filter((item) => item.status === 'missing').length
             return (
               <section
                 key={card.title}

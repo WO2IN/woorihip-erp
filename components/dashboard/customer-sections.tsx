@@ -40,7 +40,7 @@ export function CustomerSections({
       >
         <DocBars docTop={docTop} />
       </Section>
-      {menus.map((item) => (
+      {menus.map((item) => item.href && (
         <Section
           key={item.href}
           label={item.label}
@@ -48,7 +48,7 @@ export function CustomerSections({
           soon={item.soon}
           testing={item.testing}
           expanded={open === item.href}
-          onToggle={() => toggle(item.href)}
+          onToggle={() => item.href && toggle(item.href)}
         >
           {item.href === '/customer/audit-status' ? <AuditPreview /> : <SoonPreview href={item.href} />}
         </Section>

@@ -1,5 +1,5 @@
 import {
-  Building2, ClipboardCheck, Factory, FileText, FlaskConical, LayoutDashboard,
+  BarChart3, Building2, ClipboardCheck, Factory, FileText, LayoutDashboard,
   Settings, ShieldCheck, Users, Wrench, type LucideIcon,
 } from 'lucide-react'
 
@@ -7,10 +7,11 @@ export type Role = 'viewer' | 'editor' | 'admin'
 
 export interface NavItem {
   label: string
-  href: string
+  href?: string
   minRole?: Role
   soon?: boolean
   testing?: boolean
+  children?: NavItem[]
 }
 
 export interface NavSection {
@@ -19,6 +20,7 @@ export interface NavSection {
   icon: LucideIcon
   href?: string
   minRole?: Role
+  testing?: boolean
   children?: NavItem[]
 }
 
@@ -42,19 +44,22 @@ export const NAV: NavSection[] = [
   {
     id: 'quality', label: '품질관리', icon: ShieldCheck, children: [
       { label: '부적합관리', href: '/quality/nonconformity' },
-      { label: '변경점관리 (4M)', href: '/quality/change-points', soon: true },
+      { label: '변경점관리 (4M)', href: '/quality/change-points', testing: true },
       { label: '자격관리', href: '/quality/qualifications', soon: true },
       { label: 'IATF 16949', href: '/quality/iatf', soon: true },
     ],
   },
   {
-    id: 'development', label: '개발관리', icon: FlaskConical, children: [
-      { label: '변경점관리 (4M)', href: '/development/change-points', soon: true },
+    id: 'kpi', label: 'KPI 관리', icon: BarChart3, testing: true, children: [
+      { label: '수입검사 KPI', href: '/quality/kpi', testing: true },
+      { label: '공정불량률 KPI', href: '/quality/kpi/process', testing: true },
+      { label: '출하검사 KPI', href: '/quality/kpi/outgoing', testing: true },
+      { label: '고객부적합 KPI', href: '/quality/kpi/customer', testing: true },
     ],
   },
   {
-    id: 'shipment', label: '입/출고 관리', icon: Factory, children: [
-      { label: '입/출고 관리', href: '/shipment', testing: true },
+    id: 'shipment', label: '재고 관리', icon: Factory, children: [
+      { label: '재고 관리', href: '/shipment', testing: true },
     ],
   },
   {

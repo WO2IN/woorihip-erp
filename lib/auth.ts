@@ -30,6 +30,7 @@ interface UserRow {
   floor: number | null
   status: 'pending' | null
   nav_order: string | null
+  has_signature: boolean
   created_at: Date
 }
 
@@ -44,6 +45,7 @@ function fromRow(row: UserRow): User {
     ...(row.floor ? { floor: row.floor as 1 | 2 | 3 } : {}),
     ...(row.status ? { status: row.status } : {}),
     ...(navOrder ? { navOrder } : {}),
+    hasSignature: Boolean(row.has_signature),
     createdAt: row.created_at.toISOString(),
   }
 }
@@ -91,9 +93,12 @@ async function usersReady() {
   await ensureSetup('users-nav-order', async (client) => {
     await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nav_order text')
   })
+  await ensureSetup('users-signature', async (client) => {
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS signature bytea')
+  })
 }
 
-const USER_COLUMNS = 'id, username, display_name, password_hash, role, floor, status, nav_order, created_at'
+const USER_COLUMNS = 'id, username, display_name, password_hash, role, floor, status, nav_order, (signature IS NOT NULL) AS has_signature, created_at'
 
 export async function listUsers(): Promise<User[]> {
   await usersReady()
@@ -171,6 +176,19 @@ export async function deleteUser(id: string) {
   await query('DELETE FROM users WHERE id = $1', [id])
 }
 
+export async function readUserSignature(id: string) {
+  await usersReady()
+  const [row] = await query<{ signature: Buffer | null }>('SELECT signature FROM users WHERE id = $1', [id])
+  if (!row?.signature) return null
+  return Buffer.isBuffer(row.signature) ? row.signature : Buffer.from(row.signature)
+}
+
+export async function writeUserSignature(id: string, signature: Buffer | null) {
+  await usersReady()
+  const rows = await query('UPDATE users SET signature = $2 WHERE id = $1 RETURNING id', [id, signature])
+  return rows.length > 0
+}
+
 export function toPublicUser(user: User) {
   return {
     id: user.id,
@@ -179,6 +197,7 @@ export function toPublicUser(user: User) {
     role: user.role,
     floor: user.floor,
     navOrder: user.navOrder ?? null,
+    hasSignature: Boolean(user.hasSignature),
   }
 }
 

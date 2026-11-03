@@ -42,6 +42,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { DocumentMetadata } from '@/lib/types'
+import { yearFromIssueDate } from '@/lib/lot'
 import { FileCard, LIST_GRID } from './file-card'
 import { documentDownloadName } from '@/lib/file-types'
 import { FilePreviewDrawer } from './file-preview-drawer'
@@ -53,6 +54,10 @@ import { useAuth } from '@/components/auth/auth-context'
 import { toast } from 'sonner'
 
 type Level = 'docType' | 'year' | 'files'
+
+function docNavYear(doc: DocumentMetadata) {
+  return yearFromIssueDate(doc.issueDate) || doc.year
+}
 type SortField =
   | 'filename'
   | 'documentType'
@@ -370,8 +375,8 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   const yearsForDocType = useMemo(() => {
     if (!selectedCompany || !selectedDocType) return []
     const docs = allDocs.filter(d => d.company === selectedCompany && d.documentType === selectedDocType)
-    const years = [...new Set(docs.map(d => d.year))].sort((a, b) => Number(b) - Number(a))
-    return years.map(y => ({ year: y, count: docs.filter(d => d.year === y).length }))
+    const years = [...new Set(docs.map(docNavYear))].sort((a, b) => Number(b) - Number(a))
+    return years.map(y => ({ year: y, count: docs.filter(d => docNavYear(d) === y).length }))
   }, [allDocs, selectedCompany, selectedDocType])
 
   const filteredDocs = useMemo(() => {
@@ -395,7 +400,7 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
         &&
         (!selectedYear ||
           selectedYear === 'ALL' ||
-          d.year === selectedYear)
+          docNavYear(d) === selectedYear)
         &&
         // 업체 필터
         (
@@ -1141,6 +1146,24 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
                 )}
               </div>
             )}
+
+            {showDocs && selectedDocs.length > 0 && (
+              <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5">
+                <span className="text-sm font-bold text-primary">{selectedDocs.length}개 선택됨</span>
+                <Button size="sm" className="h-8 gap-1.5" disabled={downloading} onClick={() => downloadDocuments(selectedDocuments)}>
+                  <Download className="h-4 w-4" />
+                  {downloading ? '압축 중...' : selectedDocs.length > 1 ? 'ZIP 다운로드' : '다운로드'}
+                </Button>
+                {canDelete && (
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={deleting} onClick={() => setDeleteOpen(true)}>
+                    <Trash2 className="h-4 w-4" /> 삭제
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={() => setSelectedDocs([])}>
+                  선택 해제
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-auto p-4">
@@ -1150,53 +1173,35 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
               </div>
             ) : showDocs ? (
               <>
-                <div className={cn('flex items-center gap-2', (selectedDocs.length > 0 || viewMode === 'grid') && 'mb-3 min-h-9')}>
-                  {selectedDocs.length > 0 ? (
-                    <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5">
-                      <span className="text-sm font-bold text-primary">{selectedDocs.length}개 선택됨</span>
-                      <Button size="sm" className="h-8 gap-1.5" disabled={downloading} onClick={() => downloadDocuments(selectedDocuments)}>
-                        <Download className="h-4 w-4" />
-                        {downloading ? '압축 중...' : selectedDocs.length > 1 ? 'ZIP 다운로드' : '다운로드'}
-                      </Button>
-                      {canDelete && (
-                        <Button size="sm" variant="outline" className="h-8 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={deleting} onClick={() => setDeleteOpen(true)}>
-                          <Trash2 className="h-4 w-4" /> 삭제
-                        </Button>
-                      )}
-                      <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={() => setSelectedDocs([])}>
-                        선택 해제
-                      </Button>
-                    </div>
-                  ) : viewMode === 'grid' ? (
-                    <>
-                      <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={toggleSelectAll} disabled={filteredDocs.length === 0}>
-                        <CheckSquare className="h-4 w-4" /> 전체 선택
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="ml-auto h-8 gap-1.5"
-                        onClick={() => {
-                          if (sortField === 'issueDate' && sortDir === 'desc') {
-                            setSortDir('asc')
-                          } else if (sortField === 'issueDate') {
-                            setSortField('company')
-                            setSortDir('asc')
-                          } else {
-                            setSortField('issueDate')
-                            setSortDir('desc')
-                          }
-                        }}
-                      >
-                        {sortField === 'issueDate'
-                          ? sortDir === 'desc'
-                            ? <><SortDesc className="h-4 w-4" /> 최신순</>
-                            : <><SortAsc className="h-4 w-4" /> 오래된순</>
-                          : <><SortAsc className="h-4 w-4" /> 업체순</>}
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
+                {viewMode === 'grid' && selectedDocs.length === 0 && (
+                  <div className="mb-3 flex min-h-9 items-center gap-2">
+                    <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={toggleSelectAll} disabled={filteredDocs.length === 0}>
+                      <CheckSquare className="h-4 w-4" /> 전체 선택
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto h-8 gap-1.5"
+                      onClick={() => {
+                        if (sortField === 'issueDate' && sortDir === 'desc') {
+                          setSortDir('asc')
+                        } else if (sortField === 'issueDate') {
+                          setSortField('company')
+                          setSortDir('asc')
+                        } else {
+                          setSortField('issueDate')
+                          setSortDir('desc')
+                        }
+                      }}
+                    >
+                      {sortField === 'issueDate'
+                        ? sortDir === 'desc'
+                          ? <><SortDesc className="h-4 w-4" /> 최신순</>
+                          : <><SortAsc className="h-4 w-4" /> 오래된순</>
+                        : <><SortAsc className="h-4 w-4" /> 업체순</>}
+                    </Button>
+                  </div>
+                )}
                 {docList}
               </>
             ) : level === 'docType' ? (

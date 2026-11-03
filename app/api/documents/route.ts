@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readMetadata, updateMetadata, appendMetadata, appendAuditLog } from '@/lib/storage'
-import { normalizeLot, buildLotEnd } from '@/lib/lot'
+import { normalizeLot, buildLotEnd, yearFromIssueDate } from '@/lib/lot'
 import { getUserFromHeaders, canEdit } from '@/lib/auth'
 import { canOperateFloor } from '@/lib/access'
 
@@ -248,6 +248,11 @@ export async function PATCH(req: NextRequest) {
   }
 
 
+
+  if (updates.issueDate !== undefined) {
+    const y = yearFromIssueDate(updates.issueDate)
+    if (y) updates.year = y
+  }
 
   updates.updatedAt = new Date().toISOString()
   updates.updatedBy = requestUser.displayName

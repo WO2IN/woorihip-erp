@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import { appendMetadata, appendAuditLog } from '@/lib/storage'
-import { saveDocumentFile } from '@/lib/object-storage'
+import { putStoredFile } from '@/lib/stored-files'
 import { DocumentMetadata } from '@/lib/types'
 import { normalizeLot, normalizeRegisteredLot, buildLotEnd, normalizeIssueDate } from '@/lib/lot'
 import { format } from 'date-fns'
@@ -97,12 +97,29 @@ export async function POST(req: NextRequest) {
     `${dateStr}_${safeProduct}_${lotPart}_${uuidv4()}.${kind.ext}`
 
   const year = effectiveDate.split('-')[0]
-  const storagePath = [company, documentType, year, generatedName].join('/')
+  const docId = uuidv4()
   const buffer = Buffer.from(await file.arrayBuffer())
-  await saveDocumentFile(storagePath, buffer, kind.mime)
+  const stored = await putStoredFile({
+    domain: 'quality',
+    category: 'certificate',
+    buffer,
+    mime: kind.mime,
+    ext: kind.ext,
+    originalName: file.name,
+    storageFileName: generatedName,
+    issueYear: year,
+    ownerType: 'document',
+    ownerId: docId,
+    company,
+    product,
+    lot: lotStart,
+    uploadedBy: requestUser.id,
+    uploadedByName: requestUser.displayName,
+  })
+  const storagePath = stored.objectKey
 
   const doc: DocumentMetadata = {
-    id: uuidv4(),
+    id: docId,
     filename: generatedName,
     originalName: file.name,
     company,
@@ -126,6 +143,7 @@ export async function POST(req: NextRequest) {
     fileSize: file.size,
     year,
     storagePath,
+    storedFileId: stored.id,
     createdAt: new Date().toISOString(),
     createdBy: requestUser.displayName,
     createdById: requestUser.id,

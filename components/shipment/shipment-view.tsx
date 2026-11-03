@@ -1,12 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Area, Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, ReferenceLine, Tooltip, XAxis, YAxis } from 'recharts'
 import {
-  ArrowLeftRight,
+  ArrowDown,
+  ArrowUp,
+  Calendar,
   ChevronDown,
+  ChevronRight,
   Download,
+  Package,
   PackageCheck,
   Pencil,
   Plus,
@@ -22,10 +25,10 @@ import { canOperateFloor, homeFloor } from '@/lib/access'
 import { buildShipmentWorkbook } from '@/lib/shipment-excel'
 import { Floor3WorkLogPanel } from '@/components/shipment/floor3-work-log-panel'
 import { LotDetailPanel } from '@/components/shipment/lot-detail-panel'
+import { StockDashboard } from '@/components/shipment/stock-status-board'
 import { ProcessCheckRecord, ProcessTemplate } from '@/lib/process-checklist'
 import { Button } from '@/components/ui/button'
 import { BAND_BUTTON, BAND_BUTTON_PRIMARY, PageHeader } from '@/components/shared/page-header'
-import { ChartContainer, type ChartConfig } from '@/components/ui/chart'
 import {
   Dialog,
   DialogContent,
@@ -45,7 +48,6 @@ import { PdfViewerModal } from '@/components/explorer/pdf-viewer-modal'
 import { Floor3WorkLog } from '@/lib/floor3-work-log'
 import { DocumentMetadata } from '@/lib/types'
 import {
-  LedgerEntry,
   StockGroup,
   StockMovement,
   applyFloor3WorkLogs,
@@ -146,6 +148,8 @@ export function ShipmentView() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [negativeOnly, setNegativeOnly] = useState(false)
+  const [unitView, setUnitView] = useState('EA')
   const activeFilterCount =
     Number(companyFilter !== 'all') + Number(productFilter !== 'all') + Number(Boolean(startDate || endDate))
   const [formOpen, setFormOpen] = useState(false)
@@ -159,6 +163,7 @@ export function ShipmentView() {
   const [quantityEdit, setQuantityEdit] = useState<StockMovement | null>(null)
   const [quantityEditValue, setQuantityEditValue] = useState('')
   const ledgerScrollRef = useRef<HTMLDivElement>(null)
+  const [markedLedgerKey, setMarkedLedgerKey] = useState('')
   const [previewDoc, setPreviewDoc] = useState<DocumentMetadata | null>(null)
   const [selectedLot, setSelectedLot] = useState<StockMovement | null>(null)
 
@@ -332,8 +337,8 @@ export function ShipmentView() {
 
   const groups = useMemo(() => {
     const built = buildStockGroups(filteredMovements, startDate, endDate)
-    if (activeFloor === '1' || activeFloor === '2') return built
     const logs = workLogs.filter((item) =>
+      (activeFloor === 'all' || String(item.floor ?? 3) === activeFloor) &&
       (activeCompany === 'all' || item.company === activeCompany) &&
       (activeProduct === 'all' || item.product === activeProduct),
     )
@@ -350,10 +355,10 @@ export function ShipmentView() {
   )
 
   const workRows = useMemo(() => {
-    if (activeFloor === '1' || activeFloor === '2') return []
     const start = startDate.replace(/-/g, '')
     const end = endDate.replace(/-/g, '')
     return workLogs.filter((item) => {
+      if (activeFloor !== 'all' && String(item.floor ?? 3) !== activeFloor) return false
       if (activeCompany !== 'all' && item.company !== activeCompany) return false
       if (activeProduct !== 'all' && item.product !== activeProduct) return false
       const date = item.workDate.replace(/-/g, '')
@@ -375,11 +380,12 @@ export function ShipmentView() {
       catalog.push({ company, product })
     }
     for (const item of movements) {
-      if (item.floor === '3') add(item.company, item.product)
+      if (activeFloor !== 'all' && item.floor !== activeFloor) continue
+      add(item.company, item.product)
     }
     for (const item of workLogs) add(item.company, item.product)
     return catalog.sort((a, b) => a.company.localeCompare(b.company, 'ko') || a.product.localeCompare(b.product, 'ko'))
-  }, [activeCompany, activeProduct, movements, workLogs])
+  }, [activeCompany, activeFloor, activeProduct, movements, workLogs])
 
   const outbound = useMemo(
     () =>
@@ -392,17 +398,39 @@ export function ShipmentView() {
 
   const units = uniqueUnits(groups)
   const workUnit = units.length === 1 ? units[0] : 'EA'
-  const canSum = units.length <= 1
-  const unitLabel = units[0] || ''
   const floor3 = activeFloor === '3'
-  const incomingSum = groups.reduce((sum, row) => sum + row.incoming, 0)
-  const outgoingSum = groups.reduce((sum, row) => sum + row.outgoing, 0)
-  const openingSum = groups.reduce((sum, row) => sum + row.opening, 0)
-  const stockSum = groups.reduce((sum, row) => sum + row.stock, 0)
-  const defectSum = groups.reduce((sum, row) => sum + row.defect, 0)
-  const sampleSum = groups.reduce((sum, row) => sum + row.sample, 0)
-  const finalSum = groups.reduce((sum, row) => sum + row.finalStock, 0)
+  const unitOrder = [...units].sort((a, b) => unitRank(a) - unitRank(b) || a.localeCompare(b))
+  const monthPrefix = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  const inMonth = (issueDate: string) => issueDate.replace(/\D/g, '').startsWith(monthPrefix)
+  const sumByUnit = (pick: (row: StockGroup) => number) => unitOrder.map((unit) => ({
+    unit,
+    value: groups.filter((row) => row.unit === unit).reduce((sum, row) => sum + pick(row), 0),
+  }))
+  const movementByUnit = (kind: '입고' | '출고', monthOnly: boolean) => unitOrder.map((unit) => ({
+    unit,
+    value: filteredMovements
+      .filter((item) => item.kind === kind && (item.unit || 'EA') === unit && (!monthOnly || inMonth(item.issueDate)))
+      .reduce((sum, item) => sum + item.quantity, 0),
+  }))
+  const periodFiltered = Boolean(startDate || endDate)
+  const cardIncoming = periodFiltered ? sumByUnit((row) => row.incoming) : movementByUnit('입고', true)
+  const cardOutgoing = periodFiltered ? sumByUnit((row) => row.outgoing) : movementByUnit('출고', true)
+  const stockLines = sumByUnit((row) => row.stock)
+  const openingLines = sumByUnit((row) => row.opening)
   const negativeCount = groups.filter((row) => (floor3 ? row.finalStock : row.stock) < 0).length
+  const stockRows = negativeOnly
+    ? groups.filter((row) => (floor3 ? row.finalStock : row.stock) < 0)
+    : groups
+  const activeUnit = unitOrder.includes(unitView) ? unitView : (unitOrder[0] || '')
+  const forUnit = (lines: { unit: string; value: number }[]) => {
+    const line = lines.find((item) => item.unit === activeUnit)
+    return line ? [line] : []
+  }
+  const openingLine = openingLines.find((line) => line.unit === activeUnit)
+  const stockHint = periodFiltered && openingLine
+    ? `기초 ${openingLine.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} ${openingLine.unit} 포함`
+    : '현재 보유 중인 재고 수량'
+  const negativeForUnit = groups.filter((row) => row.unit === activeUnit && (floor3 ? row.finalStock : row.stock) < 0).length
 
   const selectedLedgerView = useMemo(() => {
     if (!selectedGroup) return { rows: [], openLots: [], segments: [] }
@@ -419,6 +447,11 @@ export function ShipmentView() {
     )
   }, [endDate, filteredMovements, selectedGroup, startDate])
   const selectedLedger = selectedLedgerView.rows
+  const ledgerRangeLabel = startDate || endDate
+    ? `${startDate ? startDate.replace(/-/g, '.') : '처음'} ~ ${endDate ? endDate.replace(/-/g, '.') : '오늘'}`
+    : selectedLedger.length
+      ? `${displayDate(selectedLedger[0].issueDate)} ~ ${displayDate(selectedLedger[selectedLedger.length - 1].issueDate)}`
+      : '전체 기간'
 
   const saveInventory = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -677,12 +710,12 @@ export function ShipmentView() {
     <main className="p-6 md:p-8">
       <PageHeader
         className="mb-6"
-        tone="amber"
-        icon={ArrowLeftRight}
-        eyebrow="PROCESS · 공정관리"
+        tone="blue"
+        icon={Package}
+        eyebrow="STOCK · 재고 관리"
         title={
           <span className="flex items-center gap-2.5">
-            입/출고 관리
+            재고 관리
             <span
               title="입고가 아직 관리되지 않아 재고와 진행현황이 실제와 다릅니다. 화면 확인용입니다."
               className="cursor-help rounded-md bg-white/90 px-2 py-0.5 text-xs font-bold tracking-normal text-sky-700"
@@ -716,7 +749,7 @@ export function ShipmentView() {
         }
       />
 
-      <div className="mb-3 flex gap-1 rounded-2xl border border-border bg-card p-1 shadow-[0_1px_3px_oklch(0_0_0/0.06),0_4px_12px_oklch(0_0_0/0.04)]">
+      <div className="mb-4 flex gap-10 border-b">
         {(
           [
             ['flow', '진행현황', lotFlow.lots.length - stageCount('done')],
@@ -730,12 +763,12 @@ export function ShipmentView() {
             key={key}
             type="button"
             onClick={() => setTab(key)}
-            className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-              tab === key ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            className={`-mb-px border-b-2 px-1 pb-2.5 text-sm font-semibold transition-colors ${
+              tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {label}
-            <span className={`ml-1 text-xs tabular-nums ${tab === key ? 'text-background/70' : 'text-muted-foreground'}`}>{count}</span>
+            <span className={`ml-1 tabular-nums ${tab === key ? 'text-blue-600/80' : 'text-muted-foreground'}`}>{count}</span>
           </button>
         ))}
       </div>
@@ -748,7 +781,7 @@ export function ShipmentView() {
           <p className="mb-2 text-sm text-muted-foreground">등록과 수정은 {editFloor}층만 가능합니다. 다른 층은 조회만 됩니다.</p>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-10 items-center gap-0.5 rounded-lg border bg-card p-1" role="tablist" aria-label="층 선택">
+          <div className="flex items-center gap-1.5" role="tablist" aria-label="층 선택">
             {(['all', '1', '2', '3'] as const).map((floor) => (
               <button
                 key={floor}
@@ -756,8 +789,8 @@ export function ShipmentView() {
                 role="tab"
                 aria-selected={floorFilter === floor}
                 onClick={() => setFloorFilter(floor)}
-                className={`h-full rounded-md px-3.5 text-sm font-semibold transition-colors ${
-                  floorFilter === floor ? 'bg-amber-500 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                className={`h-10 rounded-lg px-4 text-sm font-semibold transition-colors ${
+                  floorFilter === floor ? 'bg-blue-600 text-white shadow-sm' : 'border bg-card text-foreground hover:bg-muted'
                 }`}
               >
                 {floor === 'all' ? '전체' : `${floor}층`}
@@ -784,6 +817,21 @@ export function ShipmentView() {
               </button>
             )}
           </label>
+          {tab !== 'flow' && unitOrder.length > 1 && (
+            <div className="flex h-10 items-center gap-1 rounded-lg border bg-card p-1">
+              {unitOrder.map((unit) => (
+                <button
+                  key={unit}
+                  type="button"
+                  aria-pressed={activeUnit === unit}
+                  onClick={() => setUnitView(unit)}
+                  className={`h-8 rounded-md px-2.5 text-xs font-semibold ${activeUnit === unit ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-muted-foreground hover:bg-muted'}`}
+                >
+                  {unit}
+                </button>
+              ))}
+            </div>
+          )}
           <Button
             variant="outline"
             className={`h-10 ${filtersOpen || activeFilterCount ? 'border-foreground/30 bg-muted' : 'bg-card'}`}
@@ -797,9 +845,6 @@ export function ShipmentView() {
             )}
             <ChevronDown className={`ml-1.5 h-4 w-4 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
           </Button>
-          <span className="hidden text-sm text-muted-foreground tabular-nums lg:inline">
-            재고 {groups.length}종 · 입고 {inbound.length}건 · 출고 {outbound.length}건
-          </span>
         </div>
 
         {filtersOpen && (
@@ -847,34 +892,21 @@ export function ShipmentView() {
       </section>
 
       {tab !== 'flow' && (
-      <section className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryCard label="입고" value={canSum ? incomingSum : null} unit={unitLabel} tone="blue" />
-        <SummaryCard label="출고" value={canSum ? outgoingSum : null} unit={unitLabel} tone="orange" />
-        <SummaryCard
-          label={floor3 ? '현 재고수량' : startDate ? '기초 + 기간 = 현재고' : '현재 재고'}
-          value={canSum ? stockSum : null}
-          unit={unitLabel}
-          tone="yellow"
-          hint={startDate && canSum ? `기초 ${openingSum.toLocaleString('ko-KR')}` : undefined}
-        />
-        {floor3 ? (
-          <SummaryCard
-            label="최종 재고수량"
-            value={canSum ? finalSum : null}
-            unit={unitLabel}
-            tone={canSum && finalSum < 0 ? 'rose' : 'yellow'}
-            hint={canSum ? `불량 ${defectSum.toLocaleString('ko-KR')} · 검사시료 ${sampleSum.toLocaleString('ko-KR')}` : undefined}
-          />
-        ) : (
-          <SummaryCard label="재고 마이너스" value={negativeCount} unit="종" tone="rose" hint="대부분 입고 미등록" />
-        )}
-      </section>
+        <section className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StockKpi icon={<ArrowDown className="h-4 w-4" />} iconClass="bg-blue-500" label="입고" lines={forUnit(cardIncoming)} hint={periodFiltered ? '선택한 기간 입고 수량' : '이번 달 총 입고 수량'} />
+            <StockKpi icon={<ArrowUp className="h-4 w-4" />} iconClass="bg-orange-400" label="출고" lines={forUnit(cardOutgoing)} hint={periodFiltered ? '선택한 기간 출고 수량' : '이번 달 총 출고 수량'} />
+            <StockKpi icon={<Package className="h-4 w-4" />} iconClass="bg-emerald-500" label="현재 재고" lines={forUnit(stockLines)} hint={stockHint} />
+            <StockKpi icon={<TriangleAlert className="h-4 w-4" />} iconClass="bg-rose-500" label="재고 마이너스" lines={[{ unit: '종', value: negativeForUnit }]} hint="대부분 입고 미등록" warn />
+        </section>
       )}
 
-      {tab !== 'flow' && !canSum && groups.length > 0 && (
-        <p className="mb-4 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-          <TriangleAlert className="h-4 w-4" /> 단위가 섞여 있어 합계는 표시하지 않습니다. 품목별로 확인하세요.
-        </p>
+      {tab === 'stock' && (negativeOnly || negativeCount > 0) && (
+        <div className="mb-4 flex justify-end">
+          <button type="button" className="inline-flex items-center text-sm font-semibold text-muted-foreground hover:text-foreground" onClick={() => setNegativeOnly((value) => !value)}>
+            {negativeOnly ? '전체 재고 보기' : '마이너스 재고만 보기'}
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       )}
 
       {tab === 'flow' && (
@@ -886,6 +918,7 @@ export function ShipmentView() {
           endDate={endDate}
           editable={editable}
           editFloor={editFloor}
+          workLogs={workLogs}
           onStage={(lot, stage) => void changeStage(lot, stage)}
           onOpen={setSelectedLot}
           onRegister={registerInbound}
@@ -895,7 +928,7 @@ export function ShipmentView() {
         <StockTable
           loading={loading}
           floor3={floor3}
-          rows={groups}
+          rows={stockRows}
           onOpen={(row) => {
             setSelectedGroup(row)
             setIsEditMode(false)
@@ -930,15 +963,15 @@ export function ShipmentView() {
       {tab === 'work' && (
         <Floor3WorkLogPanel
           logs={workRows}
-          history={workLogs}
           checks={processChecks}
           templates={processTemplates}
           catalog={workCatalog}
-          editable={canEditMovement('3') && activeFloor !== '1' && activeFloor !== '2'}
+          editable={activeFloor === 'all' ? editable : canEditMovement(activeFloor)}
           company={activeCompany === 'all' ? '' : activeCompany}
           product={activeProduct === 'all' ? '' : activeProduct}
           unit={workUnit}
-          otherFloor={activeFloor === '1' || activeFloor === '2'}
+          floor={activeFloor === '1' || activeFloor === '2' || activeFloor === '3' ? activeFloor : 'all'}
+          lockedFloor={editFloor}
           onSaved={() => load(true)}
         />
       )}
@@ -1042,23 +1075,29 @@ export function ShipmentView() {
             setIsEditMode(false)
             setEditedQuantities({})
             setIsOutgoingWarningOpen(false)
+            setMarkedLedgerKey('')
           }
         }}
       >
-        <DialogContent className="!z-[80] !flex !max-h-[88vh] !min-h-0 !w-[min(96vw,980px)] !max-w-[980px] !flex-col !gap-4 !overflow-y-auto !rounded-2xl !bg-background !p-6 !ring-0 shadow-[0_8px_40px_oklch(0_0_0/0.18)]">
+        <DialogContent className="!z-[80] !flex !h-[92vh] !max-h-[92vh] !min-h-0 !w-[min(98vw,1480px)] !max-w-[1480px] !flex-col !gap-4 !overflow-hidden !rounded-2xl !bg-muted !p-5 !ring-0 shadow-[0_8px_40px_oklch(0_0_0/0.18)]">
           <DialogHeader className="shrink-0 gap-3 pr-8 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">재고</p>
-              <DialogTitle className="mt-1 text-2xl font-bold tracking-tight">
+              <DialogTitle className="text-xl font-bold tracking-tight">재고 현황</DialogTitle>
+              <p className="mt-1 text-sm font-semibold">
                 {selectedGroup?.company} · {selectedGroup?.product}
                 {selectedGroup?.floor ? ` · ${selectedGroup.floor}층` : ''}
-              </DialogTitle>
+              </p>
               <DialogDescription className="mt-1">
-                날짜순 입출고와 누계재고입니다. 입고 전 출고는 마이너스로 남고, 첫 입고부터 다시 계산합니다.
+                입고·출고 내역과 재고 추이를 한눈에 확인할 수 있습니다.
               </DialogDescription>
             </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm shadow-sm">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="tabular-nums">{ledgerRangeLabel}</span>
+              </div>
             {selectedGroup && canEditMovement(selectedGroup.floor) && (
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex items-center gap-2">
                 {isEditMode ? (
                   <>
                     <Button
@@ -1083,99 +1122,94 @@ export function ShipmentView() {
                 )}
               </div>
             )}
+            </div>
           </DialogHeader>
           {selectedGroup && (
-            <div className={`grid shrink-0 gap-3 ${selectedGroup.floor === '3' ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3'}`}>
-              <LedgerStat label="입고" value={selectedGroup.incoming} />
-              <LedgerStat label="출고" value={selectedGroup.outgoing} />
-              {selectedGroup.floor === '3' && (
-                <>
-                  <LedgerStat label="불량" value={selectedGroup.defect} />
-                  <LedgerStat label="검사시료" value={selectedGroup.sample} />
-                </>
-              )}
-              <LedgerStat label="현 재고" value={selectedGroup.stock} unit={selectedGroup.unit} warn={selectedGroup.stock < 0} />
-              {selectedGroup.floor === '3' && (
-                <LedgerStat label="최종 재고" value={selectedGroup.finalStock} unit={selectedGroup.unit} warn={selectedGroup.finalStock < 0} />
-              )}
-            </div>
-          )}
-          <div className="shrink-0">
-            <LedgerFlow
+            <StockDashboard
               rows={selectedLedgerView.rows}
+              rangeLabel={ledgerRangeLabel}
+              floor3={selectedGroup.floor === '3'}
+              defect={selectedGroup.defect}
+              sample={selectedGroup.sample}
+              finalStock={selectedGroup.finalStock}
               onSelect={(key) => {
+                setMarkedLedgerKey(key)
                 requestAnimationFrame(() => scrollLedgerRow(ledgerScrollRef.current, key))
               }}
-            />
-          </div>
-          <div ref={ledgerScrollRef} className={`${ledgerSheetClass} max-h-[42vh] shrink-0 overflow-y-auto`}>
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-card">
-                <tr className="border-b">
-                  {['일자', '구분', '로트', '수량', '누계재고'].map((head) => (
-                    <th key={head} className={`bg-card px-5 py-3 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase ${head === '수량' || head === '누계재고' ? 'text-right' : 'text-left'}`}>
-                      {head}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {selectedLedgerView.rows.map((row, index) => {
+              list={
+                <div ref={ledgerScrollRef} className={`${ledgerSheetClass} h-full min-h-0 overflow-y-auto`}>
+                  <div data-ledger-sticky className="sticky top-0 z-10 flex items-center justify-between bg-card px-4 py-3">
+                    <p className="text-sm font-semibold">최근 거래 내역</p>
+                    <span className="text-xs text-muted-foreground">{selectedLedger.length}건</span>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {[...selectedLedgerView.rows].reverse().map((row) => {
+                      const index = selectedLedgerView.rows.indexOf(row)
                       const earlier = selectedLedgerView.rows.slice(0, index)
                       const firstInboundAfterEarlyOut = row.kind === '입고' && earlier.some((item) => item.beforeInbound) && earlier.every((item) => item.beforeInbound)
-                      const boundary = firstInboundAfterEarlyOut ? 'shadow-[inset_0_2px_0_0_oklch(0.62_0.14_55)]' : ''
+                      const marked = ledgerKey(row) === markedLedgerKey
+                      const inbound = row.kind === '입고'
                       return (
-                      <tr
-                        key={ledgerKey(row)}
-                        id={`ledger-row-${ledgerKey(row)}`}
-                        className="cursor-pointer transition-colors hover:bg-muted/20"
-                        onClick={() => setSelectedLot(row)}
-                      >
-                        <td className={`px-5 py-3.5 ${boundary}`}>
-                          <div>{displayDate(row.issueDate)}</div>
-                          {row.closedLots.map((lot) => (
-                            <div key={lot.id} className="mt-1 text-[11px] font-medium text-[oklch(0.45_0.17_162)] dark:text-[oklch(0.68_0.17_162)]">
-                              {depletionMark(lot)}
-                            </div>
-                          ))}
-                        </td>
-                        <td className={`px-5 py-3.5 ${boundary}`}>
-                          <KindBadge kind={row.kind} />
-                        </td>
-                        <td className={`px-5 py-3.5 text-muted-foreground ${boundary}`}>{lotLabel(row.kind, row.lot)}</td>
-                        <td className={`px-5 py-3.5 text-right ${boundary}`} onClick={(event) => event.stopPropagation()}>
-                          {isEditMode ? (
-                            <Input
-                              type="number"
-                              min="0"
-                              step="any"
-                              className="ml-auto h-8 w-28 text-right"
-                              value={editedQuantities[ledgerKey(row)] ?? row.quantity}
-                              onChange={(event) =>
-                                setEditedQuantities((current) => ({
-                                  ...current,
-                                  [ledgerKey(row)]: Number(event.target.value),
-                                }))
-                              }
-                            />
-                          ) : (
-                            <QtyText value={row.quantity} unit={row.unit} className={quantityTone(row.kind)} />
-                          )}
-                        </td>
-                        <td className={`px-5 py-3.5 text-right ${boundary}`}>
-                          <QtyText value={row.running} unit={row.unit} warn={row.running < 0} className="font-semibold" />
-                        </td>
-                      </tr>
+                        <div
+                          key={ledgerKey(row)}
+                          id={`ledger-row-${ledgerKey(row)}`}
+                          role="button"
+                          tabIndex={0}
+                          className={`flex w-full cursor-pointer gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30 ${marked ? 'bg-[oklch(0.52_0.19_258/0.14)] shadow-[inset_4px_0_0_0_oklch(0.52_0.19_258)]' : ''} ${firstInboundAfterEarlyOut ? 'shadow-[inset_0_2px_0_0_oklch(0.62_0.14_55)]' : ''}`}
+                          onClick={() => setSelectedLot(row)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') setSelectedLot(row)
+                          }}
+                        >
+                          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${inbound ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-500'}`}>
+                            {inbound ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                              <span>{displayDate(row.issueDate)}</span>
+                              <span>{row.kind}</span>
+                            </span>
+                            {isEditMode ? (
+                              <Input
+                                type="number"
+                                min="0"
+                                step="any"
+                                className="mt-1 h-8 w-28 text-right"
+                                value={editedQuantities[ledgerKey(row)] ?? row.quantity}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) =>
+                                  setEditedQuantities((current) => ({
+                                    ...current,
+                                    [ledgerKey(row)]: Number(event.target.value),
+                                  }))
+                                }
+                              />
+                            ) : (
+                              <span className={`mt-0.5 block text-base font-bold tabular-nums ${inbound ? 'text-blue-600' : 'text-orange-500'}`}>
+                                {inbound ? '+' : '-'} {formatQuantity(row.quantity, row.unit)}
+                              </span>
+                            )}
+                            <span className={`mt-0.5 block text-xs ${row.running < 0 ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>
+                              거래 후 재고 {formatQuantity(row.running, row.unit)}
+                              {lotLabel(row.kind, row.lot) ? ` · ${lotLabel(row.kind, row.lot)}` : ''}
+                            </span>
+                            {row.closedLots.map((lot) => (
+                              <span key={lot.id} className="mt-1 block text-[11px] font-medium text-[oklch(0.45_0.17_162)] dark:text-[oklch(0.68_0.17_162)]">
+                                {depletionMark(lot)}
+                              </span>
+                            ))}
+                          </span>
+                        </div>
                       )
-                })}
-                {selectedLedger.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">기간 내 이동이 없습니다.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                    })}
+                    {selectedLedger.length === 0 && (
+                      <p className="px-4 py-10 text-center text-sm text-muted-foreground">기간 내 이동이 없습니다.</p>
+                    )}
+                  </div>
+                </div>
+              }
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1277,249 +1311,21 @@ function inDateRange(issueDate: string, startDate: string, endDate: string) {
   return true
 }
 
-function SummaryCard({
-  label,
-  value,
-  unit,
-  tone,
-  hint,
-}: {
-  label: string
-  value: number | null
-  unit: string
-  tone: 'blue' | 'orange' | 'yellow' | 'rose'
-  hint?: string
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_3px_oklch(0_0_0/0.06),0_4px_12px_oklch(0_0_0/0.04)]">
-      <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{label}</span>
-      <p className={`mt-2 text-2xl font-bold leading-none tabular-nums ${tone === 'rose' ? 'text-destructive' : ''}`}>
-        {value == null ? '—' : value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
-        <span className="ml-1 text-sm font-normal text-muted-foreground">{value == null ? '단위 혼재' : unit}</span>
-      </p>
-      {hint && <p className="mt-2 text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  )
+function unitRank(unit: string) {
+  const order = ['EA', 'Kg', 'KG', 'R']
+  const index = order.indexOf(unit)
+  return index === -1 ? order.length : index
 }
 
-const ledgerChartConfig = {
-  running: { label: '누계재고', color: '#0f766e' },
-  signed: { label: '입출고', color: '#2563eb' },
-} satisfies ChartConfig
-
-interface LedgerPoint {
-  key: string
-  rowKey: string
-  label: string
-  fullDate: string
-  kind: '입고' | '출고'
-  quantity: number
-  signed: number
-  running: number
-  unit: string
-}
 
 function scrollLedgerRow(scroller: HTMLDivElement | null, key: string) {
   const target = document.getElementById(`ledger-row-${key}`)
   if (!scroller || !target) return
-  const stickyHeader = scroller.querySelector('thead')?.getBoundingClientRect().height ?? 0
+  const stickyHeader = scroller.querySelector('[data-ledger-sticky], thead')?.getBoundingClientRect().height ?? 0
   const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - stickyHeader
   scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
 }
 
-function LedgerFlow({
-  rows,
-  onSelect,
-}: {
-  rows: LedgerEntry[]
-  onSelect: (key: string) => void
-}) {
-  const points: LedgerPoint[] = rows.map((row, index) => {
-    const date = displayDate(row.issueDate)
-    return {
-      key: String(index),
-      rowKey: `${row.source}-${row.id}`,
-      label: date.length >= 10 ? date.slice(5) : date,
-      fullDate: date,
-      kind: row.kind,
-      quantity: row.quantity,
-      signed: row.kind === '입고' ? row.quantity : -row.quantity,
-      running: row.running,
-      unit: row.unit,
-    }
-  })
-
-  if (points.length === 0) return null
-
-  return (
-    <div className={`space-y-2 px-4 py-4 ${ledgerSheetClass}`}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <span className="text-sm font-semibold tracking-wide uppercase">재고 추이</span>
-        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-blue-600" />
-          입고
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-orange-600" />
-          출고
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-          <span className="inline-block h-2.5 w-4 rounded-sm bg-teal-700/25 ring-1 ring-teal-700" />
-          누계재고
-        </span>
-        <span className="text-muted-foreground">점이나 막대를 누르면 해당 내역으로 이동합니다.</span>
-      </div>
-      <ChartContainer config={ledgerChartConfig} className="aspect-auto h-[280px] w-full">
-        <ComposedChart data={points} margin={{ left: 4, right: 16, top: 18, bottom: 8 }}>
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis
-            dataKey="key"
-            tickLine={false}
-            axisLine={false}
-            interval={points.length > 18 ? Math.ceil(points.length / 12) : 0}
-            height={32}
-            tick={(props) => <LedgerAxisTick {...props} points={points} />}
-          />
-          <YAxis
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            width={58}
-            tick={{ fontSize: 12 }}
-            tickFormatter={(value) => Number(value).toLocaleString('ko-KR')}
-          />
-          <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
-          <Tooltip content={<LedgerChartTooltip />} cursor={{ stroke: '#94a3b8', strokeDasharray: '3 3' }} />
-          <Area dataKey="running" type="monotone" baseValue={0} stroke="none" fill="#0f766e" fillOpacity={0.16} legendType="none" tooltipType="none" activeDot={false} />
-          <Bar dataKey="signed" radius={[3, 3, 0, 0]} maxBarSize={22}>
-            {points.map((point) => (
-              <Cell
-                key={point.key}
-                fill={point.kind === '입고' ? '#2563eb' : '#ea580c'}
-                cursor="pointer"
-                onClick={() => onSelect(point.rowKey)}
-              />
-            ))}
-          </Bar>
-          <Line dataKey="running" type="monotone" stroke="var(--card)" strokeWidth={8} dot={false} activeDot={false} legendType="none" tooltipType="none" />
-          <Line
-            dataKey="running"
-            type="monotone"
-            stroke="#0f766e"
-            strokeWidth={3}
-            dot={(props) => <LedgerDot {...props} onSelect={onSelect} />}
-            activeDot={{ r: 8, fill: '#0f766e', stroke: '#ffffff', strokeWidth: 3 }}
-          >
-            {points.length <= 20 && (
-              <LabelList dataKey="running" content={(props) => <RunningValueLabel {...props} />} />
-            )}
-          </Line>
-        </ComposedChart>
-      </ChartContainer>
-    </div>
-  )
-}
-
-function LedgerAxisTick({
-  x = 0,
-  y = 0,
-  payload,
-  points,
-}: {
-  x?: number | string
-  y?: number | string
-  payload?: { value?: string | number }
-  points: LedgerPoint[]
-}) {
-  const point = points[Number(payload?.value)]
-  if (!point) return <g />
-  return (
-    <g transform={`translate(${x},${y})`}>
-      <text textAnchor="middle" y={16} fontSize={12} className="fill-muted-foreground">
-        {point.label}
-      </text>
-    </g>
-  )
-}
-
-function LedgerDot({
-  cx,
-  cy,
-  payload,
-  onSelect,
-}: {
-  cx?: number
-  cy?: number
-  payload?: LedgerPoint
-  onSelect: (key: string) => void
-}) {
-  if (cx == null || cy == null || !payload) return <g />
-  return (
-    <g style={{ cursor: 'pointer' }} onClick={() => onSelect(payload.rowKey)}>
-      <circle cx={cx} cy={cy} r={8} fill="var(--card)" />
-      <circle cx={cx} cy={cy} r={5.5} fill="#0f766e" stroke="#ffffff" strokeWidth={2} />
-    </g>
-  )
-}
-
-function RunningValueLabel({
-  x,
-  y,
-  value,
-}: {
-  x?: number | string
-  y?: number | string
-  value?: string | number | boolean | null
-}) {
-  if (typeof value !== 'number' && typeof value !== 'string') return null
-  const amount = Number(value)
-  if (!Number.isFinite(amount) || x == null || y == null) return null
-  const originX = Number(x)
-  const originY = Number(y)
-  const text = amount.toLocaleString('ko-KR')
-  const below = amount < 0
-  const labelY = below ? originY + 20 : originY - 12
-  const width = Math.max(28, text.length * 7 + 10)
-  return (
-    <g>
-      <rect
-        x={originX - width / 2}
-        y={labelY - 11}
-        width={width}
-        height={15}
-        rx={4}
-        fill="var(--card)"
-        stroke="#0f766e"
-        strokeWidth={1}
-      />
-      <text x={originX} y={labelY} textAnchor="middle" fontSize={10} fontWeight={700} className="fill-teal-800 dark:fill-teal-200">
-        {text}
-      </text>
-    </g>
-  )
-}
-
-function LedgerChartTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean
-  payload?: Array<{ payload?: LedgerPoint }>
-}) {
-  const point = payload?.[0]?.payload
-  if (!active || !point) return null
-  return (
-    <div className="rounded-md border bg-popover px-3 py-2 text-sm shadow-md">
-      <p className="font-semibold">{point.fullDate}</p>
-      <p className={`mt-1 font-semibold ${point.kind === '입고' ? 'text-blue-700 dark:text-blue-300' : 'text-orange-700 dark:text-orange-300'}`}>
-        {point.kind} {formatQuantity(point.quantity, point.unit)}
-      </p>
-      <p className={`mt-0.5 ${point.running < 0 ? 'font-semibold text-destructive' : 'text-teal-800 dark:text-teal-200'}`}>
-        누계 {formatQuantity(point.running, point.unit)}
-      </p>
-    </div>
-  )
-}
 
 function depletionMark(lot: { issueDate: string; quantity: number }) {
   const quantity = lot.quantity.toLocaleString('ko-KR', { maximumFractionDigits: 2 })
@@ -1528,28 +1334,6 @@ function depletionMark(lot: { issueDate: string; quantity: number }) {
 
 const ledgerSheetClass = 'rounded-2xl border border-border bg-card shadow-[0_1px_3px_oklch(0_0_0/0.06),0_4px_12px_oklch(0_0_0/0.04)]'
 
-function LedgerStat({ label, value, unit, warn = false }: { label: string; value: number; unit?: string; warn?: boolean }) {
-  const text = Number.isFinite(value) ? value.toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-'
-  return (
-    <div className={`${ledgerSheetClass} px-3 py-3`}>
-      <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{label}</p>
-      <p className={`mt-1 text-lg font-bold leading-none tabular-nums ${warn ? 'text-destructive' : ''}`}>
-        {text}
-        {unit ? <span className="ml-1 text-xs font-normal text-muted-foreground">{unit}</span> : null}
-      </p>
-    </div>
-  )
-}
-
-function QtyText({ value, unit, warn = false, className = '' }: { value: number; unit?: string; warn?: boolean; className?: string }) {
-  const text = Number.isFinite(value) ? value.toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-'
-  return (
-    <span className={`tabular-nums ${warn ? 'font-semibold text-destructive' : ''} ${className}`}>
-      {text}
-      {unit ? <span className="ml-1 text-xs font-normal text-muted-foreground">{unit}</span> : null}
-    </span>
-  )
-}
 
 function lotLabel(kind: '입고' | '출고', lot: string) {
   const text = lot === '-' ? '' : lot.trim()
@@ -1578,6 +1362,44 @@ function KindBadge({ kind }: { kind: '입고' | '출고' }) {
   )
 }
 
+function StockKpi({
+  icon,
+  iconClass,
+  label,
+  lines,
+  hint,
+  warn = false,
+}: {
+  icon: ReactNode
+  iconClass: string
+  label: string
+  lines: { unit: string; value: number }[]
+  hint: string
+  warn?: boolean
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border bg-card px-4 py-4 shadow-[0_1px_3px_oklch(0_0_0/0.06)]">
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white ${iconClass}`}>{icon}</span>
+      <div className="min-w-0">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        {lines.length === 0 ? (
+          <p className="mt-1 text-[1.65rem] font-bold leading-none tabular-nums">—</p>
+        ) : (
+          <div className="mt-1 space-y-1">
+            {lines.map((line) => (
+              <p key={line.unit} className={`whitespace-nowrap text-2xl font-bold leading-none tabular-nums ${warn ? 'text-rose-600' : ''}`}>
+                {line.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                <span className="ml-1 text-sm font-medium text-muted-foreground">{line.unit}</span>
+              </p>
+            ))}
+          </div>
+        )}
+        <p className="mt-2 truncate text-xs text-muted-foreground">{hint}</p>
+      </div>
+    </div>
+  )
+}
+
 function StockTable({
   loading,
   floor3,
@@ -1589,18 +1411,20 @@ function StockTable({
   rows: StockGroup[]
   onOpen: (row: StockGroup) => void
 }) {
+  const [dateOrder, setDateOrder] = useState<'desc' | 'asc'>('desc')
   const headers = floor3
     ? ['업체명', '품목', '층', '단위', '작업수량', '입고', '출고', '불량', '검사시료', '현 재고수량', '최종 재고수량', '최근일자']
     : ['업체명', '품목', '층', '단위', '기초', '입고', '출고', '현재고', '최근일자']
   const numericHeaders = floor3
     ? ['작업수량', '입고', '출고', '불량', '검사시료', '현 재고수량', '최종 재고수량']
     : ['기초', '입고', '출고', '현재고']
+  const sorted = [...rows].sort((a, b) => dateOrder === 'desc' ? b.lastDate.localeCompare(a.lastDate) : a.lastDate.localeCompare(b.lastDate))
   return (
-    <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
+    <section className="overflow-hidden rounded-2xl border bg-card shadow-[0_1px_3px_oklch(0_0_0/0.06)]">
       <div className="flex items-center gap-2 border-b px-5 py-4">
         <PackageCheck className="h-4 w-4 text-muted-foreground" />
         <div>
-          <h2 className="text-sm font-semibold tracking-wide uppercase">{floor3 ? '재고관리 3층' : '재고 현황'}</h2>
+          <h2 className="text-sm font-semibold">{floor3 ? '재고관리 3층' : '재고 현황'}</h2>
           <p className="text-xs text-muted-foreground">
             {floor3
               ? '불량과 검사시료는 작업일보에 적습니다. 그 수량은 현 재고에서 빠지고, 작업수량은 재고에 더하지 않습니다.'
@@ -1610,11 +1434,16 @@ function StockTable({
       </div>
       <div className="overflow-x-auto">
         <table className={`w-full text-sm ${floor3 ? 'min-w-[1080px]' : 'min-w-[860px]'}`}>
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
-            <tr>
+          <thead className="text-xs text-muted-foreground">
+            <tr className="border-b">
               {headers.map((head) => (
-                <th key={head} className={`px-4 py-3 ${numericHeaders.includes(head) ? 'text-right' : 'text-left'}`}>
-                  {head}
+                <th key={head} className={`whitespace-nowrap px-4 py-3 font-medium ${numericHeaders.includes(head) ? 'text-right' : 'text-left'}`}>
+                  {head === '최근일자' ? (
+                    <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => setDateOrder((value) => value === 'desc' ? 'asc' : 'desc')}>
+                      최근일자
+                      <span aria-hidden="true">{dateOrder === 'desc' ? '↓' : '↑'}</span>
+                    </button>
+                  ) : head}
                 </th>
               ))}
             </tr>
@@ -1633,7 +1462,7 @@ function StockTable({
                 <td colSpan={headers.length} className="px-4 py-16 text-center text-muted-foreground">표시할 재고가 없습니다.</td>
               </tr>
             ) : (
-              rows.map((row) => {
+              sorted.map((row) => {
                 const rate = defectRateText(row.defect, row.workQuantity > 0 ? row.workQuantity : row.incoming)
                 return (
                   <tr
@@ -1658,15 +1487,21 @@ function StockTable({
                         <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.sample)}</td>
                       </>
                     )}
-                    <td className={`px-4 py-3 text-right font-bold tabular-nums ${row.stock < 0 ? 'text-destructive' : ''}`}>
-                      {formatQuantity(row.stock)}
+                    <td className="px-4 py-3 text-right">
+                      {row.stock < 0 ? (
+                        <span className="inline-flex min-w-12 justify-center rounded-full bg-rose-50 px-2 py-0.5 font-bold text-rose-600 tabular-nums dark:bg-rose-950/50 dark:text-rose-300">
+                          {formatQuantity(row.stock)}
+                        </span>
+                      ) : (
+                        <span className="font-bold tabular-nums">{formatQuantity(row.stock)}</span>
+                      )}
                     </td>
                     {floor3 && (
                       <td className={`px-4 py-3 text-right font-bold tabular-nums ${row.finalStock < 0 ? 'text-destructive' : 'text-[oklch(0.45_0.17_162)] dark:text-[oklch(0.68_0.17_162)]'}`}>
                         {formatQuantity(row.finalStock)}
                       </td>
                     )}
-                    <td className="px-4 py-3">{displayDate(row.lastDate)}</td>
+                    <td className="whitespace-nowrap px-4 py-3">{displayDate(row.lastDate)}</td>
                   </tr>
                 )
               })

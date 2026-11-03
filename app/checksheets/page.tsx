@@ -33,14 +33,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   ])
   const hidden = new Set(hiddenLines)
   const processLines = processTemplates.filter((template) => !hidden.has(template.id))
+  const processCovered = (floor: string | number) => processChecks.some(
+    (record: ProcessCheckRecord) =>
+      record.writtenDate === todayDate &&
+      String(recordFloor(record)) === String(floor) &&
+      !hidden.has(recordLineId(record)),
+  )
   const processStatusOf = (template: ProcessTemplate): TodayStatus => {
-    const recorded = processChecks.some(
-      (record: ProcessCheckRecord) =>
-        record.writtenDate === todayDate &&
-        recordLineId(record) === template.id &&
-        recordFloor(record) === template.floor,
-    )
-    if (recorded) return 'done'
+    if (processCovered(template.floor)) return 'done'
     return today.weekend ? 'off' : 'missing'
   }
   const statusOf = (status: TodayStatus | undefined) => {
@@ -70,7 +70,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       fiveSItems.filter((item) => today.fiveS[item.id] === 'missing').length +
       dailyItems.filter((item) => today.daily[item.id] === 'missing').length +
       tempItems.filter((item) => today.temp[item.id] === 'missing').length +
-      processItems.filter((item) => processStatusOf(item) === 'missing').length
+      (processItems.length === 0 || today.weekend || processCovered(option.floor) ? 0 : 1)
     return {
       floor: option.floor,
       label: option.label,
@@ -150,6 +150,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       count: filteredProcessLines.length,
       icon: 'factory' as const,
       tone: 'emerald' as const,
+      missingCount: !selectedFloor || today.weekend || filteredProcessLines.length === 0 || processCovered(selectedFloor) ? 0 : 1,
       items: filteredProcessLines.map((template) => ({
         id: template.id,
         name: template.name,

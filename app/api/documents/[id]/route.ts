@@ -7,6 +7,7 @@ import {
   writeConfig,
 } from '@/lib/storage'
 import { removeDocumentFile } from '@/lib/object-storage'
+import { getStoredFile, removeStoredFileObject, softDeleteStoredFile } from '@/lib/stored-files'
 import { getUserFromHeaders, canEdit } from '@/lib/auth'
 
 const CONFIG_FIELDS = {
@@ -65,7 +66,15 @@ export async function DELETE(
   }
 
   try {
-    await removeDocumentFile(existing.storagePath)
+    if (existing.storedFileId) {
+      const row = await getStoredFile(existing.storedFileId)
+      if (row) {
+        await softDeleteStoredFile(row.id)
+        await removeStoredFileObject(row)
+      }
+    } else {
+      await removeDocumentFile(existing.storagePath)
+    }
   } catch (err) {
     console.error('파일 삭제 실패:', err)
     return NextResponse.json({ error: '파일 삭제에 실패했습니다.' }, { status: 500 })

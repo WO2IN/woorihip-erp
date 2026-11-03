@@ -2,7 +2,7 @@ export interface Floor3WorkLog {
   id: string
   company: string
   product: string
-  floor: 3
+  floor: 1 | 2 | 3
   unit: string
   workDate: string
   workQuantity: number

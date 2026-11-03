@@ -1,8 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { NextResponse } from 'next/server'
-import { loadDocumentFile } from '@/lib/object-storage'
+import { loadMediaFile } from '@/lib/object-storage'
 import { getUserFromHeaders } from '@/lib/auth'
+import { getStoredFileByLegacyKey, readStoredFileBytes } from '@/lib/stored-files'
 
 const TYPES: Record<string, string> = {
   png: 'image/png',
@@ -25,7 +26,9 @@ export async function GET(
   }
 
   const key = `uploads/equipment-photos/${fileName}`
-  let buffer = await loadDocumentFile(key)
+  const row = await getStoredFileByLegacyKey(key)
+  let buffer = row ? await readStoredFileBytes(row) : null
+  if (!buffer?.length) buffer = await loadMediaFile(key)
   if (!buffer) {
     const localPath = path.join(process.cwd(), 'public', key)
     if (fs.existsSync(localPath)) buffer = fs.readFileSync(localPath)

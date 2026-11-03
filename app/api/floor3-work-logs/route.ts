@@ -10,9 +10,14 @@ import { canEdit, getUserFromHeaders } from '@/lib/auth'
 import { canOperateFloor } from '@/lib/access'
 import { normalizeIssueDate } from '@/lib/lot'
 
-async function recomputeTotals(company: string, product: string, unit: string) {
+function workFloor(value: unknown): 1 | 2 | 3 {
+  const floor = Number(value)
+  return floor === 1 || floor === 2 || floor === 3 ? floor : 3
+}
+
+async function recomputeTotals(company: string, product: string, unit: string, floor: 1 | 2 | 3) {
   const group = (await readFloor3WorkLogs())
-    .filter((item) => item.company === company && item.product === product && item.unit === unit)
+    .filter((item) => item.company === company && item.product === product && item.unit === unit && (item.floor ?? 3) === floor)
     .sort((a, b) => a.workDate.localeCompare(b.workDate) || a.id.localeCompare(b.id))
   let sum = 0
   for (const item of group) {
@@ -39,11 +44,11 @@ export async function POST(req: NextRequest) {
   if (!requestUser || !canEdit(requestUser.role)) {
     return NextResponse.json({ error: '기록 권한이 없습니다.' }, { status: 403 })
   }
-  if (!canOperateFloor(requestUser, 3)) {
-    return NextResponse.json({ error: '3층 작업일보는 3층 담당만 기록할 수 있습니다.' }, { status: 403 })
-  }
-
   const body = await req.json().catch(() => ({}))
+  const floor = workFloor(body.floor)
+  if (!canOperateFloor(requestUser, floor)) {
+    return NextResponse.json({ error: `${floor}층 작업일보는 ${floor}층 담당만 기록할 수 있습니다.` }, { status: 403 })
+  }
   const company = String(body.company || '').trim()
   const product = String(body.product || '').trim()
   const unit = String(body.unit || 'EA').trim() || 'EA'
@@ -70,14 +75,14 @@ export async function POST(req: NextRequest) {
 
   const existing = (await readFloor3WorkLogs()).find((item) =>
     (body.id && item.id === body.id) ||
-    (item.company === company && item.product === product && item.unit === unit && item.workDate === workDate),
+    (item.company === company && item.product === product && (item.floor ?? 3) === floor && item.unit === unit && item.workDate === workDate),
   )
   const now = new Date().toISOString()
   const record: Floor3WorkLog = {
     id: existing?.id || crypto.randomUUID(),
     company,
     product,
-    floor: 3,
+    floor,
     unit,
     workDate,
     workQuantity,
@@ -90,9 +95,9 @@ export async function POST(req: NextRequest) {
     updatedAt: existing ? now : undefined,
   }
   await saveFloor3WorkLog(record)
-  await recomputeTotals(company, product, unit)
-  if (existing && (existing.company !== company || existing.product !== product || existing.unit !== unit)) {
-    await recomputeTotals(existing.company, existing.product, existing.unit)
+  await recomputeTotals(company, product, unit, floor)
+  if (existing && (existing.company !== company || existing.product !== product || existing.unit !== unit || (existing.floor ?? 3) !== floor)) {
+    await recomputeTotals(existing.company, existing.product, existing.unit, existing.floor ?? 3)
   }
   const saved = (await readFloor3WorkLogs()).find((item) => item.id === record.id) || record
   await appendAuditLog({
@@ -100,7 +105,7 @@ export async function POST(req: NextRequest) {
     target: 'inventory',
     detail: [
       `${saved.company} · ${saved.product}`,
-      `3층 · ${saved.workDate} 작업 ${saved.workQuantity} · 불량 ${saved.defectQuantity} · 검사시료 ${saved.sampleQuantity} · 총 작업 ${saved.totalQuantity}`,
+      `${saved.floor}층 · ${saved.workDate} 작업 ${saved.workQuantity} · 불량 ${saved.defectQuantity} · 검사시료 ${saved.sampleQuantity} · 총 작업 ${saved.totalQuantity}`,
     ].join('\n'),
     userId: requestUser.id,
     userName: requestUser.displayName,
@@ -113,22 +118,23 @@ export async function DELETE(req: NextRequest) {
   if (!requestUser || !canEdit(requestUser.role)) {
     return NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 })
   }
-  if (!canOperateFloor(requestUser, 3)) {
-    return NextResponse.json({ error: '3층 작업일보는 3층 담당만 삭제할 수 있습니다.' }, { status: 403 })
-  }
   const { id } = await req.json().catch(() => ({}))
   if (!id || typeof id !== 'string') {
     return NextResponse.json({ error: '삭제할 기록 ID가 필요합니다.' }, { status: 400 })
   }
+  const preview = (await readFloor3WorkLogs()).find((item) => item.id === id)
+  if (!canOperateFloor(requestUser, preview?.floor ?? 3)) {
+    return NextResponse.json({ error: `${preview?.floor ?? 3}층 작업일보는 해당 층 담당만 삭제할 수 있습니다.` }, { status: 403 })
+  }
   const removed = await deleteFloor3WorkLog(id)
   if (!removed) return NextResponse.json({ error: '기록을 찾을 수 없습니다.' }, { status: 404 })
-  await recomputeTotals(removed.company, removed.product, removed.unit)
+  await recomputeTotals(removed.company, removed.product, removed.unit, removed.floor ?? 3)
   await appendAuditLog({
     action: 'DELETE',
     target: 'inventory',
     detail: [
       `${removed.company} · ${removed.product}`,
-      `3층 · ${removed.workDate} 작업 기록 삭제`,
+      `${removed.floor}층 · ${removed.workDate} 작업 기록 삭제`,
     ].join('\n'),
     userId: requestUser.id,
     userName: requestUser.displayName,

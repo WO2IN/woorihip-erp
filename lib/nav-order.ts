@@ -9,8 +9,19 @@ export function normalizeNavOrder(order: readonly string[] | null | undefined): 
   for (const id of order ?? []) {
     if (KNOWN.has(id) && !next.includes(id)) next.push(id)
   }
+  if (next.length === 0) return [...NAV_SECTION_IDS]
   for (const id of NAV_SECTION_IDS) {
-    if (!next.includes(id)) next.push(id)
+    if (next.includes(id)) continue
+    const home = NAV_SECTION_IDS.indexOf(id)
+    let insertAt = 0
+    for (let index = home - 1; index >= 0; index -= 1) {
+      const placed = next.indexOf(NAV_SECTION_IDS[index])
+      if (placed >= 0) {
+        insertAt = placed + 1
+        break
+      }
+    }
+    next.splice(insertAt, 0, id)
   }
   return next
 }

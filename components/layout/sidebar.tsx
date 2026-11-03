@@ -3,10 +3,10 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronDown, GripVertical, PanelLeft, PanelLeftClose } from 'lucide-react'
+import { BarChart3, ChevronDown, GripVertical, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { NAV, type NavSection, type Role } from '@/lib/nav'
+import { NAV, type NavItem, type NavSection, type Role } from '@/lib/nav'
 import { applyNavOrder, isDefaultNavOrder, mergeVisibleOrder } from '@/lib/nav-order'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAuth } from '@/components/auth/auth-context'
@@ -21,7 +21,16 @@ function matches(href: string, pathname: string, tab: string | null) {
   return (tab ?? 'stock') === new URLSearchParams(query).get('tab')
 }
 
-const ALL_HREFS = NAV.flatMap((s) => [s.href, ...(s.children ?? []).map((c) => c.href)]).filter((h): h is string => !!h)
+function hrefsOf(items: NavItem[] | undefined): string[] {
+  return (items ?? []).flatMap((item) => [...(item.href ? [item.href] : []), ...hrefsOf(item.children)])
+}
+
+const ALL_HREFS = NAV.flatMap((section) => [...(section.href ? [section.href] : []), ...hrefsOf(section.children)])
+
+function containsActive(item: NavItem, pathname: string, tab: string | null): boolean {
+  if (item.href && isActive(item.href, pathname, tab)) return true
+  return item.children?.some((child) => containsActive(child, pathname, tab)) ?? false
+}
 
 function isActive(href: string | undefined, pathname: string, tab: string | null) {
   if (!href || !matches(href, pathname, tab)) return false
@@ -118,7 +127,7 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
   const collapsible = sections.filter((section) => section.children)
   const isSectionOpen = (section: NavSection) => {
     const items = section.children?.filter((item) => allowed(item.minRole)) ?? []
-    return openSections[section.label] ?? items.some((item) => isActive(item.href, pathname, tab))
+    return openSections[section.label] ?? items.some((item) => containsActive(item, pathname, tab))
   }
   const anyOpen = collapsible.some(isSectionOpen)
   const setAll = (open: boolean) => {
@@ -246,7 +255,7 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
       {sections.map((section) => {
         const Icon = section.icon
         const items = section.children?.filter((item) => allowed(item.minRole)) ?? []
-        const childActive = items.some((item) => isActive(item.href, pathname, tab))
+        const childActive = items.some((item) => containsActive(item, pathname, tab))
         const selfActive = isActive(section.href, pathname, tab)
 
         const headerClass = cn(
@@ -318,7 +327,10 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
               {!collapsed && (
                 <>
                   <span className="ml-3">{section.label}</span>
-                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full border border-slate-300 dark:border-white/15 px-1.5 text-[11px] font-semibold text-slate-600 dark:text-white/75">
+                  {section.testing && (
+                    <span className="ml-auto shrink-0 rounded-full bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/15 dark:text-sky-300">개발 중</span>
+                  )}
+                  <span className={cn('flex h-5 min-w-5 items-center justify-center rounded-full border border-slate-300 dark:border-white/15 px-1.5 text-[11px] font-semibold text-slate-600 dark:text-white/75', section.testing ? 'ml-2' : 'ml-auto')}>
                     {items.length}
                   </span>
                   <ChevronDown className={cn('h-4 w-4 text-slate-400 dark:text-white/40 transition-transform', 'ml-2', !expanded && '-rotate-90')} />
@@ -327,32 +339,60 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
             </button>
             {expanded && (
               <div className="mb-2 ml-[22px] space-y-px border-l border-slate-200 dark:border-white/10 pl-3">
-                {items.map((item) => {
-                  const active = isActive(item.href, pathname, tab)
-                  return (
-                    <Link
-                      key={item.label}
-                      href={item.href}
-                      onClick={onClose}
-                      className={cn(
-                        'relative flex h-9 items-center rounded-md px-3 text-[15px] transition-colors',
-                        active
-                          ? 'bg-[oklch(0.52_0.19_258/0.09)] dark:bg-[oklch(0.78_0.14_220/0.14)] font-semibold text-[oklch(0.52_0.19_258)] dark:text-[oklch(0.85_0.12_215)] before:absolute before:-left-[13px] before:top-2 before:h-5 before:w-[2px] before:bg-[oklch(0.52_0.19_258)] dark:before:bg-[oklch(0.78_0.14_220)]'
-                          : item.soon
-                            ? 'text-slate-700 dark:text-white/70 hover:bg-slate-100 dark:hover:bg-white/5'
-                            : 'text-slate-800 dark:text-white/90 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-950 dark:hover:text-white',
-                      )}
-                    >
+                {items.map((item) => item.children?.length ? (
+                  <div key={item.label} className="my-1 rounded-lg bg-slate-200/70 px-2 py-1.5 dark:bg-white/[0.06]">
+                    <div className="flex h-8 items-center gap-2 px-1 text-[14px] font-semibold text-slate-900 dark:text-white">
+                      <BarChart3 className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-white/70" />
                       <span className="truncate">{item.label}</span>
-                      {item.soon && (
-                        <span className="ml-auto rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-700 dark:bg-white/5 dark:text-white/40">예정</span>
-                      )}
                       {item.testing && (
-                        <span className="ml-auto rounded bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/10 dark:text-sky-300">개발 중</span>
+                        <span className="ml-auto shrink-0 rounded-full bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/15 dark:text-sky-300">개발 중</span>
                       )}
-                    </Link>
-                  )
-                })}
+                    </div>
+                    <div className="mt-0.5 space-y-px">
+                      {item.children.filter((child) => allowed(child.minRole)).map((child) => {
+                        const active = isActive(child.href, pathname, tab)
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href ?? '#'}
+                            onClick={onClose}
+                            className={cn(
+                              'flex h-8 items-center gap-2 rounded-md px-1.5 text-[13.5px] transition-colors',
+                              active
+                                ? 'bg-white font-semibold text-[oklch(0.52_0.19_258)] dark:bg-white/10 dark:text-[oklch(0.85_0.12_215)]'
+                                : 'text-slate-700 hover:bg-white/70 hover:text-slate-950 dark:text-white/80 dark:hover:bg-white/5 dark:hover:text-white',
+                            )}
+                          >
+                            <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? 'bg-[oklch(0.52_0.19_258)] dark:bg-[oklch(0.85_0.12_215)]' : 'bg-slate-400 dark:bg-white/45')} />
+                            <span className="truncate">{child.label}</span>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <Link
+                    key={item.label}
+                    href={item.href ?? '#'}
+                    onClick={onClose}
+                    className={cn(
+                      'relative flex h-9 items-center rounded-md px-3 text-[15px] transition-colors',
+                      isActive(item.href, pathname, tab)
+                        ? 'bg-[oklch(0.52_0.19_258/0.09)] dark:bg-[oklch(0.78_0.14_220/0.14)] font-semibold text-[oklch(0.52_0.19_258)] dark:text-[oklch(0.85_0.12_215)] before:absolute before:-left-[13px] before:top-2 before:h-5 before:w-[2px] before:bg-[oklch(0.52_0.19_258)] dark:before:bg-[oklch(0.78_0.14_220)]'
+                        : item.soon
+                          ? 'text-slate-700 dark:text-white/70 hover:bg-slate-100 dark:hover:bg-white/5'
+                          : 'text-slate-800 dark:text-white/90 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-950 dark:hover:text-white',
+                    )}
+                  >
+                    <span className="truncate">{item.label}</span>
+                    {item.soon && (
+                      <span className="ml-auto rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-700 dark:bg-white/5 dark:text-white/40">예정</span>
+                    )}
+                    {item.testing && (
+                      <span className="ml-auto rounded bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/10 dark:text-sky-300">개발 중</span>
+                    )}
+                  </Link>
+                ))}
               </div>
             )}
           </div>

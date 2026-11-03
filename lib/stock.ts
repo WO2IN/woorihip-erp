@@ -228,6 +228,7 @@ export function buildStockGroups(
 export interface Floor3WorkLogInput {
   company: string
   product: string
+  floor?: number
   unit?: string
   workDate: string
   workQuantity?: number
@@ -251,12 +252,13 @@ export function applyFloor3WorkLogs(
     const company = log.company?.trim() || '-'
     const product = log.product?.trim() || '-'
     const unit = log.unit?.trim() || 'EA'
-    const key = stockGroupKey({ company, product, floor: '3', unit })
+    const floor = String(log.floor ?? 3)
+    const key = stockGroupKey({ company, product, floor, unit })
     const current = grouped.get(key) ?? {
       key,
       company,
       product,
-      floor: '3',
+      floor,
       unit,
       opening: 0,
       incoming: 0,

@@ -164,7 +164,7 @@ const MENU_HINT: Record<string, string> = {
 function MenuLinks({ items, hints }: { items: NavItem[]; hints?: Record<string, string> }) {
   return (
     <ul className="divide-y overflow-hidden rounded-xl border">
-      {items.map((item) => (
+      {items.flatMap((item) => (item.children?.length ? item.children : [item])).map((item) => item.href && (
         <li key={item.href}>
           <Link href={item.href} className="flex items-center gap-2 px-3.5 py-2.5 text-sm hover:bg-muted/50">
             <span className="shrink-0 font-semibold">{item.label}</span>
@@ -236,15 +236,17 @@ function CheckRecordsBar({ data }: { data: DashboardStats }) {
     { label: '설비 일상점검', value: q.daily, tone: 'blue' as Tone },
     { label: '3정 5S', value: q.fiveS, tone: 'green' as Tone },
     { label: '온 · 습도', value: q.temp, tone: 'amber' as Tone },
-    { label: '공정 점검', value: data.process.checkRecords, tone: 'violet' as Tone },
+    { label: '공정 점검', value: data.process.omitted, tone: 'violet' as Tone },
   ]
-  const total = Math.max(1, parts.reduce((sum, part) => sum + part.value, 0))
+  const sum = parts.reduce((total, part) => total + part.value, 0)
+  const total = Math.max(1, sum)
   return (
     <div>
       <p className="flex items-baseline gap-2 text-xs font-semibold text-muted-foreground">
-        점검 입력 기록 누계
-        <span className="text-2xl font-bold tabular-nums text-foreground">{num(total)}</span>건
+        점검 누락
+        <span className="text-2xl font-bold tabular-nums text-foreground">{num(sum)}</span>건
       </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">각 시트의 첫 기록일부터 오늘까지, 비어 있는 점검일 하루 1건</p>
       <div className="mt-2 flex h-3.5 overflow-hidden rounded-full bg-muted">
         {parts.map((p) => <div key={p.label} className={TONE[p.tone].bg} style={{ width: `${(p.value / total) * 100}%` }} />)}
       </div>
@@ -253,7 +255,6 @@ function CheckRecordsBar({ data }: { data: DashboardStats }) {
           <span key={p.label} className="flex items-center gap-1.5">
             <span className={cn('h-2 w-2 rounded-sm', TONE[p.tone].bg)} />{p.label}
             <b className="tabular-nums">{num(p.value)}</b>
-            <span className="text-muted-foreground">{((p.value / total) * 100).toFixed(1)}%</span>
           </span>
         ))}
       </div>
@@ -319,7 +320,7 @@ export function CustomerPanel({ data }: { data: DashboardStats }) {
 export function ShipmentPanel({ data }: { data: DashboardStats }) {
   const p = data.process
   return (
-    <Panel no={1} tone="rose" title="입/출고 관리" en="SHIPMENT" href="/shipment" badge="testing"
+    <Panel no={1} tone="rose" title="재고 관리" en="STOCK" href="/shipment" badge="testing"
       hero={{ label: '오늘 입고 / 출고', value: `${p.todayIn} / ${p.todayOut}`, unit: '건', sub: `재고 ${num(p.stockItems)}종 · 부족 ${num(p.shortage)}종` }}>
       <ShipmentViews data={data} />
     </Panel>

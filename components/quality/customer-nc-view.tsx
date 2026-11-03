@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Building2, ChevronRight, Pencil, Plus } from 'lucide-react'
+import { Building2, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { CustomerNonconformity, WorkflowStatus } from '@/lib/non-conformity'
 import { todayOccurrenceDate } from '@/lib/non-conformity'
-import { ItemDeleteButton } from '@/components/shared/item-delete-button'
 import { useAuth } from '@/components/auth/auth-context'
 import { buildAuthHeaders } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
@@ -19,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { WorkflowStatusPicker } from '@/components/quality/workflow-status-dot'
 import { NcDate, NcEmpty, NcOverall, NcSection, NcStep, type NcFilter } from '@/components/quality/nc-shell'
 
@@ -65,6 +65,7 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<CustomerNcForm>(emptyCustomerNcForm)
+  const [pendingDelete, setPendingDelete] = useState<CustomerNonconformity | null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch(API, { cache: 'no-store' })
@@ -258,7 +259,9 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="수정" aria-label="항목 수정" onClick={() => openEdit(row)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <ItemDeleteButton compact onConfirm={() => remove(row.id)} />
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="삭제" aria-label="항목 삭제" onClick={() => setPendingDelete(row)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
             </article>
@@ -288,6 +291,31 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingDelete != null} onOpenChange={(open) => { if (!open) setPendingDelete(null) }}>
+        <AlertDialogContent className="sm:max-w-sm">
+          <AlertDialogHeader className="w-full place-items-stretch text-left">
+            <AlertDialogTitle className="text-left">고객 부적합을 삭제할까요?</AlertDialogTitle>
+            {pendingDelete && (
+              <dl className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+                <dt className="text-muted-foreground">발생일</dt>
+                <dd className="min-w-0">{pendingDelete.occurrenceDate.replace(/-/g, '.')}</dd>
+                <dt className="text-muted-foreground">업체</dt>
+                <dd className="min-w-0 truncate">{pendingDelete.occurrenceCompany || '—'}</dd>
+                <dt className="text-muted-foreground">내용</dt>
+                <dd className="min-w-0 truncate">{pendingDelete.description || '—'}</dd>
+              </dl>
+            )}
+            <AlertDialogDescription className="text-left text-pretty">
+              삭제한 뒤에는 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => pendingDelete && remove(pendingDelete.id)}>삭제</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

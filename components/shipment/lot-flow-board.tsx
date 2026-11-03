@@ -5,6 +5,7 @@ import { ArrowRight, CheckCircle2, ChevronDown, Hammer, Inbox, PackageCheck, Plu
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { Floor3WorkLog } from '@/lib/floor3-work-log'
 import {
   compactDate,
   displayDate,
@@ -24,7 +25,38 @@ const STAGES: { key: FlowStage; label: string; hint: string; icon: typeof Inbox;
   { key: 'done', label: '출고 완료', hint: '성적서 출고로 입고 수량이 모두 나감', icon: Truck, tone: 'text-emerald-700 bg-emerald-50 ring-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40 dark:ring-emerald-900', dot: 'bg-emerald-500' },
 ]
 
-const DONE_DAYS = 30
+const DONE_DAYS = 7
+
+function roundQty(value: number) {
+  return Math.round(value * 1000) / 1000
+}
+
+/** 같은 업체·품목·단위의 작업수량을 입고가 오래된 순으로 채운다. */
+function workedByLot(lots: FlowLot[], logs: Floor3WorkLog[]) {
+  const groups = new Map<string, FlowLot[]>()
+  for (const lot of lots) {
+    const key = [lot.inbound.company, lot.inbound.product, lot.inbound.floor || '-', lot.inbound.unit || 'EA'].join('\0')
+    const list = groups.get(key) ?? []
+    list.push(lot)
+    groups.set(key, list)
+  }
+  const totals = new Map<string, number>()
+  for (const log of logs) {
+    const key = [log.company, log.product, String(log.floor ?? 3), log.unit || 'EA'].join('\0')
+    totals.set(key, (totals.get(key) ?? 0) + (log.workQuantity || 0))
+  }
+  const worked = new Map<string, number>()
+  for (const [key, group] of groups) {
+    group.sort((a, b) => a.inbound.issueDate.localeCompare(b.inbound.issueDate) || a.inbound.id.localeCompare(b.inbound.id))
+    let left = totals.get(key) ?? 0
+    for (const lot of group) {
+      const take = Math.min(Math.max(lot.inbound.quantity, 0), Math.max(left, 0))
+      worked.set(lot.inbound.id, roundQty(take))
+      left = roundQty(left - take)
+    }
+  }
+  return worked
+}
 
 function daysSince(compact: string) {
   if (compact.length !== 8) return null
@@ -40,6 +72,7 @@ export function LotFlowBoard({
   endDate,
   editable,
   editFloor,
+  workLogs,
   onStage,
   onOpen,
   onRegister,
@@ -51,6 +84,7 @@ export function LotFlowBoard({
   endDate: string
   editable: boolean
   editFloor: 1 | 2 | 3 | null
+  workLogs: Floor3WorkLog[]
   onStage: (lot: FlowLot, stage: WorkStage | null) => void
   onOpen: (movement: StockMovement) => void
   onRegister: (item: UnregisteredOutbound) => void
@@ -75,6 +109,7 @@ export function LotFlowBoard({
     !keyword || `${item.company} ${item.product}`.toLocaleLowerCase('ko-KR').includes(keyword),
   )
   const byStage = (stage: FlowStage) => visible.filter((lot) => lot.stage === stage)
+  const worked = workedByLot(flow.lots, workLogs)
 
   if (loading) {
     return (
@@ -170,7 +205,7 @@ export function LotFlowBoard({
                   <p className="px-2 py-8 text-center text-xs text-muted-foreground">해당하는 소재가 없습니다.</p>
                 ) : (
                   lots.map((lot) => (
-                    <LotCard key={lot.inbound.id} lot={lot} dot={stage.dot} editable={canEdit(lot.inbound.floor)} onStage={onStage} onOpen={onOpen} />
+                    <LotCard key={lot.inbound.id} lot={lot} worked={worked.get(lot.inbound.id) ?? 0} dot={stage.dot} editable={canEdit(lot.inbound.floor)} onStage={onStage} onOpen={onOpen} />
                   ))
                 )}
               </div>
@@ -184,19 +219,23 @@ export function LotFlowBoard({
 
 function LotCard({
   lot,
+  worked,
   dot,
   editable,
   onStage,
   onOpen,
 }: {
   lot: FlowLot
+  worked: number
   dot: string
   editable: boolean
   onStage: (lot: FlowLot, stage: WorkStage | null) => void
   onOpen: (movement: StockMovement) => void
 }) {
   const { inbound } = lot
-  const pct = inbound.quantity > 0 ? Math.min(100, (lot.shipped / inbound.quantity) * 100) : 0
+  const pct = lot.stage === 'done'
+    ? 100
+    : inbound.quantity > 0 ? Math.min(100, (worked / inbound.quantity) * 100) : 0
   const age = daysSince(inbound.issueDate)
   const partial = lot.shipped > 0 && lot.stage !== 'done'
 
@@ -220,13 +259,13 @@ function LotCard({
           <span className="font-semibold tabular-nums">{formatQuantity(inbound.quantity, inbound.unit)}</span>
         </div>
         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-          <div className={cn('h-full rounded-full', lot.stage === 'done' ? 'bg-emerald-500' : 'bg-amber-500')} style={{ width: `${pct}%` }} />
+          <div className={cn('h-full rounded-full', pct >= 100 ? 'bg-emerald-500' : 'bg-amber-500')} style={{ width: `${pct}%` }} />
         </div>
-        <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
-          {lot.stage === 'done'
-            ? `출고 완료 · 마지막 출고 ${displayDate(lot.lastShipDate)}`
-            : `출고 ${formatQuantity(lot.shipped, inbound.unit)} · 남은 ${formatQuantity(lot.remaining, inbound.unit)}${partial ? ' (부분 출고)' : ''}`}
-        </p>
+        {lot.stage === 'done' ? (
+          <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">출고 완료 · 마지막 출고 {displayDate(lot.lastShipDate)}</p>
+        ) : worked > 0 ? (
+          <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">작업 {formatQuantity(worked, inbound.unit)}</p>
+        ) : null}
       </button>
       {editable && lot.stage !== 'done' && (
         <div className="mt-2.5 flex gap-1.5 border-t pt-2.5">

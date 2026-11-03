@@ -34,12 +34,13 @@ function rateText(defect: number, work: number) {
   return `${((defect / work) * 100).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}%`
 }
 
-const emptyForm = (company: string, product: string, unit: string) => ({
+const emptyForm = (company: string, product: string, unit: string, floor: 1 | 2 | 3) => ({
   id: '',
   workDate: new Date().toISOString().slice(0, 10),
   company,
   product,
   unit: unit || 'EA',
+  floor,
   workQuantity: '',
   defectQuantity: '',
   sampleQuantity: '',
@@ -62,7 +63,7 @@ function checksForWork(row: Floor3WorkLog, checks: ProcessCheckRecord[], templat
   const date = compactDate(row.workDate)
   return checks
     .filter((record) => {
-      if (recordFloor(record) !== 3 || compactDate(record.writtenDate) !== date) return false
+      if (recordFloor(record) !== (row.floor ?? 3) || compactDate(record.writtenDate) !== date) return false
       const template = templates.find((item) => item.id === record.lineId)
       const picked = selectedProduct(record, template)
       if (picked) return picked === row.product
@@ -71,21 +72,8 @@ function checksForWork(row: Floor3WorkLog, checks: ProcessCheckRecord[], templat
     .sort((a, b) => a.writtenTime.localeCompare(b.writtenTime))
 }
 
-function cumulativeWork(history: Floor3WorkLog[], row: Pick<Floor3WorkLog, 'id' | 'company' | 'product' | 'unit' | 'workDate' | 'workQuantity'>) {
-  const unit = row.unit || 'EA'
-  const earlier = history.reduce((sum, item) => {
-    if (item.id === row.id) return sum
-    if (item.company !== row.company || item.product !== row.product || (item.unit || 'EA') !== unit) return sum
-    if (!row.id && item.workDate === row.workDate) return sum
-    if (item.workDate > row.workDate) return sum
-    return sum + (item.workQuantity || 0)
-  }, 0)
-  return earlier + (row.workQuantity || 0)
-}
-
 export function Floor3WorkLogPanel({
   logs,
-  history,
   checks,
   templates,
   catalog,
@@ -93,11 +81,11 @@ export function Floor3WorkLogPanel({
   company,
   product,
   unit,
-  otherFloor,
+  floor,
+  lockedFloor = null,
   onSaved,
 }: {
   logs: Floor3WorkLog[]
-  history: Floor3WorkLog[]
   checks: ProcessCheckRecord[]
   templates: ProcessTemplate[]
   catalog: { company: string; product: string }[]
@@ -105,13 +93,38 @@ export function Floor3WorkLogPanel({
   company: string
   product: string
   unit: string
-  otherFloor?: boolean
+  floor: '1' | '2' | '3' | 'all'
+  lockedFloor?: 1 | 2 | 3 | null
   onSaved: () => Promise<void> | void
 }) {
+  const writingFloor: 1 | 2 | 3 = floor === 'all' ? (lockedFloor ?? 3) : Number(floor) as 1 | 2 | 3
+  const [settingCompanies, setSettingCompanies] = useState<string[]>([])
+  const [settingProducts, setSettingProducts] = useState<string[]>([])
+  const [platingPairs, setPlatingPairs] = useState<{ company: string; product: string }[]>([])
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState(() => emptyForm(company, product, unit))
+  const [form, setForm] = useState(() => emptyForm(company, product, unit, writingFloor))
   const [saving, setSaving] = useState(false)
   const [checkView, setCheckView] = useState<{ row: Floor3WorkLog; records: ProcessCheckRecord[] } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      fetch('/api/config?name=companies', { cache: 'no-store' }).then((response) => response.json()),
+      fetch('/api/config?name=products', { cache: 'no-store' }).then((response) => response.json()),
+      fetch('/api/plating-info', { cache: 'no-store' }).then((response) => response.json()),
+    ]).then(([companies, products, plating]) => {
+      if (cancelled) return
+      setSettingCompanies(Array.isArray(companies.data) ? companies.data : [])
+      setSettingProducts(Array.isArray(products.data) ? products.data : [])
+      const rows = Array.isArray(plating.rows) ? plating.rows : []
+      setPlatingPairs(rows.flatMap((row: { company?: string; product?: string }) => {
+        const companyName = String(row.company ?? '').trim()
+        const productName = String(row.product ?? '').trim()
+        return companyName && productName ? [{ company: companyName, product: productName }] : []
+      }))
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   const rows = useMemo(
     () => [...logs].sort((a, b) => b.workDate.localeCompare(a.workDate) || a.company.localeCompare(b.company, 'ko')),
@@ -126,34 +139,23 @@ export function Floor3WorkLogPanel({
     }),
     { work: 0, defect: 0, sample: 0 },
   )
-  const latestTotal = rows.reduce((latest, row) => {
-    const total = cumulativeWork(history, row)
-    const key = `${row.company}\0${row.product}\0${row.unit || 'EA'}`
-    if (latest.seen.has(key)) return latest
-    latest.seen.add(key)
-    latest.sum += total
-    return latest
-  }, { seen: new Set<string>(), sum: 0 }).sum
-  const previewTotal = cumulativeWork(history, {
-    id: form.id,
-    company: form.company,
-    product: form.product,
-    unit: form.unit,
-    workDate: form.workDate,
-    workQuantity: Number(form.workQuantity || 0),
-  })
-
-  const companyOptions = useMemo(
-    () => [...new Set(catalog.map((item) => item.company))],
-    [catalog],
-  )
-  const productOptions = useMemo(
-    () => [...new Set(catalog.filter((item) => !form.company || item.company === form.company).map((item) => item.product))],
-    [catalog, form.company],
-  )
+  const companyOptions = useMemo(() => {
+    const values = new Set([...settingCompanies, ...catalog.map((item) => item.company)].filter(Boolean))
+    return [...values].sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [catalog, settingCompanies])
+  const selectedCompany = company || form.company
+  const productOptions = useMemo(() => {
+    if (!selectedCompany) return []
+    const values = new Set([
+      ...platingPairs.filter((item) => item.company === selectedCompany).map((item) => item.product),
+      ...catalog.filter((item) => item.company === selectedCompany).map((item) => item.product),
+      ...(form.product ? [form.product] : []),
+    ].filter(Boolean))
+    return [...values].sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [catalog, form.product, platingPairs, selectedCompany])
 
   const openCreate = () => {
-    setForm(emptyForm(company, product, unit))
+    setForm(emptyForm(company, product, unit, writingFloor))
     setOpen(true)
   }
 
@@ -173,6 +175,7 @@ export function Floor3WorkLogPanel({
           company: form.company,
           product: form.product,
           unit: form.unit,
+          floor: form.floor,
           workDate: form.workDate,
           workQuantity: Number(form.workQuantity || 0),
           defectQuantity: Number(form.defectQuantity || 0),
@@ -198,6 +201,7 @@ export function Floor3WorkLogPanel({
       company: row.company,
       product: row.product,
       unit: row.unit || 'EA',
+      floor: row.floor ?? 3,
       workQuantity: String(row.workQuantity || ''),
       defectQuantity: String(row.defectQuantity || ''),
       sampleQuantity: String(row.sampleQuantity || ''),
@@ -227,7 +231,7 @@ export function Floor3WorkLogPanel({
       <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
         <div className="flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold tracking-wide uppercase">작업일보 · 3층</h2>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">{floor === 'all' ? '작업일보' : `작업일보 · ${floor}층`}</h2>
         </div>
         {editable && (
           <Button type="button" onClick={openCreate} className="shrink-0">
@@ -239,7 +243,7 @@ export function Floor3WorkLogPanel({
         <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-muted/50 text-xs text-muted-foreground">
             <tr>
-              {['날짜', '업체', '품목', '작업수량', '불량수', '검사시료', '총 작업수량', ...(editable ? [''] : [])].map((head) => (
+              {['날짜', ...(floor === 'all' ? ['층'] : []), '업체', '품목', '작업수량', '불량수', '검사시료', '총 작업수량', ...(editable ? [''] : [])].map((head) => (
                 <th key={head || 'actions'} className={`px-4 py-3 ${['작업수량', '불량수', '검사시료', '총 작업수량'].includes(head) ? 'text-right' : 'text-left'}`}>{head}</th>
               ))}
             </tr>
@@ -247,8 +251,8 @@ export function Floor3WorkLogPanel({
           <tbody className="divide-y">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={editable ? 8 : 7} className="px-4 py-16 text-center text-muted-foreground">
-                  {otherFloor ? '1층·2층 작업일보는 없습니다.' : '등록된 작업일보가 없습니다.'}
+                <td colSpan={editable ? (floor === 'all' ? 9 : 8) : (floor === 'all' ? 8 : 7)} className="px-4 py-16 text-center text-muted-foreground">
+                  등록된 작업일보가 없습니다.
                 </td>
               </tr>
             ) : rows.map((row) => (
@@ -265,6 +269,7 @@ export function Floor3WorkLogPanel({
                     </button>
                   )}
                 </td>
+                {floor === 'all' && <td className="px-4 py-3">{row.floor ?? 3}층</td>}
                 <td className="px-4 py-3 font-medium">{row.company}</td>
                 <td className="px-4 py-3">{row.product}</td>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.workQuantity, row.unit)}</td>
@@ -275,7 +280,7 @@ export function Floor3WorkLogPanel({
                   )}
                 </td>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.sampleQuantity)}</td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(cumulativeWork(history, row))}</td>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.workQuantity, row.unit)}</td>
                 {editable && (
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
@@ -294,7 +299,7 @@ export function Floor3WorkLogPanel({
                 <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(totals.work)}</td>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(totals.defect)}</td>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(totals.sample)}</td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(latestTotal)}</td>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(totals.work)}</td>
                 {editable && <td />}
               </tr>
             </tfoot>
@@ -307,7 +312,7 @@ export function Floor3WorkLogPanel({
           <DialogHeader>
             <DialogTitle>{form.id ? '작업일보 수정' : '작업일보 추가'}</DialogTitle>
             <DialogDescription>
-              {form.company && form.product ? `${form.company} · ${form.product}` : '위 필터에 있는 3층 제품 중 작업한 제품을 고릅니다.'}
+              {form.company && form.product ? `${form.company} · ${form.product}` : '설정에 등록된 업체·품목에서 고릅니다.'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
@@ -316,10 +321,17 @@ export function Floor3WorkLogPanel({
                 <span>업체</span>
                 <SearchableCombobox
                   configName="companies"
+                  listAll
                   options={companyOptions}
-                  recentOptions={companyOptions.slice(0, 8)}
                   value={form.company}
-                  onChange={(value) => setForm({ ...form, company: value, product: catalog.some((item) => item.company === value && item.product === form.product) ? form.product : '' })}
+                  onChange={(value) => {
+                    const products = new Set([
+                      ...platingPairs.filter((item) => item.company === value).map((item) => item.product),
+                      ...catalog.filter((item) => item.company === value).map((item) => item.product),
+                    ])
+                    setForm({ ...form, company: value, product: products.has(form.product) ? form.product : '' })
+                  }}
+                  onOptionsChange={setSettingCompanies}
                   placeholder="업체 검색 또는 입력..."
                   className="h-10"
                 />
@@ -330,16 +342,31 @@ export function Floor3WorkLogPanel({
                 <span>품목</span>
                 <SearchableCombobox
                   configName="products"
+                  listAll
                   options={productOptions}
-                  recentOptions={productOptions.slice(0, 8)}
                   value={form.product}
+                  onOptionsChange={setSettingProducts}
                   onChange={(value) => {
                     const matched = catalog.find((item) => item.product === value && (!form.company || item.company === form.company))
                     setForm({ ...form, product: value, company: form.company || matched?.company || '' })
                   }}
-                  placeholder="품목 검색 또는 입력..."
+                  placeholder={selectedCompany ? '품목 검색 또는 입력...' : '업체를 먼저 선택하세요'}
                   className="h-10"
                 />
+              </label>
+            )}
+            {floor === 'all' && lockedFloor == null && (
+              <label className="space-y-1.5 text-sm font-medium">
+                <span>층</span>
+                <select
+                  value={form.floor}
+                  onChange={(event) => setForm({ ...form, floor: Number(event.target.value) as 1 | 2 | 3 })}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value={1}>1층</option>
+                  <option value={2}>2층</option>
+                  <option value={3}>3층</option>
+                </select>
               </label>
             )}
             <label className="space-y-1.5 text-sm font-medium">
@@ -370,13 +397,6 @@ export function Floor3WorkLogPanel({
               <span>검사시료</span>
               <Input type="number" min="0" step="any" value={form.sampleQuantity} onChange={(event) => setForm({ ...form, sampleQuantity: event.target.value })} placeholder="0" />
             </label>
-            <div className="flex items-end sm:col-span-2">
-              <p className="text-sm">
-                <span className="text-muted-foreground">총 작업수량</span>
-                <span className="ml-2 font-semibold tabular-nums">{formatQuantity(previewTotal, form.unit)}</span>
-                <span className="ml-2 text-xs text-muted-foreground">이전 작업수량에 이번 작업수량을 더한 값입니다.</span>
-              </p>
-            </div>
             <DialogFooter className="sm:col-span-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>취소</Button>
               <Button type="submit" disabled={saving}>{saving ? '저장 중...' : form.id ? '수정' : '등록'}</Button>
