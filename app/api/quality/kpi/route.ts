@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { canManageQualityRecords, getUserFromHeaders } from '@/lib/auth'
-import { appendAuditLog, readConfig, readCustomerNonconformities, readInventory, readMetadata } from '@/lib/storage'
+import { appendAuditLog, readConfig, readCustomerNonconformities, readFloor3WorkLogs, readInventory, readMetadata } from '@/lib/storage'
 import { getSetting, setSetting } from '@/lib/records'
-import { DEFAULT_TARGET, KPI_KINDS, kpiKind, lotsFromCertificates, lotsFromCustomerNonconformities, normalizeState, type KpiState } from '@/lib/incoming-kpi'
+import { DEFAULT_TARGET, KPI_KINDS, kpiKind, lotsFromCertificates, lotsFromCustomerNonconformities, normalizeState, shipmentCountIndex, type KpiState } from '@/lib/incoming-kpi'
 import type { UserRole } from '@/lib/types'
 
 export async function GET(request: NextRequest) {
@@ -13,10 +13,12 @@ export async function GET(request: NextRequest) {
   if (kind === 'outgoing' || kind === 'customer') {
     const base = state ?? { target: DEFAULT_TARGET, monthTargets: {}, closed: [], lots: [] }
     const lots = kind === 'outgoing' ? await loadCertificateLots() : await loadCustomerLots()
-    return NextResponse.json({ data: { ...base, lots }, catalog, derived: true })
+    const workLogs = kind === 'outgoing' ? await readFloor3WorkLogs() : undefined
+    return NextResponse.json({ data: { ...base, lots }, catalog, derived: true, workLogs })
   }
   const blank = state && state.lots.length === 0 && state.closed.length === 0 && Object.keys(state.monthTargets).length === 0 && state.target === DEFAULT_TARGET
-  return NextResponse.json({ data: blank ? null : state, catalog })
+  const shipmentByMonth = kind === 'delivery' ? shipmentCountIndex(await loadCertificateLots()) : undefined
+  return NextResponse.json({ data: blank ? null : state, catalog, shipmentByMonth })
 }
 
 async function loadCertificateLots() {
@@ -130,7 +132,14 @@ export async function PUT(request: NextRequest) {
     : kind === 'customer'
       ? { ...next, lots: await loadCustomerLots() }
       : next
-  return NextResponse.json({ data, derived: kind === 'outgoing' || kind === 'customer' })
+  const shipmentByMonth = kind === 'delivery' ? shipmentCountIndex(await loadCertificateLots()) : undefined
+  const workLogs = kind === 'outgoing' ? await readFloor3WorkLogs() : undefined
+  return NextResponse.json({
+    data,
+    shipmentByMonth,
+    workLogs,
+    derived: kind === 'outgoing' || kind === 'customer',
+  })
 }
 
 function lotMap(state: KpiState) {

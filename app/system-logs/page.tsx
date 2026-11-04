@@ -36,6 +36,7 @@ function getTargetLabel(target: string) {
     'process-template': '공정 점검표',
     'process-check': '공정 점검 기록',
     inventory: '입고',
+    'floor3-work-log': '작업일보',
     'process-nonconformity': '공정 부적합',
     'customer-nonconformity': '고객 부적합',
   }

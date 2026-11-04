@@ -197,6 +197,10 @@
   display: none;
 }
 
+.kpi-close-print-source {
+  display: none;
+}
+
 .today-col {
   background-color: oklch(0.93 0.04 85);
   color: oklch(0.35 0.08 70);
@@ -857,12 +861,27 @@ table:not(.border-collapse) thead th {
   margin: 10mm;
 }
 
+@page kpi-close-delivery {
+  size: A4 landscape;
+  margin: 4mm;
+}
+
+@page checksheet-print {
+  size: A4 landscape;
+  margin: 4mm;
+}
+
 @media print {
+  .kpi-close-print-source {
+    display: block !important;
+  }
+
   body.kpi-close-print {
     page: kpi-close;
   }
 
-  body.kpi-close-print .app-shell-main > main {
+  body.kpi-close-print .app-shell-main > main,
+  body.kpi-close-print .app-shell-main > div {
     max-width: none !important;
     padding: 0 !important;
     gap: 0 !important;
@@ -936,6 +955,298 @@ table:not(.border-collapse) thead th {
   .kpi-close-meta {
     font-size: 11px !important;
   }
-}
 
-/* kpi-close-fill */
+  .kpi-close-report {
+    font-size: 11px !important;
+  }
+
+  .kpi-close-report th,
+  .kpi-close-report td {
+    padding-top: 1.5mm !important;
+    padding-bottom: 1.5mm !important;
+  }
+
+  body.kpi-close-print-delivery {
+    page: kpi-close-delivery;
+  }
+
+  body.kpi-close-print-delivery .app-shell,
+  body.kpi-close-print-delivery .app-shell-column {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.kpi-close-print-delivery .app-shell > aside,
+  body.kpi-close-print-delivery .app-shell-column > header {
+    display: none !important;
+  }
+
+  body.kpi-close-print-delivery .app-shell-main,
+  body.kpi-close-print-delivery .app-shell-main > main {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-sheet,
+  body.kpi-close-print-delivery .kpi-close-sheet-delivery {
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    gap: 2mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-head {
+    margin-bottom: 2mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-head h2 {
+    font-size: 16px !important;
+    margin-top: 0 !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-delivery {
+    display: block !important;
+    gap: 0 !important;
+    min-height: 0 !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-stats {
+    gap: 2mm !important;
+    margin-bottom: 2mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-stats.kpi-close-stats-5 {
+    grid-template-columns: repeat(5, 1fr) !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-stats:not(.kpi-close-stats-5) {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-stats > div {
+    padding: 1.4mm 2.5mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-stats > div p:first-child {
+    font-size: 10px !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-stats > div p:last-child {
+    margin-top: 0.6mm !important;
+    font-size: 15px !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-top {
+    display: grid !important;
+    grid-template-columns: 1.2fr 1fr !important;
+    gap: 2mm !important;
+    margin-bottom: 2mm !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-card {
+    padding: 2mm 3mm !important;
+    border-radius: 3mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-chart-card {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-card h3 {
+    font-size: 11px !important;
+    margin-bottom: 1mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-chart {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    min-height: 36mm !important;
+    max-height: none !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-chart > .relative.flex-1 {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    min-height: 52mm !important;
+    max-height: none !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-chart .recharts-responsive-container > div,
+  body.kpi-close-print-delivery .kpi-close-chart .recharts-wrapper,
+  body.kpi-close-print-delivery .kpi-close-chart .recharts-wrapper > svg {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-chart-note {
+    margin-top: 0.8mm !important;
+    font-size: 8.5px !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel {
+    height: auto !important;
+    padding: 2mm 3mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel > header {
+    margin-bottom: 1.5mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel > header h2 {
+    font-size: 11px !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel > div {
+    gap: 1.5mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel > div > div {
+    gap: 1.5mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel > div > div > div {
+    gap: 0.6mm !important;
+    padding: 1mm 1.5mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel > footer {
+    margin-top: 1.5mm !important;
+    padding: 1.2mm 2.5mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel .kpi-period-ring {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel .kpi-period-ring > span {
+    letter-spacing: -0.03em !important;
+    font-size: 9px !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-period-panel dl {
+    margin-top: 0.5mm !important;
+    font-size: 9.5px !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-report-card {
+    padding: 0 !important;
+    overflow: visible !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-report-head {
+    padding: 1.5mm 3mm !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-report-card > div:last-child {
+    overflow: visible !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-report {
+    min-width: 0 !important;
+    font-size: 9px !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-report th,
+  body.kpi-close-print-delivery .kpi-close-report td {
+    padding: 0.35mm 1.5mm !important;
+    line-height: 1.15 !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-report tbody tr {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  body.kpi-close-print-delivery .kpi-close-report .text-xs {
+    font-size: 9.5px !important;
+  }
+
+  body:has(.checksheet-print-page) {
+    page: checksheet-print;
+  }
+
+  .checksheet-page {
+    min-height: 0 !important;
+    height: auto !important;
+    background: white !important;
+  }
+
+  main.print-page.checksheet-print-page {
+    height: 200mm !important;
+    min-height: 0 !important;
+    max-height: 200mm !important;
+    overflow: hidden !important;
+    gap: 4px !important;
+    padding: 0 !important;
+  }
+
+  .checksheet-print-page .print-grid,
+  .checksheet-print-page .print-sheet-wrapper {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    gap: 0 !important;
+  }
+
+  .checksheet-print-page .print-sheet {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .checksheet-print-page .print-sheet table {
+    height: 100% !important;
+    font-size: 9px !important;
+  }
+
+  .checksheet-print-page .print-day-cell {
+    height: auto !important;
+    font-size: 9px !important;
+  }
+
+  .checksheet-print-page .print-content-cell input {
+    font-size: 8.5px !important;
+  }
+
+  .checksheet-print-page .print-photo-box {
+    max-height: 62mm !important;
+    gap: 2mm !important;
+    padding: 2mm 3mm !important;
+  }
+
+  .checksheet-print-page .print-photo-overview {
+    flex: 0 0 76mm !important;
+    width: 76mm !important;
+  }
+
+  .checksheet-print-page .print-photo-parts {
+    gap: 1.5mm !important;
+  }
+
+  .checksheet-print-page .print-photo-parts figure {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    max-width: 42mm !important;
+  }
+
+  .checksheet-print-page .print-photo-box figcaption {
+    font-size: 8px !important;
+  }
+}

@@ -55,6 +55,7 @@ export const NAV: NavSection[] = [
       { label: '공정불량률 KPI', href: '/quality/kpi/process', testing: true },
       { label: '출하검사 KPI', href: '/quality/kpi/outgoing', testing: true },
       { label: '고객부적합 KPI', href: '/quality/kpi/customer', testing: true },
+      { label: '납기준수 KPI', href: '/quality/kpi/delivery', testing: true },
     ],
   },
   {

@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
   const saved = (await readFloor3WorkLogs()).find((item) => item.id === record.id) || record
   await appendAuditLog({
     action: existing ? 'UPDATE' : 'CREATE',
-    target: 'inventory',
+    target: 'floor3-work-log',
     detail: [
       `${saved.company} · ${saved.product}`,
       `${saved.floor}층 · ${saved.workDate} 작업 ${saved.workQuantity} · 불량 ${saved.defectQuantity} · 검사시료 ${saved.sampleQuantity} · 총 작업 ${saved.totalQuantity}`,
@@ -131,7 +131,7 @@ export async function DELETE(req: NextRequest) {
   await recomputeTotals(removed.company, removed.product, removed.unit, removed.floor ?? 3)
   await appendAuditLog({
     action: 'DELETE',
-    target: 'inventory',
+    target: 'floor3-work-log',
     detail: [
       `${removed.company} · ${removed.product}`,
       `${removed.floor}층 · ${removed.workDate} 작업 기록 삭제`,

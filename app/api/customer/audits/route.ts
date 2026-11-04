@@ -26,9 +26,20 @@ function normalizeRow(value: unknown) {
   return next
 }
 
+function stripSampleRows(rows: unknown[]) {
+  return rows.filter((row) => {
+    if (!row || typeof row !== 'object') return false
+    const id = (row as { id?: unknown }).id
+    return typeof id === 'string' && !id.startsWith('sample-')
+  })
+}
+
 export async function GET() {
-  const rows = await getSetting<unknown>(KEY, null)
-  return NextResponse.json({ data: Array.isArray(rows) ? rows : null })
+  const stored = await getSetting<unknown>(KEY, null)
+  if (!Array.isArray(stored)) return NextResponse.json({ data: [] })
+  const data = stripSampleRows(stored)
+  if (data.length !== stored.length) await setSetting(KEY, data)
+  return NextResponse.json({ data })
 }
 
 export async function PUT(request: NextRequest) {

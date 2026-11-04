@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { WorkflowStatusPicker } from '@/components/quality/workflow-status-dot'
-import { NcDate, NcEmpty, NcOverall, NcSection, NcStep, type NcFilter } from '@/components/quality/nc-shell'
+import { NcDate, NcEmpty, NcOverall, NcRecordCard, NcRemarks, NcSection, NcStep, NcStepTrack, type NcFilter } from '@/components/quality/nc-shell'
 
 type CustomerNcForm = ReturnType<typeof emptyCustomerNcForm>
 
@@ -184,6 +184,7 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
         query={query}
         onQuery={setQuery}
         placeholder="업체, 내용 검색"
+        tone="customer"
         action={editable && (
           <Dialog
             open={open}
@@ -231,27 +232,28 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
         {visible.length === 0 ? (
           <NcEmpty loading={loading} filtered={rows.length > 0} />
         ) : (
-          visible.map((row) => (
-            <article key={row.id} className="group flex gap-4 px-5 py-4 transition-colors hover:bg-muted/30">
-              <NcDate value={row.occurrenceDate} no={rows.length - rows.indexOf(row)} />
+          <div className="space-y-3">
+          {visible.map((row) => (
+            <NcRecordCard key={row.id} done={isDone(row)} started={isStarted(row)}>
+              <NcDate value={row.occurrenceDate} no={rows.length - rows.indexOf(row)} tone="customer" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-base font-bold">{row.occurrenceCompany || '업체 미입력'}</span>
+                  <span className="text-base font-bold tracking-tight">{row.occurrenceCompany || '업체 미입력'}</span>
                   <NcOverall done={isDone(row)} started={isStarted(row)} />
                 </div>
-                <p className="mt-1 text-sm leading-relaxed">{row.description || '—'}</p>
-                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                <p className="mt-1.5 text-sm leading-relaxed text-foreground/90">{row.description || '—'}</p>
+                <NcStepTrack>
                   <NcStep label="대책서" status={row.countermeasurePlan} editable={editable} onChange={(next) => patchStatus(row.id, 'countermeasurePlan', next)} />
-                  <ChevronRight className="size-3.5 text-muted-foreground" />
+                  <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" />
                   <NcStep label="처리" status={row.processingResult} editable={editable} onChange={(next) => patchStatus(row.id, 'processingResult', next)} />
-                  <ChevronRight className="size-3.5 text-muted-foreground" />
+                  <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" />
                   <NcStep label="유효성검증" status={row.effectivenessVerification} editable={editable} onChange={(next) => patchStatus(row.id, 'effectivenessVerification', next)} />
-                </div>
+                </NcStepTrack>
                 {row.remarks && (
-                  <p className="mt-2.5 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                    <span className="mr-1.5 font-semibold text-foreground/80">특이사항</span>
+                  <NcRemarks>
+                    <span className="font-semibold text-foreground/85">특이사항</span>{' '}
                     {row.remarks}
-                  </p>
+                  </NcRemarks>
                 )}
               </div>
               {editable && (
@@ -264,8 +266,9 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
                   </Button>
                 </div>
               )}
-            </article>
-          ))
+            </NcRecordCard>
+          ))}
+          </div>
         )}
       </NcSection>
 

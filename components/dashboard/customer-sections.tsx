@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown } from 'lucide-react'
-import { asKind, openOf, SAMPLE_AUDIT_ROWS, statusOf, type AuditRow } from '@/lib/customer-audit'
+import { asKind, openOf, statusOf, type AuditRow } from '@/lib/customer-audit'
 import type { NavItem } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 
@@ -129,7 +129,6 @@ function DocBars({ docTop }: { docTop: { company: string; count: number }[] }) {
 
 function AuditPreview() {
   const [rows, setRows] = useState<AuditRow[]>([])
-  const [sample, setSample] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -139,8 +138,7 @@ function AuditPreview() {
         if (Array.isArray(result.data)) {
           setRows(result.data.map((row: AuditRow) => ({ ...row, kind: asKind(row.kind), dept: row.dept ?? '', doneDate: row.doneDate ?? '' })))
         } else {
-          setRows(SAMPLE_AUDIT_ROWS)
-          setSample(true)
+          setRows([])
         }
       })
       .catch(() => setRows([]))
@@ -158,7 +156,6 @@ function AuditPreview() {
 
   return (
     <div className="grid gap-2.5">
-      {sample && <p className="text-xs text-muted-foreground">지금은 화면 예시입니다. 심사를 등록하면 실제 데이터로 바뀝니다.</p>}
       <div className="flex flex-wrap gap-1.5">
         {Object.entries(counts).map(([status, count]) => (
           <span key={status} className={cn('rounded-full px-2 py-0.5 text-[11px] font-bold', STATUS_TONE[status])}>

@@ -42,12 +42,12 @@ function ShellInner({ children, currentPage }: AppShellProps) {
         collapsed={collapsed}
         setCollapsed={setCollapsed}
       />
-      <div className="app-shell-column flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="app-shell-column flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
         <Header
           currentPage={currentPage}
           onMenuToggle={() => setSidebarOpen(true)}
         />
-        <main className="app-shell-main flex-1 overflow-auto">
+        <main className="app-shell-main min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain pb-2">
           {children}
         </main>
       </div>

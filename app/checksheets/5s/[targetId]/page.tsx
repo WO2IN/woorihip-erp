@@ -59,9 +59,9 @@ export default async function FiveSPage({
   }
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="checksheet-page min-h-dvh bg-background">
       <SiteHeader />
-      <main className="print-page flex w-full flex-col gap-4 px-6 py-6">
+      <main className="print-page checksheet-print-page flex w-full flex-col gap-4 px-6 py-6">
         <div className="no-print flex flex-wrap items-center justify-between gap-3">
           <YearMonthPicker year={year} month={month} />
           <div className="flex items-center gap-2">
@@ -103,7 +103,7 @@ export default async function FiveSPage({
               <p className="text-sm text-muted-foreground">
                 점검부서: {target.department || '-'} · 담당자: {target.manager || '-'} · 항목명: {target.name}
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground print:hidden">
                 {target.standard || '표시: ◎(매우잘함) / ○(잘함) / △(보통수준) / V(미흡함) / ×(대단히 미흡함) / N/A(해당사항 없음)'}
               </p>
             </div>
@@ -129,7 +129,7 @@ export default async function FiveSPage({
           canManage={canManage}
         />
 
-        <div className="print-compact-box border border-border bg-card p-4">
+        <div className="print-compact-box no-print border border-border bg-card p-4">
           <RemarksField defaultValue={sheet.remarks ?? ''} onSave={saveRemarks} readOnly={!canManage} />
         </div>
       </main>

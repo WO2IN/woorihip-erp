@@ -1,9 +1,11 @@
 'use client'
 
-import { Search, X, type LucideIcon } from 'lucide-react'
+import { ClipboardList, Search, X, type LucideIcon } from 'lucide-react'
 import type { WorkflowStatus } from '@/lib/non-conformity'
 import { WORKFLOW_STATUS_LABEL, nextWorkflowStatus } from '@/lib/non-conformity'
 import { cn } from '@/lib/utils'
+
+export type NcSectionTone = 'customer' | 'process'
 
 export type NcFilter = 'all' | 'open' | 'done'
 
@@ -26,6 +28,7 @@ export function NcSection({
   placeholder,
   action,
   children,
+  tone = 'customer',
 }: {
   icon: LucideIcon
   title: string
@@ -39,32 +42,39 @@ export function NcSection({
   placeholder: string
   action?: React.ReactNode
   children: React.ReactNode
+  tone?: NcSectionTone
 }) {
   const counts: Record<NcFilter, number> = { all: total, open, done: total - open }
+  const iconWrap = tone === 'process'
+    ? 'bg-violet-500/12 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300'
+    : 'bg-emerald-500/12 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'
+  const headerGrad = tone === 'process'
+    ? 'bg-gradient-to-r from-violet-500/[0.07] via-card to-card'
+    : 'bg-gradient-to-r from-emerald-500/[0.08] via-card to-card'
   return (
-    <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
-      <div className="flex flex-wrap items-center gap-3 border-b px-5 py-4">
-        <span className="flex size-10 items-center justify-center rounded-xl bg-[oklch(0.58_0.15_162/0.12)] text-[oklch(0.45_0.15_162)] dark:bg-[oklch(0.62_0.15_162/0.18)] dark:text-[oklch(0.72_0.15_162)]">
+    <section className="overflow-hidden rounded-2xl border bg-card shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.06]">
+      <div className={cn('flex flex-wrap items-center gap-3 border-b px-5 py-4', headerGrad)}>
+        <span className={cn('flex size-11 items-center justify-center rounded-xl shadow-sm ring-1 ring-black/5 dark:ring-white/10', iconWrap)}>
           <Icon className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-bold">{title}</h2>
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <h2 className="text-lg font-bold tracking-tight">{title}</h2>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
         </div>
-        <div className="flex items-center gap-4 text-right">
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">진행중</p>
-            <p className={cn('text-xl font-extrabold tabular-nums', open ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>{open}</p>
+        <div className="flex items-center gap-2">
+          <div className="rounded-xl border bg-background/90 px-3 py-2 text-right shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">진행중</p>
+            <p className={cn('text-xl font-extrabold leading-tight tabular-nums', open ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>{open}</p>
           </div>
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">전체</p>
-            <p className="text-xl font-extrabold tabular-nums">{total}</p>
+          <div className="rounded-xl border bg-background/90 px-3 py-2 text-right shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">전체</p>
+            <p className="text-xl font-extrabold leading-tight tabular-nums">{total}</p>
           </div>
         </div>
         {action}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-5 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-5 py-2.5">
         <div className="flex rounded-lg border bg-background p-0.5 text-xs font-semibold">
           {FILTERS.map(({ key, label }) => (
             <button
@@ -96,26 +106,88 @@ export function NcSection({
         </div>
       </div>
 
-      <div className="divide-y">{children}</div>
+      <div className="p-4">{children}</div>
     </section>
   )
 }
 
 export function NcEmpty({ loading, filtered }: { loading: boolean; filtered: boolean }) {
   return (
-    <p className="py-12 text-center text-sm text-muted-foreground">
-      {loading ? '불러오는 중…' : filtered ? '조건에 맞는 항목이 없습니다.' : '등록된 항목이 없습니다.'}
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-muted-foreground/25 bg-muted/20 px-6 py-14 text-center">
+      <span className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
+        <ClipboardList className="size-6 opacity-70" />
+      </span>
+      <p className="text-sm font-medium text-foreground/80">
+        {loading ? '불러오는 중…' : filtered ? '조건에 맞는 항목이 없습니다' : '등록된 항목이 없습니다'}
+      </p>
+      {!loading && !filtered && (
+        <p className="mt-1 max-w-xs text-xs text-muted-foreground">위 등록 버튼으로 첫 부적합을 추가할 수 있습니다.</p>
+      )}
+    </div>
+  )
+}
+
+export function NcRecordCard({
+  done,
+  started,
+  className,
+  children,
+}: {
+  done: boolean
+  started: boolean
+  className?: string
+  children: React.ReactNode
+}) {
+  const accent = done
+    ? 'border-l-blue-500 shadow-blue-500/5'
+    : started
+      ? 'border-l-amber-500 shadow-amber-500/5'
+      : 'border-l-rose-500 shadow-rose-500/5'
+  return (
+    <article
+      className={cn(
+        'group flex items-start gap-4 rounded-xl border border-border/80 border-l-[3px] bg-card p-4 shadow-sm transition-[box-shadow,background-color] hover:bg-muted/20 hover:shadow-md',
+        accent,
+        className,
+      )}
+    >
+      {children}
+    </article>
+  )
+}
+
+export function NcStepTrack({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed border-muted-foreground/15 bg-gradient-to-r from-muted/50 to-muted/20 px-3 py-2.5">
+      {children}
+    </div>
+  )
+}
+
+export function NcRemarks({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mt-3 border-l-2 border-emerald-500/40 bg-emerald-500/[0.06] px-3 py-2 text-xs leading-relaxed text-muted-foreground dark:bg-emerald-500/10">
+      {children}
     </p>
   )
 }
 
-export function NcDate({ value, no }: { value: string; no: number }) {
+export function NcDate({ value, no, tone = 'customer' }: { value: string; no: number; tone?: NcSectionTone }) {
   const [y, m, d] = value.split('-')
+  const ribbon = tone === 'process'
+    ? 'from-violet-600 to-violet-500'
+    : 'from-emerald-600 to-teal-600'
   return (
-    <div className="flex w-16 shrink-0 flex-col items-center rounded-xl border bg-muted/40 py-2 text-center">
-      <span className="text-[10px] font-semibold text-muted-foreground">{y}.{m}</span>
-      <span className="text-2xl font-extrabold leading-none tabular-nums">{d}</span>
-      <span className="mt-1 text-[10px] text-muted-foreground">No.{no}</span>
+    <div className="flex shrink-0 flex-col items-center gap-1">
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+        <div className={cn('bg-gradient-to-r px-2 py-0.5 text-center text-[9px] font-bold tracking-wide text-white', ribbon)}>
+          {y}.{m}
+        </div>
+        <div className="flex w-[3.25rem] items-center justify-center py-2 text-2xl font-extrabold leading-none tabular-nums text-foreground">
+          {d}
+        </div>
+      </div>
+      <span className="rounded-full bg-muted px-2 py-px text-[10px] font-bold tabular-nums text-muted-foreground">No.{no}</span>
     </div>
   )
 }
@@ -151,7 +223,7 @@ export function NcStep({
       <span className="font-bold">{WORKFLOW_STATUS_LABEL[status]}</span>
     </>
   )
-  const className = cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs', STEP_TONE[status])
+  const className = cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-sm', STEP_TONE[status])
   if (editable && onChange) {
     return (
       <button

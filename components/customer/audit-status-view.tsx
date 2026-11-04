@@ -12,11 +12,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { buildAuthHeaders, getSession } from '@/lib/auth-client'
-import { asKind, openOf, rateOf, SAMPLE_AUDIT_ROWS, statusOf, type AuditKind as Kind, type AuditRow } from '@/lib/customer-audit'
+import { asKind, openOf, rateOf, statusOf, type AuditKind as Kind, type AuditRow } from '@/lib/customer-audit'
 import { chosungSearch } from '@/lib/korean'
 import { cn } from '@/lib/utils'
-
-const SAMPLE_ROWS = SAMPLE_AUDIT_ROWS
 
 const EMPTY_ROW: Omit<AuditRow, 'id'> = {
   kind: 'QSA', company: '', scope: '', auditDate: '', count: 0, done: 0, dueDate: '', closeDate: '', doneDate: '', dept: '', owner: '',
@@ -73,7 +71,6 @@ export function AuditStatusView() {
   const { user } = useAuth()
   const canManage = user?.role === 'admin'
   const [rows, setRows] = useState<AuditRow[]>([])
-  const [sample, setSample] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<AuditRow | null>(null)
@@ -86,10 +83,8 @@ export function AuditStatusView() {
       .then((result) => {
         if (Array.isArray(result.data)) {
           setRows(result.data.map((row: AuditRow) => ({ ...row, kind: asKind(row.kind), dept: row.dept ?? '', doneDate: row.doneDate ?? '' })))
-        }
-        else {
-          setRows(SAMPLE_ROWS)
-          setSample(true)
+        } else {
+          setRows([])
         }
       })
       .catch(() => toast.error('고객심사 데이터를 불러오지 못했습니다.'))
@@ -184,7 +179,6 @@ export function AuditStatusView() {
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.error || '저장하지 못했습니다.')
       setRows(result.data)
-      setSample(false)
       return true
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '저장하지 못했습니다.')
@@ -207,15 +201,9 @@ export function AuditStatusView() {
   }
 
   const submit = async (value: Omit<AuditRow, 'id'>) => {
-    if (sample && editing) {
-      setRows(rows.map((row) => (row.id === editing.id ? { ...value, id: editing.id } : row)))
-      setFormOpen(false)
-      return
-    }
-    const base = sample ? [] : rows
     const next = editing
-      ? base.map((row) => (row.id === editing.id ? { ...value, id: editing.id } : row))
-      : [...base, { ...value, id: crypto.randomUUID() }]
+      ? rows.map((row) => (row.id === editing.id ? { ...value, id: editing.id } : row))
+      : [...rows, { ...value, id: crypto.randomUUID() }]
     const ok = await persist(next, `고객심사 ${editing ? '수정' : '등록'} · ${value.kind} ${value.company}`)
     if (ok) {
       toast.success(editing ? '수정했습니다.' : '등록했습니다.')
@@ -229,7 +217,7 @@ export function AuditStatusView() {
     if (ok) toast.success('삭제했습니다.')
   }
 
-  const editable = canManage && !sample
+  const editable = canManage
   const columns = canManage ? 14 : 13
 
   return (
@@ -250,12 +238,6 @@ export function AuditStatusView() {
           </div>
         }
       />
-
-      {sample && !loading && (
-        <p className="no-print rounded-lg border border-dashed border-[oklch(0.52_0.19_258/0.4)] bg-[oklch(0.52_0.19_258/0.06)] px-4 py-2.5 text-sm text-[oklch(0.45_0.17_258)] dark:text-[oklch(0.75_0.14_258)]">
-          지금은 화면 예시입니다. 첫 심사를 <b>등록</b>하면 예시는 사라지고 실제 데이터만 남습니다.
-        </p>
-      )}
 
       <section className="audit-print-kpis grid gap-3 sm:grid-cols-2 xl:grid-cols-6 print:grid-cols-6 print:gap-2">
         {kpis.map((item) => (

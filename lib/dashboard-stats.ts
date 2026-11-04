@@ -206,7 +206,9 @@ export async function getDashboardStats() {
     getTodayCheckStatuses(),
   ])
   const auditRows = await getSetting<unknown>('customer-audits', null)
-  const customerAudits = (Array.isArray(auditRows) ? auditRows : []) as { kind?: string; count?: number; done?: number }[]
+  const customerAudits = (Array.isArray(auditRows)
+    ? auditRows.filter((row) => row && typeof row === 'object' && typeof (row as { id?: string }).id === 'string' && !(row as { id: string }).id.startsWith('sample-'))
+    : []) as { kind?: string; count?: number; done?: number }[]
   const auditSummary = {
     qsa: customerAudits.filter((row) => row.kind === 'QSA' || row.kind === 'SQA').length,
     qpa: customerAudits.filter((row) => row.kind === 'QPA' || row.kind === 'SPA').length,

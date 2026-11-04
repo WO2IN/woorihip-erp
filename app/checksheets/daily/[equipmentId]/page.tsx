@@ -65,9 +65,9 @@ export default async function DailyCheckDetailPage({
   }
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="checksheet-page min-h-dvh bg-background">
       <SiteHeader />
-      <main className="print-page flex w-full flex-col gap-4 px-6 py-6">
+      <main className="print-page checksheet-print-page flex w-full flex-col gap-4 px-6 py-6">
         <div className="no-print flex flex-wrap items-center justify-between gap-3">
           <YearMonthPicker year={year} month={month} />
           <div className="flex items-center gap-2">
@@ -181,7 +181,9 @@ export default async function DailyCheckDetailPage({
           managerMarks={(sheet as any).managerMarks ?? []}
         />
 
-        <EmergencyActionCard equipmentId={equipId} equipment={equip} guides={guides} histories={histories} canManage={canManage} />
+        <div className="no-print">
+          <EmergencyActionCard equipmentId={equipId} equipment={equip} guides={guides} histories={histories} canManage={canManage} />
+        </div>
       </main>
     </div>
   )
