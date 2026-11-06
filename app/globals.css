@@ -201,11 +201,103 @@
   display: none;
 }
 
+.recognition-certificate-print-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
+
 @page suitability-one {
   size: A4 portrait;
   margin: 8mm;
 }
 
+@page recognition-certificate {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@media print {
+  html.recognition-print-root,
+  body.recognition-print {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  body.recognition-print {
+    page: recognition-certificate;
+    margin: 0 !important;
+  }
+
+  body.recognition-print .app-shell > aside,
+  body.recognition-print .app-shell-column > header,
+  body.recognition-print nav[aria-label='자격인증 관리 메뉴'] {
+    display: none !important;
+  }
+
+  body.recognition-print .app-shell,
+  body.recognition-print .app-shell-column,
+  body.recognition-print .app-shell-main,
+  body.recognition-print .app-shell-main > main {
+    display: block !important;
+    height: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  body.recognition-print .app-shell-main > main > :not(.recognition-certificate-print-root) {
+    display: none !important;
+  }
+
+  body.recognition-print .recognition-certificate-print-root {
+    position: static !important;
+    z-index: auto !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+    opacity: 1 !important;
+  }
+
+  body.recognition-print .recognition-certificate-page {
+    box-sizing: border-box;
+    width: 210mm;
+    height: 297mm;
+    overflow: hidden;
+    background: white;
+    break-after: auto;
+    page-break-after: auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body.recognition-print .recognition-certificate-page + .recognition-certificate-page {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  body.recognition-print .recognition-certificate-page,
+  body.recognition-print .recognition-certificate-page * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body.recognition-print .recognition-certificate-page .shadow-sm {
+    box-shadow: none !important;
+  }
+}
 
 @media print {
   html.suitability-print-root,

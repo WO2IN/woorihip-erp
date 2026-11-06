@@ -679,7 +679,7 @@ export function UploadForm() {
                   className="gap-1.5 h-7 shrink-0 bg-background text-xs"
                 >
                   <X className="w-3 h-3" />
-                  파일 빼기
+                  제거
                 </Button>
               </div>
             ) : (

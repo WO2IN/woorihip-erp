@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Frame, ImagePlus, Printer, Stamp, type LucideIcon } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { CloudUpload, Frame, ImagePlus, Printer, Stamp, X, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -80,6 +80,26 @@ export function RecognitionCertificateDraft() {
     photo: true,
   })
   const [printing, setPrinting] = useState(false)
+  const [photoDragOver, setPhotoDragOver] = useState(false)
+  const printRootRef = useRef<HTMLDivElement>(null)
+
+  const attachPhotoFile = (file: File | undefined) => {
+    if (!file || !selectedId) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('이미지 파일만 첨부할 수 있습니다.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const data = typeof reader.result === 'string' ? reader.result : ''
+      if (!data) return
+      setPhotos((prev) => ({
+        ...prev,
+        [selectedId]: { data, mime: file.type || 'image/jpeg', name: file.name, fileId: undefined },
+      }))
+    }
+    reader.readAsDataURL(file)
+  }
 
   useEffect(() => {
     fetch('/api/quality/qualifications', { cache: 'no-store' })
@@ -134,8 +154,9 @@ export function RecognitionCertificateDraft() {
   const form = draft ?? EMPTY_DRAFT
 
   const readyCount = rows.filter(printable).length
-  const reviewCount = rows.length - readyCount
-  const issuedCount = rows.filter((row) => row.recognitionOnFile).length
+  const restrictedCount = rows.filter((row) => row.status === 'cancelled').length
+  const confirmCount = rows.filter((row) => row.status !== 'cancelled' && !printable(row)).length
+  const photoCount = rows.filter((row) => row.idPhotoFileId.trim()).length
   const checkedCount = rows.filter((row) => checked[row.id]).length
 
   const selectPerson = (row: QualificationLedgerRow) => {
@@ -159,61 +180,53 @@ export function RecognitionCertificateDraft() {
       toast.error('출력할 인원을 선택하세요.')
       return
     }
+    const root = printRootRef.current
+    if (!root) return
     setPrinting(true)
-    try {
-      for (const row of outputRows) {
-        const item = drafts[row.id] ?? draftFromRow(row)
-        const photo = photos[row.id]
-        const response = await fetch('/api/quality/recognition-pdf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            people: [
-              {
-                name: item.name,
-                certNo: item.certNo,
-                department: item.department,
-                duty: item.duty,
-                joinDate: item.issued,
-                renewalDate: item.expiry,
-                issueDate: item.issueDate,
-                photoFileId: options.photo && photo?.fileId ? photo.fileId : undefined,
-                photoBase64: options.photo && photo && !photo.fileId ? photo.data : undefined,
-                photoMime: photo?.mime,
-                includePhoto: options.photo,
-                includeSeal: options.seal,
-              },
-            ],
-          }),
-        })
-        if (!response.ok) {
-          const result = (await response.json().catch(() => null)) as { error?: string } | null
-          throw new Error(result?.error || '자격인정서 출력에 실패했습니다.')
-        }
-        const blob = await response.blob()
-        await openCertificatePrintDialog(blob)
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '자격인정서 출력에 실패했습니다.')
-    } finally {
+    const previousTitle = document.title
+    const html = document.documentElement
+    html.classList.add('recognition-print-root')
+    document.body.classList.add('recognition-print')
+    const only = outputRows.length === 1 ? outputRows[0] : null
+    const onlyName = only ? (drafts[only.id] ?? draftFromRow(only)).name.trim() : ''
+    document.title = onlyName ? `자격인정서_${onlyName}` : '자격인정서'
+    let restored = false
+    const restore = () => {
+      if (restored) return
+      restored = true
+      html.classList.remove('recognition-print-root')
+      document.body.classList.remove('recognition-print')
+      document.title = previousTitle
       setPrinting(false)
+      window.removeEventListener('afterprint', restore)
+    }
+    try {
+      await waitForPrintImages(root)
+      window.addEventListener('afterprint', restore)
+      window.print()
+      restore()
+    } catch (error) {
+      restore()
+      toast.error(error instanceof Error ? error.message : '자격인정서 출력에 실패했습니다.')
     }
   }
 
   const stats = useMemo(
     () => [
-      { label: '출력 가능 인정서', value: `${readyCount}건`, sub: '적격성 평가 후 출력 가능' },
-      { label: '확인 필요', value: `${reviewCount}건`, sub: '평가·대장 확인 후 출력' },
+      { label: '출력가능인정서', value: `${readyCount}건`, sub: '바로 출력 가능' },
+      { label: '출력 제한', value: `${restrictedCount}건`, sub: '취소된 자격' },
+      { label: '확인 후 출력', value: `${confirmCount}건`, sub: '평가·대장 확인 후' },
       { label: '용지', value: 'A4 세로', sub: '210 × 297mm · 1인 1매' },
-      { label: '발행 현황', value: `${issuedCount}/${rows.length || 0}명`, sub: '인정서 발행 완료' },
+      { label: '사진 등록', value: `${photoCount}/${rows.length || 0}명`, sub: '증명사진 등록' },
       { label: '발행 명의', value: '대표이사', sub: DEFAULT_ISSUER },
     ],
-    [issuedCount, readyCount, reviewCount, rows.length],
+    [confirmCount, photoCount, readyCount, restrictedCount, rows.length],
   )
 
   return (
+    <>
     <div className="mt-4 space-y-3">
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
         {stats.map((item) => (
           <article key={item.label} className="rounded-2xl border bg-card px-3 py-2.5 shadow-sm">
             <p className="text-[11px] text-muted-foreground">{item.label}</p>
@@ -361,58 +374,92 @@ export function RecognitionCertificateDraft() {
             </FormGroup>
 
             <div className="flex flex-col gap-3">
-              <label
-                className={cn(
-                  'relative flex h-28 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed px-3 text-center transition-colors',
-                  selected
-                    ? 'cursor-pointer border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 dark:border-border'
-                    : 'cursor-not-allowed border-slate-200 opacity-60 dark:border-border',
-                )}
-              >
-                {selected ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photos[selected.id]?.data ?? QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL}
-                      alt=""
-                      className={cn(
-                        'aspect-[3/4] max-h-36 min-h-0 rounded-md shadow-sm',
-                        photos[selected.id] ? 'object-cover' : 'object-contain bg-white',
-                      )}
-                    />
-                    <span className="max-w-full truncate text-[11px] text-emerald-700">
-                      {photos[selected.id] ? `${photos[selected.id].name} · 클릭해서 변경` : '사진 없음 · 클릭해서 등록'}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <ImagePlus className="size-7 text-slate-300" aria-hidden />
-                    <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">증명사진 선택</span>
-                    <span className="text-[11px] text-muted-foreground">인원 선택 후 사진 등록</span>
-                  </>
-                )}
-                <input
-                  key={selected?.id ?? 'none'}
-                  type="file"
-                  accept="image/*"
-                  disabled={!selected}
-                  className="sr-only"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (!file || !selected) return
-                    const reader = new FileReader()
-                    reader.onload = () => {
-                      const data = typeof reader.result === 'string' ? reader.result : ''
-                      if (!data) return
-                      setPhotos((prev) => ({
-                        ...prev,
-                        [selected.id]: { data, mime: file.type || 'image/jpeg', name: file.name, fileId: undefined },
-                      }))
-                    }
-                    reader.readAsDataURL(file)
+              <div className="rounded-xl border bg-slate-50/60 p-3 dark:bg-muted/20">
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold text-slate-500">증명사진</h3>
+                  <span className="text-[10px] text-muted-foreground">미리보기에 반영</span>
+                </div>
+                <div
+                  onDragOver={(event) => {
+                    if (!selected) return
+                    event.preventDefault()
+                    setPhotoDragOver(true)
                   }}
-                />
-              </label>
+                  onDragLeave={() => setPhotoDragOver(false)}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    setPhotoDragOver(false)
+                    attachPhotoFile(event.dataTransfer.files?.[0])
+                  }}
+                  onClick={() => {
+                    if (!selected) return
+                    document.getElementById('recognition-id-photo-input')?.click()
+                  }}
+                  className={cn(
+                    'rounded-lg border-2 border-dashed px-3 py-3 transition-colors',
+                    !selected && 'cursor-not-allowed opacity-60',
+                    selected && 'cursor-pointer',
+                    photoDragOver
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10'
+                      : photos[selected?.id ?? '']
+                        ? 'border-emerald-300 bg-white dark:bg-card'
+                        : 'border-slate-300 hover:border-emerald-400 hover:bg-white dark:border-border dark:hover:bg-card',
+                  )}
+                >
+                  <input
+                    id="recognition-id-photo-input"
+                    key={selected?.id ?? 'none'}
+                    type="file"
+                    accept="image/*"
+                    disabled={!selected}
+                    className="sr-only"
+                    onChange={(event) => {
+                      attachPhotoFile(event.target.files?.[0])
+                      event.target.value = ''
+                    }}
+                  />
+                  {selected && photos[selected.id] ? (
+                    <div className="flex items-center gap-3 text-left">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
+                        <ImagePlus className="size-4" aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{photos[selected.id].name}</p>
+                        <p className="text-[11px] text-muted-foreground">첨부됨 · 클릭하거나 새 파일을 끌어 놓으면 바뀝니다</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 gap-1 bg-background px-2 text-xs"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setPhotos((prev) => {
+                            const next = { ...prev }
+                            delete next[selected.id]
+                            return next
+                          })
+                        }}
+                      >
+                        <X className="size-3" />
+                        제거
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                        <CloudUpload className="size-4" aria-hidden />
+                      </div>
+                      <div className="min-w-0 text-left">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          {selected ? '사진을 드래그하거나 클릭하여 첨부' : '인원을 선택한 뒤 첨부'}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">JPG · PNG</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="shrink-0 rounded-xl border bg-slate-50/60 p-3 dark:bg-muted/20">
                 <div className="mb-2.5 flex items-center justify-between gap-2">
@@ -458,6 +505,24 @@ export function RecognitionCertificateDraft() {
         </div>
       </div>
     </div>
+    <div ref={printRootRef} className="recognition-certificate-print-root" aria-hidden>
+      {outputRows.map((row) => {
+        const item = drafts[row.id] ?? draftFromRow(row)
+        const photo = photos[row.id]
+        return (
+          <div key={row.id} className="recognition-certificate-page">
+            <CertificateSheet
+              draft={item}
+              photo={options.photo ? photo : undefined}
+              showPhoto={options.photo}
+              showBorder={options.border}
+              showSeal={options.seal}
+            />
+          </div>
+        )
+      })}
+    </div>
+    </>
   )
 }
 
@@ -487,20 +552,20 @@ function CertificateSheet({
           // eslint-disable-next-line @next/next/no-img-element
           <img src="/recognition-certificate-border.png" alt="" className="pointer-events-none absolute inset-0 h-full w-full" />
         ) : null}
-        <p className="absolute inset-x-0 top-[9.6%] text-center text-[4.6cqw] font-black tracking-[0.42em] [text-indent:0.42em]">자격인정서</p>
-        <div className="absolute top-[15.2%] left-1/2 h-[0.28cqw] w-[36%] -translate-x-1/2 bg-black" />
+        <p className="absolute inset-x-0 top-[7.2%] text-center text-[6.2cqw] font-black tracking-[0.42em] [text-indent:0.42em]">자격인정서</p>
+        <div className="absolute top-[14%] left-1/2 h-[0.62cqw] w-[54%] -translate-x-1/2 bg-black" />
         {showPhoto ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={photoSrc}
             alt=""
             className={cn(
-              'absolute top-[17.4%] left-1/2 aspect-[3/4] w-[30%] -translate-x-1/2',
+              'absolute top-[19.8%] left-1/2 aspect-[3/4] w-[31.5%] -translate-x-1/2',
               photoIsPlaceholder ? 'object-contain bg-white' : 'object-cover object-[center_18%]',
             )}
           />
         ) : null}
-        <div className="absolute top-[53.6%] left-1/2 -translate-x-1/2 text-[2.35cqw] leading-[1.62] font-bold">
+        <div className="absolute top-[53.6%] left-1/2 -translate-x-1/2 text-[2.55cqw] leading-[1.62] font-bold">
           <div className="grid grid-cols-[7.4em_5.6em]">
             <PreviewLine glyphs="성명" value={draft?.name} />
             <PreviewLine glyphs="소속" value={draft?.department} />
@@ -509,13 +574,13 @@ function CertificateSheet({
             <PreviewLine glyphs="담당업무" value={draft?.duty} />
           </div>
         </div>
-        <p className="absolute top-[69.4%] left-1/2 w-[76%] -translate-x-1/2 text-center text-[2.7cqw] leading-snug font-bold">
+        <p className="absolute top-[69.4%] left-1/2 w-[76%] -translate-x-1/2 text-center text-[2.95cqw] leading-snug font-bold">
           상기자를 교육 수료 및 자격시험에 Pass 하였기에
           <br />
           위 자격을 인정함.
         </p>
-        <p className="absolute inset-x-0 top-[77.4%] text-center text-[2.45cqw] font-bold">{koreanDate(draft?.issueDate ?? '')}</p>
-        <div className="absolute inset-x-0 top-[80.8%] flex items-center justify-center gap-[0.7em] text-[3.4cqw] font-black">
+        <p className="absolute inset-x-0 top-[77%] text-center text-[3.35cqw] font-bold">{koreanDate(draft?.issueDate ?? '')}</p>
+        <div className="absolute inset-x-0 top-[82.6%] flex items-center justify-center gap-[0.7em] text-[3.65cqw] font-black">
           <span>대표이사</span>
           <span className="relative">
             {issuerName}
@@ -529,11 +594,11 @@ function CertificateSheet({
             ) : null}
           </span>
         </div>
-        <div className="absolute top-[87.6%] right-[12.5%] left-[12.5%] h-[0.18cqw] bg-black" />
-        <div className="absolute top-[88.4%] right-[12.5%] left-[12.5%] flex items-center justify-between">
-          <span className="text-[1.75cqw]">자격인정번호 {draft?.certNo ?? ''}</span>
+        <div className="absolute top-[89.4%] right-[12.5%] left-[12.5%] h-[0.18cqw] bg-black" />
+        <div className="absolute top-[90.2%] right-[12.5%] left-[12.5%] flex items-center justify-between">
+          <span className="text-[1.95cqw]">자격인정번호 {draft?.certNo ?? ''}</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="WOORI" className="h-[5cqw] w-auto" />
+          <img src="/logo.png" alt="WOORI" className="h-[5.3cqw] w-auto" />
         </div>
       </div>
     </div>
@@ -571,51 +636,23 @@ function issuerPersonName(issuer?: string) {
   return text || '홍성호'
 }
 
-function openCertificatePrintDialog(blob: Blob) {
-  return new Promise<void>((resolve) => {
-    const url = URL.createObjectURL(blob)
-    const frame = document.createElement('iframe')
-    frame.title = '자격인정서 인쇄'
-    frame.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;opacity:0;pointer-events:none'
-    document.body.appendChild(frame)
-    let released = false
-    let started = false
-    const release = () => {
-      if (released) return
-      released = true
-      window.removeEventListener('afterprint', release)
-      resolve()
-    }
-    const cleanup = () => {
-      if (!frame.isConnected) return
-      frame.remove()
-      URL.revokeObjectURL(url)
-    }
-    const startPrint = () => {
-      if (started) return
-      started = true
-      const win = frame.contentWindow
-      window.addEventListener('afterprint', release)
-      win?.addEventListener('afterprint', () => {
-        release()
-        window.setTimeout(cleanup, 400)
-      })
-      try {
-        win?.focus()
-        win?.print()
-      } catch {
-        release()
-        cleanup()
-        return
-      }
-      // 인쇄 창을 닫으면 print()가 반환된다. iframe 쪽 afterprint는 안 올 때가 있다.
-      release()
-      window.setTimeout(cleanup, 60_000)
-    }
-    frame.onload = () => window.setTimeout(startPrint, 300)
-    frame.src = url
-    window.setTimeout(startPrint, 2000)
-  })
+function waitForPrintImages(root: HTMLElement) {
+  const images = [...root.querySelectorAll('img')]
+  return Promise.all(
+    images.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) {
+            resolve()
+            return
+          }
+          const done = () => resolve()
+          img.addEventListener('load', done, { once: true })
+          img.addEventListener('error', done, { once: true })
+          window.setTimeout(done, 3000)
+        }),
+    ),
+  )
 }
 
 function Field({
