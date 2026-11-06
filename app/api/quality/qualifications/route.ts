@@ -4,13 +4,48 @@ import {
   migrateQualificationLedgerCertNumbers,
   normalizeQualificationLedgerRow,
   sortQualificationLedger,
+  type QualificationLedgerRow,
 } from '@/lib/qualification-ledger'
+import { parseDataUrlPhoto, reconcileQualificationIdPhoto } from '@/lib/qualification-id-photo'
 import { appendAuditLog } from '@/lib/storage'
 import { getSetting, setSetting } from '@/lib/records'
 import type { UserRole } from '@/lib/types'
 
+export const runtime = 'nodejs'
+
 const KEY = 'qualification-ledger'
 const SAMPLE_LEDGER_IDS = new Set(['ql-001', 'ql-002', 'ql-003', 'ql-004', 'ql-005', 'ql-006', 'ql-007', 'ql-008'])
+
+type RawLedgerRow = Record<string, unknown> & { id?: string }
+
+async function reconcileRowPhotoFromRaw(
+  raw: RawLedgerRow,
+  previousFileId: string | undefined,
+  user?: { id: string; displayName: string },
+) {
+  const rowId = typeof raw.id === 'string' ? raw.id.trim() : ''
+  if (!rowId) return ''
+
+  const legacyDataUrl = parseDataUrlPhoto(raw.idPhoto) ? raw.idPhoto : undefined
+  const pendingDataUrl = parseDataUrlPhoto(raw.idPhotoPending) ? raw.idPhotoPending : undefined
+  const dataUrl = pendingDataUrl ?? legacyDataUrl
+
+  return reconcileQualificationIdPhoto({
+    ledgerRowId: rowId,
+    dataUrl,
+    fileId: raw.idPhotoFileId,
+    previousFileId,
+    uploadedBy: user?.id,
+    uploadedByName: user?.displayName,
+  })
+}
+
+async function persistLedgerRows(rows: QualificationLedgerRow[]) {
+  const migrated = migrateQualificationLedgerCertNumbers(rows)
+  const sorted = migrated.sort(sortQualificationLedger)
+  await setSetting(KEY, sorted)
+  return sorted
+}
 
 async function loadRows() {
   const stored = await getSetting<unknown>(KEY, null)
@@ -24,16 +59,38 @@ async function loadRows() {
     await setSetting(KEY, kept)
   }
   if (kept.length === 0) return []
-  const normalized = kept.map(normalizeQualificationLedgerRow).filter(Boolean) as NonNullable<
-    ReturnType<typeof normalizeQualificationLedgerRow>
-  >[]
-  const migrated = migrateQualificationLedgerCertNumbers(normalized)
+
+  let photoMigrationNeeded = false
+  const reconciled: QualificationLedgerRow[] = []
+  for (const item of kept) {
+    const raw = item as RawLedgerRow
+    const normalized = normalizeQualificationLedgerRow(raw)
+    if (!normalized) continue
+
+    const legacyDataUrl = parseDataUrlPhoto(raw.idPhoto)
+    if (legacyDataUrl && !normalized.idPhotoFileId) {
+      photoMigrationNeeded = true
+      const fileId = await reconcileQualificationIdPhoto({
+        ledgerRowId: normalized.id,
+        dataUrl: raw.idPhoto,
+      })
+      reconciled.push({ ...normalized, idPhotoFileId: fileId })
+      continue
+    }
+    reconciled.push(normalized)
+  }
+
+  const migrated = migrateQualificationLedgerCertNumbers(reconciled)
   const sorted = migrated.sort(sortQualificationLedger)
-  const rowChanged = migrated.some((row, index) => {
-    const raw = kept[index] as { certNo?: string; qualification?: string } | undefined
-    return raw?.certNo !== row.certNo || raw?.qualification !== row.qualification
-  })
-  if (migrated.length !== kept.length || rowChanged) {
+  const hadLegacyPhoto = kept.some(
+    (item) => item && typeof item === 'object' && parseDataUrlPhoto((item as RawLedgerRow).idPhoto),
+  )
+  const beforeCert = migrateQualificationLedgerCertNumbers(
+    kept.map((item) => normalizeQualificationLedgerRow(item)).filter((row): row is QualificationLedgerRow => Boolean(row)),
+  ).sort(sortQualificationLedger)
+  const certChanged = JSON.stringify(beforeCert) !== JSON.stringify(sorted)
+
+  if (photoMigrationNeeded || hadLegacyPhoto || certChanged || kept.length !== reconciled.length) {
     await setSetting(KEY, sorted)
   }
   return sorted
@@ -56,16 +113,34 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: '자격인증 데이터가 올바르지 않습니다.' }, { status: 400 })
   }
 
-  const rows = body.rows.map(normalizeQualificationLedgerRow)
-  if (rows.some((row: unknown) => !row)) {
-    return NextResponse.json({ error: '성명과 자격명은 필수입니다.' }, { status: 400 })
+  const previous = await loadRows()
+  const previousById = new Map(previous.map((row) => [row.id, row]))
+
+  const reconciledRows: QualificationLedgerRow[] = []
+  for (const item of body.rows) {
+    if (!item || typeof item !== 'object') {
+      return NextResponse.json({ error: '자격인증 데이터가 올바르지 않습니다.' }, { status: 400 })
+    }
+    const raw = item as RawLedgerRow
+    const rowId = typeof raw.id === 'string' ? raw.id.trim() : ''
+    if (!rowId) {
+      return NextResponse.json({ error: '자격인증 데이터가 올바르지 않습니다.' }, { status: 400 })
+    }
+
+    const previousRow = previousById.get(rowId)
+    const idPhotoFileId = await reconcileRowPhotoFromRaw(raw, previousRow?.idPhotoFileId, {
+      id: user.id,
+      displayName: user.displayName,
+    })
+
+    const normalized = normalizeQualificationLedgerRow({ ...raw, idPhotoFileId })
+    if (!normalized) {
+      return NextResponse.json({ error: '성명과 자격명은 필수입니다.' }, { status: 400 })
+    }
+    reconciledRows.push(normalized)
   }
 
-  const migrated = migrateQualificationLedgerCertNumbers(
-    rows as NonNullable<ReturnType<typeof normalizeQualificationLedgerRow>>[],
-  )
-  const sorted = migrated.sort(sortQualificationLedger)
-  await setSetting(KEY, sorted)
+  const sorted = await persistLedgerRows(reconciledRows)
   await appendAuditLog({
     action: 'UPDATE',
     target: 'qualification-ledger',

@@ -23,6 +23,8 @@ export interface QualificationLedgerRow {
   suitabilityOnFile: boolean
   recognitionOnFile: boolean
   note: string
+  /** MinIO stored_files.id (증명사진). */
+  idPhotoFileId: string
 }
 
 export type QualificationLedgerFilters = {
@@ -395,6 +397,7 @@ export function createQualificationLedgerRowDraft(input: {
   expiryDate?: string
   note?: string
   certNo?: string
+  idPhotoFileId?: string
 }): QualificationLedgerRow | null {
   const acquired = input.acquiredDate?.trim() ?? ''
   const expiry = input.expiryDate?.trim() ?? ''
@@ -424,6 +427,7 @@ export function createQualificationLedgerRowDraft(input: {
     suitabilityOnFile: false,
     recognitionOnFile: false,
     note: input.note?.trim() ?? '',
+    idPhotoFileId: input.idPhotoFileId ?? '',
   })
 }
 
@@ -440,6 +444,7 @@ export function updateQualificationLedgerRow(
     cancelDate?: string
     cancelReason?: string
     certNo?: string
+    idPhotoFileId?: string
   },
 ): QualificationLedgerRow | null {
   const acquired = input.acquiredDate?.trim() ?? ''
@@ -461,6 +466,7 @@ export function updateQualificationLedgerRow(
     cancelDate,
     cancelReason,
     status: cancelDate ? 'cancelled' : 'valid',
+    idPhotoFileId: input.idPhotoFileId !== undefined ? input.idPhotoFileId : existing.idPhotoFileId,
   })
 }
 
@@ -496,6 +502,10 @@ export function normalizeQualificationLedgerRow(value: unknown): QualificationLe
     suitabilityOnFile: row.suitabilityOnFile === true,
     recognitionOnFile: row.recognitionOnFile === true,
     note: typeof row.note === 'string' ? row.note.trim() : '',
+    idPhotoFileId:
+      typeof row.idPhotoFileId === 'string' && /^[a-f0-9-]{36}$/i.test(row.idPhotoFileId.trim())
+        ? row.idPhotoFileId.trim()
+        : '',
   }
   return enrichQualificationLedgerRow(next)
 }

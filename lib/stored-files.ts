@@ -140,7 +140,14 @@ export function buildEquipmentPhotoKey(fileName: string) {
   return `uploads/equipment-photos/${sanitizeStorageSegment(fileName.replace(/[\\/]/g, '_'), 200)}`
 }
 
+export function buildQualificationIdPhotoKey(ledgerRowId: string, fileName: string) {
+  return `quality/qualification-id-photo/${sanitizeStorageSegment(ledgerRowId, 80)}/${sanitizeStorageSegment(fileName.replace(/[\\/]/g, '_'), 200)}`
+}
+
 export function resolveObjectKey(input: PutStoredFileInput): string {
+  if (input.domain === 'quality' && input.category === 'qualification-id-photo' && input.ownerId && input.storageFileName) {
+    return buildQualificationIdPhotoKey(input.ownerId, input.storageFileName)
+  }
   if (input.domain === 'equipment' && input.category === 'photo' && input.storageFileName) {
     return buildEquipmentPhotoKey(input.storageFileName)
   }
@@ -282,7 +289,10 @@ export async function registerLegacyFile(input: {
 export async function putStoredFile(input: PutStoredFileInput) {
   await ensureStoredFilesTable()
   const objectKey = resolveObjectKey(input)
-  const scope: StorageScope = input.domain === 'equipment' || input.category === 'photo' ? 'media' : 'docs'
+  const scope: StorageScope =
+    input.domain === 'equipment' || input.category === 'photo' || input.category === 'qualification-id-photo'
+      ? 'media'
+      : 'docs'
   const sha256 = createHash('sha256').update(input.buffer).digest('hex')
   await putObjectBytes(scope, objectKey, input.buffer, input.mime)
 
@@ -334,7 +344,9 @@ export function storedFileNeedsObjectMigration(row: Pick<StoredFileRow, 'bucket_
 }
 
 export function targetScopeForStoredFile(row: Pick<StoredFileRow, 'domain' | 'category'>) {
-  return row.domain === 'equipment' || row.category === 'photo' ? ('media' as const) : ('docs' as const)
+  return row.domain === 'equipment' || row.category === 'photo' || row.category === 'qualification-id-photo'
+    ? ('media' as const)
+    : ('docs' as const)
 }
 
 export async function commitStoredFileMigration(

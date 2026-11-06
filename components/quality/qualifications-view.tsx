@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   FileOutput,
   Filter,
+  ImagePlus,
   List,
   Pencil,
   Plus,
@@ -23,6 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL } from '@/lib/qualification-id-photo-placeholder'
 import { useAuth } from '@/components/auth/auth-context'
 import { PAGE_SHELL_RELATIVE, PageHeader } from '@/components/shared/page-header'
 import { RecognitionCertificateDraft } from '@/components/quality/recognition-certificate-draft'
@@ -316,7 +318,14 @@ type LedgerRegisterForm = {
   joinDate: string
   acquiredDate: string
   expiryDate: string
+  idPhotoFileId: string
+  /** 저장 시 MinIO 업로드용 data URL */
+  idPhotoPending: string
+  /** 미리보기 src (pending data URL 또는 /api/files/…) */
+  idPhotoPreview: string
 }
+
+type QualificationLedgerSaveRow = QualificationLedgerRow & { idPhotoPending?: string }
 
 type LedgerEditForm = LedgerRegisterForm & {
   certNo: string
@@ -333,7 +342,29 @@ function emptyLedgerRegisterForm(): LedgerRegisterForm {
     joinDate: '',
     acquiredDate: '',
     expiryDate: '',
+    idPhotoFileId: '',
+    idPhotoPending: '',
+    idPhotoPreview: '',
   }
+}
+
+async function compressIdPhoto(file: File) {
+  const bitmap = await createImageBitmap(file)
+  const max = 480
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height))
+  const width = Math.max(1, Math.round(bitmap.width * scale))
+  const height = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) {
+    bitmap.close()
+    throw new Error('사진을 처리하지 못했습니다.')
+  }
+  context.drawImage(bitmap, 0, 0, width, height)
+  bitmap.close()
+  return canvas.toDataURL('image/jpeg', 0.86)
 }
 
 /** Select는 value가 undefined면 비제어로 간주 — 등록 폼은 항상 이 값으로 제어 */
@@ -351,6 +382,9 @@ function ledgerEditFormFromRow(row: QualificationLedgerRow): LedgerEditForm {
     expiryDate: row.expiryDate,
     cancelDate: row.cancelDate,
     cancelReason: row.cancelReason,
+    idPhotoFileId: row.idPhotoFileId,
+    idPhotoPending: '',
+    idPhotoPreview: row.idPhotoFileId ? `/api/files/${row.idPhotoFileId}` : '',
   }
 }
 
@@ -366,154 +400,220 @@ function QualificationLedgerRowFormFields({
   showCancelFields?: boolean
 }) {
   const cancelForm = showCancelFields ? (form as LedgerEditForm) : null
+  const hasCustomIdPhoto = Boolean(form.idPhotoFileId || form.idPhotoPending)
+  const idPhotoDisplaySrc = form.idPhotoPreview || QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {showCancelFields ? (
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label className="text-xs text-muted-foreground">인증번호</Label>
-          <Input
-            value={cancelForm?.certNo ?? ''}
-            onChange={(event) => onPatch({ certNo: event.target.value })}
-            className="h-9 tabular-nums"
-            placeholder="QA-00"
-            aria-label="인증번호"
-          />
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-border dark:bg-card">
+      <div className="h-1 bg-emerald-600" />
+      <div className="flex items-start gap-6 px-5 pt-5 pb-4">
+        <div className="flex w-28 shrink-0 flex-col items-center gap-1.5">
+          <label className="group relative block w-full cursor-pointer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={idPhotoDisplaySrc}
+              alt=""
+              className={cn(
+                'aspect-[3/4] w-full rounded-lg shadow-sm ring-1 ring-slate-200',
+                hasCustomIdPhoto ? 'object-cover' : 'object-contain bg-white',
+              )}
+            />
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (!file) return
+                void compressIdPhoto(file)
+                  .then((data) => onPatch({ idPhotoPending: data, idPhotoPreview: data }))
+                  .catch(() => toast.error('증명사진을 읽지 못했습니다.'))
+              }}
+            />
+          </label>
+          {hasCustomIdPhoto ? (
+            <button
+              type="button"
+              className="text-[11px] text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
+              onClick={() => onPatch({ idPhotoFileId: '', idPhotoPending: '', idPhotoPreview: '' })}
+            >
+              사진 삭제
+            </button>
+          ) : (
+            <span className="text-[11px] text-slate-400">클릭해서 등록</span>
+          )}
         </div>
-      ) : null}
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label className="text-xs text-muted-foreground">자격명</Label>
-        <Select
-          value={form.qualification || LEDGER_REGISTER_SELECT_EMPTY}
-          onValueChange={(value) =>
-            onPatch({
-              qualification: !value || value === LEDGER_REGISTER_SELECT_EMPTY ? '' : value,
-            })
-          }
-        >
-          <SelectTrigger aria-label="자격명" className="h-9 w-full">
-            {form.qualification || '자격 선택'}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value={LEDGER_REGISTER_SELECT_EMPTY}>자격 선택</SelectItem>
-              {QUALIFICATION_LEDGER_NAMES.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <ResumeField label="성명">
+              <Input
+                value={form.name}
+                onChange={(event) => onPatch({ name: event.target.value })}
+                className="h-10 bg-white text-base font-semibold"
+                placeholder="홍길동"
+              />
+            </ResumeField>
+            <ResumeField label="자격명">
+              <Select
+                value={form.qualification || LEDGER_REGISTER_SELECT_EMPTY}
+                onValueChange={(value) =>
+                  onPatch({
+                    qualification: !value || value === LEDGER_REGISTER_SELECT_EMPTY ? '' : value,
+                  })
+                }
+              >
+                <SelectTrigger aria-label="자격명" className="h-10 w-full bg-white">
+                  {form.qualification || '자격 선택'}
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value={LEDGER_REGISTER_SELECT_EMPTY}>자격 선택</SelectItem>
+                    {QUALIFICATION_LEDGER_NAMES.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </ResumeField>
+          </div>
+          <div className={cn('grid gap-3', cancelForm ? 'grid-cols-3' : 'grid-cols-2')}>
+            <ResumeField label="소속">
+              <Select
+                value={form.department || LEDGER_REGISTER_SELECT_EMPTY}
+                onValueChange={(value) =>
+                  onPatch({
+                    department: !value || value === LEDGER_REGISTER_SELECT_EMPTY ? '' : value,
+                  })
+                }
+              >
+                <SelectTrigger aria-label="소속" className="h-10 w-full bg-white">
+                  {form.department || '부서 선택'}
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value={LEDGER_REGISTER_SELECT_EMPTY}>부서 선택</SelectItem>
+                    {ledgerDepartmentOptions.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </ResumeField>
+            <ResumeField label="직위">
+              <Select
+                value={form.rank || LEDGER_REGISTER_SELECT_EMPTY}
+                onValueChange={(value) =>
+                  onPatch({
+                    rank: !value || value === LEDGER_REGISTER_SELECT_EMPTY ? '' : value,
+                  })
+                }
+              >
+                <SelectTrigger aria-label="직위" className="h-10 w-full bg-white">
+                  {form.rank || '직위 선택'}
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value={LEDGER_REGISTER_SELECT_EMPTY}>직위 선택</SelectItem>
+                    {JOB_TITLES_MENU.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </ResumeField>
+            {cancelForm ? (
+              <ResumeField label="인증번호">
+                <Input
+                  value={cancelForm.certNo}
+                  onChange={(event) => onPatch({ certNo: event.target.value })}
+                  className="h-10 bg-white font-medium tabular-nums"
+                  placeholder="QA-00"
+                  aria-label="인증번호"
+                />
+              </ResumeField>
+            ) : null}
+          </div>
+        </div>
       </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">성명</Label>
-        <Input
-          value={form.name}
-          onChange={(event) => onPatch({ name: event.target.value })}
-          className="h-9"
-          placeholder="홍길동"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">소속</Label>
-        <Select
-          value={form.department || LEDGER_REGISTER_SELECT_EMPTY}
-          onValueChange={(value) =>
-            onPatch({
-              department: !value || value === LEDGER_REGISTER_SELECT_EMPTY ? '' : value,
-            })
-          }
-        >
-          <SelectTrigger aria-label="소속" className="h-9 w-full">
-            {form.department || '부서 선택'}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value={LEDGER_REGISTER_SELECT_EMPTY}>부서 선택</SelectItem>
-              {ledgerDepartmentOptions.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">직위</Label>
-        <Select
-          value={form.rank || LEDGER_REGISTER_SELECT_EMPTY}
-          onValueChange={(value) =>
-            onPatch({
-              rank: !value || value === LEDGER_REGISTER_SELECT_EMPTY ? '' : value,
-            })
-          }
-        >
-          <SelectTrigger aria-label="직위" className="h-9 w-full">
-            {form.rank || '직위 선택'}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value={LEDGER_REGISTER_SELECT_EMPTY}>직위 선택</SelectItem>
-              {JOB_TITLES_MENU.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">입사일</Label>
-        <Input
-          type="date"
-          value={form.joinDate}
-          onChange={(event) => onPatch({ joinDate: event.target.value })}
-          className="h-9 tabular-nums"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">취득일</Label>
-        <Input
-          type="date"
-          value={form.acquiredDate}
-          onChange={(event) => onPatch({ acquiredDate: event.target.value })}
-          className="h-9 tabular-nums"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">만료일</Label>
-        <Input
-          type="date"
-          value={form.expiryDate}
-          onChange={(event) => onPatch({ expiryDate: event.target.value })}
-          className="h-9 tabular-nums"
-        />
-      </div>
-      {cancelForm ? (
-        <>
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">취소일자</Label>
+
+      <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-border dark:bg-muted/20">
+        <p className="mb-2.5 text-[11px] font-bold tracking-wide text-slate-500">재직 · 자격 일자</p>
+        <div className="grid grid-cols-3 gap-3">
+          <ResumeField label="입사일">
             <Input
               type="date"
-              value={cancelForm.cancelDate}
-              onChange={(event) => onPatch({ cancelDate: event.target.value })}
-              className="h-9 tabular-nums"
+              value={form.joinDate}
+              onChange={(event) => onPatch({ joinDate: event.target.value })}
+              className="h-10 bg-white tabular-nums"
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">취소 사유</Label>
+          </ResumeField>
+          <ResumeField label="취득일">
             <Input
-              value={cancelForm.cancelReason}
-              onChange={(event) => onPatch({ cancelReason: event.target.value })}
-              className="h-9"
-              placeholder="사유 입력"
+              type="date"
+              value={form.acquiredDate}
+              onChange={(event) => onPatch({ acquiredDate: event.target.value })}
+              className="h-10 bg-white tabular-nums"
             />
+          </ResumeField>
+          <ResumeField label="만료일">
+            <Input
+              type="date"
+              value={form.expiryDate}
+              onChange={(event) => onPatch({ expiryDate: event.target.value })}
+              className="h-10 bg-white tabular-nums"
+            />
+          </ResumeField>
+        </div>
+      </div>
+
+      {cancelForm ? (
+        <div className="border-t border-slate-100 px-5 py-4 dark:border-border">
+          <p className="mb-2.5 text-[11px] font-bold tracking-wide text-slate-500">인증 취소</p>
+          <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-3">
+            <ResumeField label="취소일자">
+              <Input
+                type="date"
+                value={cancelForm.cancelDate}
+                onChange={(event) => onPatch({ cancelDate: event.target.value })}
+                className="h-10 bg-white tabular-nums"
+              />
+            </ResumeField>
+            <ResumeField label="취소 사유">
+              <Input
+                value={cancelForm.cancelReason}
+                onChange={(event) => onPatch({ cancelReason: event.target.value })}
+                className="h-10 bg-white"
+                placeholder="사유 입력"
+              />
+            </ResumeField>
           </div>
-        </>
+        </div>
       ) : null}
+    </div>
+  )
+}
+
+function ResumeField({
+  label,
+  children,
+  className,
+}: {
+  label: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('space-y-1', className)}>
+      <Label className="text-[11px] font-medium text-slate-500">{label}</Label>
+      {children}
     </div>
   )
 }
@@ -598,7 +698,7 @@ function QualificationLedgerTab() {
   const patchFilters = (part: Partial<LedgerFilters>) => setFilters((prev) => ({ ...prev, ...part }))
   const reset = () => setFilters(defaultLedgerFilters())
 
-  const persistRows = async (nextRows: QualificationLedgerRow[], detail: string) => {
+  const persistRows = async (nextRows: QualificationLedgerSaveRow[], detail: string) => {
     if (!user) {
       toast.error('로그인이 필요합니다.')
       return false
@@ -651,7 +751,11 @@ function QualificationLedgerTab() {
       toast.error('입력값을 확인해 주세요.')
       return
     }
-    const nextRows = [...rows, draft].sort(sortQualificationLedger)
+    const rowForSave: QualificationLedgerSaveRow = {
+      ...draft,
+      ...(registerForm.idPhotoPending ? { idPhotoPending: registerForm.idPhotoPending } : {}),
+    }
+    const nextRows = [...rows, rowForSave].sort(sortQualificationLedger)
     const ok = await persistRows(nextRows, `자격인증 등록: ${name} · ${registerForm.qualification}`)
     if (!ok) return
     setRegisterForm(emptyLedgerRegisterForm())
@@ -687,12 +791,17 @@ function QualificationLedgerTab() {
       cancelDate: editForm.cancelDate,
       cancelReason: editForm.cancelReason,
       certNo: editForm.certNo.trim(),
+      idPhotoFileId: editForm.idPhotoPending ? editingRow.idPhotoFileId : editForm.idPhotoFileId,
     })
     if (!updated) {
       toast.error('입력값을 확인해 주세요.')
       return
     }
-    const nextRows = rows.map((row) => (row.id === editingRow.id ? updated : row)).sort(sortQualificationLedger)
+    const rowForSave: QualificationLedgerSaveRow = {
+      ...updated,
+      ...(editForm.idPhotoPending ? { idPhotoPending: editForm.idPhotoPending } : {}),
+    }
+    const nextRows = rows.map((row) => (row.id === editingRow.id ? rowForSave : row)).sort(sortQualificationLedger)
     const ok = await persistRows(nextRows, `자격인증 수정: ${name} · ${editForm.qualification}`)
     if (!ok) return
     setEditOpen(false)
@@ -720,7 +829,7 @@ function QualificationLedgerTab() {
         <Plus className="size-4" />
         자격 등록
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>자격인증 등록</DialogTitle>
         </DialogHeader>
@@ -752,7 +861,7 @@ function QualificationLedgerTab() {
         }
       }}
     >
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>자격인증 수정</DialogTitle>
         </DialogHeader>

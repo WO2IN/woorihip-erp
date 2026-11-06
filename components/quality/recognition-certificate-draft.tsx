@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Frame, ImagePlus, Printer, Stamp, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import { useAuth } from '@/components/auth/auth-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { getAuthHeaders } from '@/lib/auth-client'
 import type { QualificationLedgerRow } from '@/lib/qualification-ledger'
+import { QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL } from '@/lib/qualification-id-photo-placeholder'
 import { cn } from '@/lib/utils'
 
 type CertDraft = {
@@ -23,6 +23,17 @@ type CertDraft = {
 }
 
 const DEFAULT_ISSUER = '대표이사 홍성호'
+const EMPTY_DRAFT: CertDraft = {
+  name: '',
+  certNo: '',
+  department: '',
+  cardLabel: '',
+  issued: '',
+  expiry: '',
+  duty: '',
+  issueDate: '',
+  issuer: '',
+}
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10)
@@ -46,13 +57,19 @@ function printable(row: QualificationLedgerRow) {
   return row.status !== 'cancelled' && (row.suitabilityOnFile || row.recognitionOnFile)
 }
 
-type CertPhoto = { data: string; mime: string }
+type CertPhoto = { data: string; mime: string; name: string; fileId?: string }
+
+const FIELD_INPUT = 'h-9 bg-background'
+
+const PRINT_OPTION_ITEMS = [
+  { key: 'border' as const, label: '테두리', icon: Frame },
+  { key: 'seal' as const, label: '직인', icon: Stamp },
+  { key: 'photo' as const, label: '사진 카드', icon: ImagePlus },
+]
 
 export function RecognitionCertificateDraft() {
-  const { user } = useAuth()
   const [rows, setRows] = useState<QualificationLedgerRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [printing, setPrinting] = useState(false)
   const [selectedId, setSelectedId] = useState('')
   const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [drafts, setDrafts] = useState<Record<string, CertDraft>>({})
@@ -61,8 +78,8 @@ export function RecognitionCertificateDraft() {
     border: true,
     seal: true,
     photo: true,
-    logo: true,
   })
+  const [printing, setPrinting] = useState(false)
 
   useEffect(() => {
     fetch('/api/quality/qualifications', { cache: 'no-store' })
@@ -77,8 +94,44 @@ export function RecognitionCertificateDraft() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      for (const row of rows) {
+        const fileId = row.idPhotoFileId?.trim()
+        if (!fileId) continue
+        try {
+          const response = await fetch(`/api/files/${fileId}`, { cache: 'no-store' })
+          if (!response.ok || cancelled) continue
+          const blob = await response.blob()
+          const data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+            reader.onerror = () => reject(reader.error)
+            reader.readAsDataURL(blob)
+          })
+          if (!data || cancelled) continue
+          setPhotos((prev) => {
+            const existing = prev[row.id]
+            if (existing && !existing.fileId) return prev
+            return {
+              ...prev,
+              [row.id]: { data, mime: blob.type || 'image/jpeg', name: '증명사진', fileId },
+            }
+          })
+        } catch {
+          /* ignore */
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [rows])
+
   const selected = rows.find((row) => row.id === selectedId) ?? null
   const draft = selected ? drafts[selected.id] ?? draftFromRow(selected) : null
+  const form = draft ?? EMPTY_DRAFT
 
   const readyCount = rows.filter(printable).length
   const reviewCount = rows.length - readyCount
@@ -90,110 +143,61 @@ export function RecognitionCertificateDraft() {
     setDrafts((prev) => (prev[row.id] ? prev : { ...prev, [row.id]: draftFromRow(row) }))
   }
 
-  const personPayload = (id: string) => {
-    const row = rows.find((item) => item.id === id)
-    const current = row ? drafts[id] ?? draftFromRow(row) : null
-    if (!current) return null
-    const photo = photos[id]
-    return {
-      name: current.name,
-      department: current.department,
-      duty: current.duty,
-      joinDate: current.issued,
-      issueDate: current.issueDate,
-      issuer: current.issuer,
-      includePhoto: options.photo && Boolean(photo),
-      photoBase64: photo?.data,
-      photoMime: photo?.mime,
-    }
-  }
-
-  const printPdfBlob = (blob: Blob) =>
-    new Promise<void>((resolve, reject) => {
-      const url = URL.createObjectURL(blob)
-      const iframe = document.createElement('iframe')
-      iframe.setAttribute('aria-hidden', 'true')
-      iframe.className = 'pointer-events-none fixed size-0 border-0 opacity-0'
-      const cleanup = () => {
-        URL.revokeObjectURL(url)
-        iframe.remove()
-      }
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow?.focus()
-          iframe.contentWindow?.print()
-          window.setTimeout(() => {
-            cleanup()
-            resolve()
-          }, 1500)
-        } catch (error) {
-          cleanup()
-          reject(error instanceof Error ? error : new Error('인쇄 대화상자를 열지 못했습니다.'))
-        }
-      }
-      iframe.onerror = () => {
-        cleanup()
-        reject(new Error('인쇄 미리보기를 열지 못했습니다.'))
-      }
-      iframe.src = url
-      document.body.appendChild(iframe)
-    })
-
-  const fetchCertificatePdf = async (ids: string[]) => {
-    const people = ids.map(personPayload).filter((item): item is NonNullable<typeof item> => Boolean(item?.name?.trim()))
-    if (!people.length) {
-      toast.error('출력할 인원을 선택하세요.')
-      return null
-    }
-    const response = await fetch('/api/quality/recognition-pdf', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(user),
-      },
-      body: JSON.stringify({ people: [people[0]] }),
-    })
-    if (!response.ok) {
-      const json = (await response.json().catch(() => null)) as { error?: string } | null
-      throw new Error(json?.error || 'PDF를 만들지 못했습니다.')
-    }
-    return response.blob()
-  }
-
-  const printCertificates = async (ids: string[]) => {
-    const uniqueIds = [...new Set(ids)]
-    if (!uniqueIds.length) {
-      toast.error('출력할 인원을 선택하세요.')
-      return
-    }
-    setPrinting(true)
-    try {
-      for (let index = 0; index < uniqueIds.length; index += 1) {
-        const id = uniqueIds[index]
-        const row = rows.find((item) => item.id === id)
-        if (uniqueIds.length > 1 && row) {
-          toast.message(`${index + 1}/${uniqueIds.length} · ${row.name} 인쇄`)
-        }
-        const blob = await fetchCertificatePdf([id])
-        if (!blob) return
-        await printPdfBlob(blob)
-        if (index < uniqueIds.length - 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 400))
-        }
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '출력에 실패했습니다.')
-    } finally {
-      setPrinting(false)
-    }
-  }
-
   const patchDraft = (part: Partial<CertDraft>) => {
     if (!selected) return
     setDrafts((prev) => ({
       ...prev,
       [selected.id]: { ...(prev[selected.id] ?? draftFromRow(selected)), ...part },
     }))
+  }
+
+  const printTargets = rows.filter((row) => checked[row.id])
+  const outputRows = printTargets.length > 0 ? printTargets : selected ? [selected] : []
+
+  const printCertificates = async () => {
+    if (!outputRows.length) {
+      toast.error('출력할 인원을 선택하세요.')
+      return
+    }
+    setPrinting(true)
+    try {
+      for (const row of outputRows) {
+        const item = drafts[row.id] ?? draftFromRow(row)
+        const photo = photos[row.id]
+        const response = await fetch('/api/quality/recognition-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            people: [
+              {
+                name: item.name,
+                certNo: item.certNo,
+                department: item.department,
+                duty: item.duty,
+                joinDate: item.issued,
+                renewalDate: item.expiry,
+                issueDate: item.issueDate,
+                photoFileId: options.photo && photo?.fileId ? photo.fileId : undefined,
+                photoBase64: options.photo && photo && !photo.fileId ? photo.data : undefined,
+                photoMime: photo?.mime,
+                includePhoto: options.photo,
+                includeSeal: options.seal,
+              },
+            ],
+          }),
+        })
+        if (!response.ok) {
+          const result = (await response.json().catch(() => null)) as { error?: string } | null
+          throw new Error(result?.error || '자격인정서 출력에 실패했습니다.')
+        }
+        const blob = await response.blob()
+        await openCertificatePrintDialog(blob)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '자격인정서 출력에 실패했습니다.')
+    } finally {
+      setPrinting(false)
+    }
   }
 
   const stats = useMemo(
@@ -219,236 +223,399 @@ export function RecognitionCertificateDraft() {
         ))}
       </div>
 
-      <div className="grid items-start gap-3 xl:grid-cols-[17rem_minmax(0,1fr)_18.5rem]">
-        <section className="rounded-2xl border bg-card p-3 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">01 출력 대상</h2>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">체크한 인원만 일괄 출력에 포함됩니다.</p>
-          <ul className="mt-3 max-h-[36rem] space-y-1.5 overflow-y-auto pr-0.5">
+      <div className="grid items-stretch gap-3 xl:grid-cols-[20rem_minmax(0,1fr)_minmax(22rem,30rem)]">
+        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">출력 대상</h2>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">체크한 인원만 일괄 출력에 포함됩니다.</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-600 dark:bg-muted dark:text-slate-300">
+              {rows.length}명
+            </span>
+          </div>
+          <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
             {loading ? (
-              <li className="rounded-lg border border-dashed px-3 py-8 text-center text-xs text-muted-foreground">
-                불러오는 중…
-              </li>
+              <li className="px-3 py-10 text-center text-xs text-muted-foreground">불러오는 중…</li>
             ) : rows.length === 0 ? (
-              <li className="rounded-lg border border-dashed px-3 py-8 text-center text-xs text-muted-foreground">
-                자격인증대장에 등록된 인원이 없습니다.
-              </li>
+              <li className="px-3 py-10 text-center text-xs text-muted-foreground">자격인증대장에 등록된 인원이 없습니다.</li>
             ) : (
               rows.map((row) => {
                 const ready = printable(row)
+                const active = selectedId === row.id
                 return (
                   <li key={row.id}>
                     <div
                       className={cn(
-                        'flex items-start gap-2 rounded-xl border px-2.5 py-2',
-                        selectedId === row.id
-                          ? 'border-sky-300 bg-sky-50/90 dark:border-sky-500/45 dark:bg-sky-950/35'
-                          : 'border-slate-200 bg-white dark:border-border dark:bg-card',
+                        'group flex items-center gap-3 rounded-xl px-2.5 py-2 transition-colors',
+                        active
+                          ? 'bg-emerald-50 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30'
+                          : 'hover:bg-slate-50 dark:hover:bg-muted/40',
                       )}
                     >
-                      <input
-                        type="checkbox"
-                        className="mt-1 size-3.5 shrink-0 accent-sky-600"
-                        checked={Boolean(checked[row.id])}
-                        onChange={(event) =>
-                          setChecked((prev) => ({ ...prev, [row.id]: event.target.checked }))
-                        }
-                        aria-label={`${row.name} 출력 포함`}
-                      />
-                      <button type="button" className="min-w-0 flex-1 text-left" onClick={() => selectPerson(row)}>
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
-                            {row.name}
-                          </span>
-                          <span
-                            className={cn(
-                              'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold',
-                              ready
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200'
-                                : 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-100',
-                            )}
-                          >
-                            {ready ? '출력 가능' : '확인 필요'}
-                          </span>
+                      <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => selectPerson(row)}>
+                        <span
+                          className={cn(
+                            'flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+                            ready
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-100',
+                          )}
+                        >
+                          {row.name.trim().charAt(0)}
                         </span>
-                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                          {row.certNo || '번호 없음'} · {row.qualification}
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{row.name}</span>
+                            <span
+                              className={cn('size-1.5 shrink-0 rounded-full', ready ? 'bg-emerald-500' : 'bg-amber-400')}
+                              title={ready ? '출력 가능' : '확인 필요'}
+                            />
+                          </span>
+                          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                            {row.certNo || '번호 없음'} · {row.qualification}
+                          </span>
                         </span>
                       </button>
+                      <input
+                        type="checkbox"
+                        className="size-4 shrink-0 accent-emerald-700"
+                        checked={Boolean(checked[row.id])}
+                        onChange={(event) => setChecked((prev) => ({ ...prev, [row.id]: event.target.checked }))}
+                        aria-label={`${row.name} 출력 포함`}
+                      />
                     </div>
                   </li>
                 )
               })
             )}
           </ul>
+          <div className="flex items-center justify-between border-t px-4 py-2.5 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-3">
+              <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-emerald-500" />출력 가능</span>
+              <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />확인 필요</span>
+            </span>
+            <span className="font-medium tabular-nums">체크 {checkedCount}명</span>
+          </div>
         </section>
 
-        <section className="rounded-2xl border bg-card p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-              {draft ? `자격인정서 ${draft.name} · ${draft.certNo || '번호 없음'}` : '자격인정서'}
-            </h2>
-            {selected ? (
-              <span
-                className={cn(
-                  'rounded-full px-2 py-0.5 text-[11px] font-bold',
-                  printable(selected)
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-amber-100 text-amber-900',
-                )}
-              >
-                {printable(selected) ? '출력 가능' : '확인 필요'}
-              </span>
-            ) : null}
-          </div>
-
-          {!draft ? (
-            <p className="py-16 text-center text-sm text-muted-foreground">왼쪽에서 출력 대상을 선택하세요.</p>
-          ) : (
-            <div className="mt-4 space-y-5">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">02 인정서 기재 내용</h3>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  양식 셀 — C8 사진, F26 성명, F27 소속, F28 입사일자, F29 담당업무, C37 발행일(예: 2026년 11월 5일)
-                </p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <Field label="성명">
-                    <Input value={draft.name} onChange={(event) => patchDraft({ name: event.target.value })} />
-                  </Field>
-                  <Field label="자격인정번호">
-                    <Input value={draft.certNo} onChange={(event) => patchDraft({ certNo: event.target.value })} />
-                  </Field>
-                  <Field label="부서">
-                    <Input value={draft.department} onChange={(event) => patchDraft({ department: event.target.value })} />
-                  </Field>
-                  <Field label="카드 표시 (부서/사원)">
-                    <Input value={draft.cardLabel} onChange={(event) => patchDraft({ cardLabel: event.target.value })} />
-                  </Field>
-                  <Field label="입사 일자">
-                    <Input type="date" value={draft.issued} onChange={(event) => patchDraft({ issued: event.target.value })} />
-                  </Field>
-                  <Field label="만료 일자">
-                    <Input type="date" value={draft.expiry} onChange={(event) => patchDraft({ expiry: event.target.value })} />
-                  </Field>
-                  <Field label="담당 업무 (자격명)">
-                    <Input value={draft.duty} onChange={(event) => patchDraft({ duty: event.target.value })} />
-                  </Field>
-                  <Field label="발행일">
-                    <Input type="date" value={draft.issueDate} onChange={(event) => patchDraft({ issueDate: event.target.value })} />
-                  </Field>
-                  <Field label="발행 명의" className="sm:col-span-2">
-                    <Input value={draft.issuer} onChange={(event) => patchDraft({ issuer: event.target.value })} />
-                  </Field>
-                  <Field label="사진" className="sm:col-span-2">
-                    <Input
-                      key={selected.id}
-                      type="file"
-                      accept="image/*"
-                      className="cursor-pointer text-xs file:mr-2 file:text-xs"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0]
-                        if (!file) return
-                        const reader = new FileReader()
-                        reader.onload = () => {
-                          const data = typeof reader.result === 'string' ? reader.result : ''
-                          if (!data) return
-                          setPhotos((prev) => ({ ...prev, [selected.id]: { data, mime: file.type || 'image/jpeg' } }))
-                        }
-                        reader.readAsDataURL(file)
-                      }}
-                    />
-                    {photos[selected.id] ? (
-                      <p className="text-[11px] text-emerald-700">사진이 선택되었습니다. 양식 C8(증명사진) 칸에 들어갑니다.</p>
-                    ) : null}
-                  </Field>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">03 출력 옵션</h3>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                  {(
-                    [
-                      ['border', '테두리'],
-                      ['seal', '직인'],
-                      ['photo', '사진 카드'],
-                      ['logo', '로고'],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <label key={key} className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-200">
-                      <input
-                        type="checkbox"
-                        className="size-3.5 accent-emerald-700"
-                        checked={options[key]}
-                        onChange={(event) => setOptions((prev) => ({ ...prev, [key]: event.target.checked }))}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-                <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                  체크 {checkedCount}명 · <span className="font-medium">자격인정서.xlsx</span> 양식을 채운 뒤 PDF로 인쇄합니다.
-                </p>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border bg-card p-3 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">A4 미리보기</h2>
-            <span className="text-[11px] text-muted-foreground">210 × 297mm</span>
-          </div>
-          <div className="mt-3 aspect-[210/297] w-full rounded-md border border-dashed border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-muted/30">
-            <div className="flex h-full flex-col items-center justify-center px-4 text-center">
-              <p className="text-sm font-bold text-slate-500">인쇄 미리보기</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                출력 시 엑셀 양식에
-                <br />
-                기재 후 PDF로 인쇄합니다.
+        <section className="flex h-full min-h-0 flex-col rounded-2xl border bg-card p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span
+              className={cn(
+                'flex size-11 shrink-0 items-center justify-center rounded-full text-base font-bold',
+                selected ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200' : 'bg-slate-100 text-slate-400 dark:bg-muted',
+              )}
+            >
+              {selected ? selected.name.trim().charAt(0) : '?'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-base font-bold text-slate-900 dark:text-slate-100">
+                {draft ? draft.name : '자격인정서'}
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                {draft ? `${draft.certNo || '번호 없음'} · ${draft.duty || '담당 업무 없음'}` : '왼쪽에서 출력 대상을 선택하세요.'}
               </p>
             </div>
+            <Button
+              type="button"
+              size="default"
+              className="h-9 shrink-0 gap-1.5 rounded-lg bg-emerald-700 px-4 text-white shadow-sm hover:bg-emerald-800"
+              disabled={printing || outputRows.length === 0}
+              onClick={() => void printCertificates()}
+            >
+              <Printer className="size-4" />
+              {printing ? '출력 중…' : outputRows.length > 1 ? `출력 ${outputRows.length}명` : '출력'}
+            </Button>
           </div>
-          <Button
-            type="button"
-            className="mt-3 h-10 w-full text-sm font-semibold bg-slate-600 text-white shadow-sm hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-400"
-            disabled={!selected || printing}
-            onClick={() => void printCertificates(selected ? [selected.id] : [])}
-          >
-            {printing ? '준비 중…' : '출력'}
-          </Button>
-        </section>
-      </div>
 
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10"
-          disabled={!selected}
-          onClick={() => {
-            if (!selected) return
-            setDrafts((prev) => ({ ...prev, [selected.id]: draftFromRow(selected) }))
-            setPhotos((prev) => {
-              const next = { ...prev }
-              delete next[selected.id]
-              return next
-            })
-            toast.message('기재 내용을 대장 값으로 되돌렸습니다.')
-          }}
-        >
-          기재 내용 초기화
-        </Button>
-        <Button
-          type="button"
-          className="h-10 bg-emerald-700 text-white hover:bg-emerald-800"
-          disabled={checkedCount === 0 || printing}
-          onClick={() => void printCertificates(rows.filter((row) => checked[row.id]).map((row) => row.id))}
-        >
-          {printing ? '준비 중…' : '체크 대상 일괄 출력'}
-        </Button>
+          <div className="mt-4 flex flex-col gap-3">
+            <FormGroup title="인적 사항">
+              <Field label="성명">
+                <Input className={FIELD_INPUT} disabled={!selected} value={form.name} onChange={(event) => patchDraft({ name: event.target.value })} />
+              </Field>
+              <Field label="자격인정번호">
+                <Input className={FIELD_INPUT} disabled={!selected} value={form.certNo} onChange={(event) => patchDraft({ certNo: event.target.value })} />
+              </Field>
+              <Field label="부서">
+                <Input className={FIELD_INPUT} disabled={!selected} value={form.department} onChange={(event) => patchDraft({ department: event.target.value })} />
+              </Field>
+              <Field label="카드 표시">
+                <Input className={FIELD_INPUT} disabled={!selected} value={form.cardLabel} onChange={(event) => patchDraft({ cardLabel: event.target.value })} />
+              </Field>
+            </FormGroup>
+
+            <FormGroup title="자격 정보">
+              <Field label="입사 일자">
+                <Input className={FIELD_INPUT} disabled={!selected} type="date" value={form.issued} onChange={(event) => patchDraft({ issued: event.target.value })} />
+              </Field>
+              <Field label="자격갱신일">
+                <Input className={FIELD_INPUT} disabled={!selected} type="date" value={form.expiry} onChange={(event) => patchDraft({ expiry: event.target.value })} />
+              </Field>
+              <Field label="담당 업무">
+                <Input className={FIELD_INPUT} disabled={!selected} value={form.duty} onChange={(event) => patchDraft({ duty: event.target.value })} />
+              </Field>
+              <Field label="발행일">
+                <Input className={FIELD_INPUT} disabled={!selected} type="date" value={form.issueDate} onChange={(event) => patchDraft({ issueDate: event.target.value })} />
+              </Field>
+            </FormGroup>
+
+            <div className="flex flex-col gap-3">
+              <label
+                className={cn(
+                  'relative flex h-28 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed px-3 text-center transition-colors',
+                  selected
+                    ? 'cursor-pointer border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 dark:border-border'
+                    : 'cursor-not-allowed border-slate-200 opacity-60 dark:border-border',
+                )}
+              >
+                {selected ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photos[selected.id]?.data ?? QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL}
+                      alt=""
+                      className={cn(
+                        'aspect-[3/4] max-h-36 min-h-0 rounded-md shadow-sm',
+                        photos[selected.id] ? 'object-cover' : 'object-contain bg-white',
+                      )}
+                    />
+                    <span className="max-w-full truncate text-[11px] text-emerald-700">
+                      {photos[selected.id] ? `${photos[selected.id].name} · 클릭해서 변경` : '사진 없음 · 클릭해서 등록'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <ImagePlus className="size-7 text-slate-300" aria-hidden />
+                    <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">증명사진 선택</span>
+                    <span className="text-[11px] text-muted-foreground">인원 선택 후 사진 등록</span>
+                  </>
+                )}
+                <input
+                  key={selected?.id ?? 'none'}
+                  type="file"
+                  accept="image/*"
+                  disabled={!selected}
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (!file || !selected) return
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      const data = typeof reader.result === 'string' ? reader.result : ''
+                      if (!data) return
+                      setPhotos((prev) => ({
+                        ...prev,
+                        [selected.id]: { data, mime: file.type || 'image/jpeg', name: file.name, fileId: undefined },
+                      }))
+                    }
+                    reader.readAsDataURL(file)
+                  }}
+                />
+              </label>
+
+              <div className="shrink-0 rounded-xl border bg-slate-50/60 p-3 dark:bg-muted/20">
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold text-slate-500">출력 옵션</h3>
+                  <span className="text-[10px] text-muted-foreground">인쇄 시 반영</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {PRINT_OPTION_ITEMS.map(({ key, label, icon: Icon }) => (
+                    <PrintOptionToggle
+                      key={key}
+                      label={label}
+                      icon={Icon}
+                      checked={options[key]}
+                      onChange={(checked) => setOptions((prev) => ({ ...prev, [key]: checked }))}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="relative min-h-[32rem] xl:min-h-0">
+          <section className="flex h-full min-h-[32rem] flex-col rounded-2xl border bg-card p-3 shadow-sm xl:absolute xl:inset-0 xl:min-h-0">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">A4 미리보기</h2>
+              <span className="text-[11px] text-muted-foreground">210 × 297mm</span>
+            </div>
+            <div className="mt-3 min-h-0 flex-1 overflow-hidden rounded-md bg-slate-100 p-3 [container-type:size] dark:bg-muted/40">
+              {selected ? (
+                <div className="mx-auto h-full" style={{ width: 'min(100cqw, calc(100cqh * 210 / 297))' }}>
+                  <CertificateSheet
+                    draft={draft}
+                    photo={options.photo ? photos[selected.id] : undefined}
+                    showPhoto={options.photo}
+                    showBorder={options.border}
+                    showSeal={options.seal}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   )
+}
+
+function CertificateSheet({
+  draft,
+  photo,
+  showPhoto,
+  showBorder,
+  showSeal,
+}: {
+  draft: CertDraft | null
+  photo?: CertPhoto
+  showPhoto: boolean
+  showBorder: boolean
+  showSeal: boolean
+}) {
+  const photoSrc = photo?.data ?? QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL
+  const photoIsPlaceholder = !photo
+  const issuerName = issuerPersonName(draft?.issuer)
+  return (
+    <div
+      className="relative w-full bg-white shadow-sm [container-type:inline-size]"
+      style={{ height: 0, paddingBottom: '141.4286%' }}
+    >
+      <div className="absolute inset-0 overflow-hidden text-black">
+        {showBorder ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/recognition-certificate-border.png" alt="" className="pointer-events-none absolute inset-0 h-full w-full" />
+        ) : null}
+        <p className="absolute inset-x-0 top-[9.6%] text-center text-[4.6cqw] font-black tracking-[0.42em] [text-indent:0.42em]">자격인정서</p>
+        <div className="absolute top-[15.2%] left-1/2 h-[0.28cqw] w-[36%] -translate-x-1/2 bg-black" />
+        {showPhoto ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={photoSrc}
+            alt=""
+            className={cn(
+              'absolute top-[17.4%] left-1/2 aspect-[3/4] w-[30%] -translate-x-1/2',
+              photoIsPlaceholder ? 'object-contain bg-white' : 'object-cover object-[center_18%]',
+            )}
+          />
+        ) : null}
+        <div className="absolute top-[53.6%] left-1/2 -translate-x-1/2 text-[2.35cqw] leading-[1.62] font-bold">
+          <div className="grid grid-cols-[7.4em_5.6em]">
+            <PreviewLine glyphs="성명" value={draft?.name} />
+            <PreviewLine glyphs="소속" value={draft?.department} />
+            <PreviewLine glyphs="입사일자" value={dotDate(draft?.issued ?? '')} />
+            <PreviewLine glyphs="자격갱신일" value={dotDate(draft?.expiry ?? '')} />
+            <PreviewLine glyphs="담당업무" value={draft?.duty} />
+          </div>
+        </div>
+        <p className="absolute top-[69.4%] left-1/2 w-[76%] -translate-x-1/2 text-center text-[2.7cqw] leading-snug font-bold">
+          상기자를 교육 수료 및 자격시험에 Pass 하였기에
+          <br />
+          위 자격을 인정함.
+        </p>
+        <p className="absolute inset-x-0 top-[77.4%] text-center text-[2.45cqw] font-bold">{koreanDate(draft?.issueDate ?? '')}</p>
+        <div className="absolute inset-x-0 top-[80.8%] flex items-center justify-center gap-[0.7em] text-[3.4cqw] font-black">
+          <span>대표이사</span>
+          <span className="relative">
+            {issuerName}
+            {showSeal ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src="/company-seal.png"
+                alt=""
+                className="pointer-events-none absolute top-1/2 left-full h-[2.4em] w-auto -translate-y-1/2 -ml-[0.35em]"
+              />
+            ) : null}
+          </span>
+        </div>
+        <div className="absolute top-[87.6%] right-[12.5%] left-[12.5%] h-[0.18cqw] bg-black" />
+        <div className="absolute top-[88.4%] right-[12.5%] left-[12.5%] flex items-center justify-between">
+          <span className="text-[1.75cqw]">자격인정번호 {draft?.certNo ?? ''}</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="WOORI" className="h-[5cqw] w-auto" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PreviewLine({ glyphs, value }: { glyphs: string; value?: string }) {
+  const chars = [...glyphs]
+  return (
+    <>
+      <span className="flex justify-between pr-[0.45em]">
+        {chars.map((char, index) => (
+          <span key={`${char}-${index}`}>{char}</span>
+        ))}
+      </span>
+      <span className="whitespace-nowrap">: {value || ''}</span>
+    </>
+  )
+}
+
+function dotDate(iso: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
+  return iso.replace(/-/g, '.')
+}
+
+function koreanDate(iso: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
+  const [year, month, day] = iso.split('-').map(Number)
+  return `${year}년 ${month}월 ${day}일`
+}
+
+function issuerPersonName(issuer?: string) {
+  const text = (issuer || DEFAULT_ISSUER).trim()
+  if (text.startsWith('대표이사')) return text.slice('대표이사'.length).trim() || '홍성호'
+  return text || '홍성호'
+}
+
+function openCertificatePrintDialog(blob: Blob) {
+  return new Promise<void>((resolve) => {
+    const url = URL.createObjectURL(blob)
+    const frame = document.createElement('iframe')
+    frame.title = '자격인정서 인쇄'
+    frame.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;opacity:0;pointer-events:none'
+    document.body.appendChild(frame)
+    let released = false
+    let started = false
+    const release = () => {
+      if (released) return
+      released = true
+      window.removeEventListener('afterprint', release)
+      resolve()
+    }
+    const cleanup = () => {
+      if (!frame.isConnected) return
+      frame.remove()
+      URL.revokeObjectURL(url)
+    }
+    const startPrint = () => {
+      if (started) return
+      started = true
+      const win = frame.contentWindow
+      window.addEventListener('afterprint', release)
+      win?.addEventListener('afterprint', () => {
+        release()
+        window.setTimeout(cleanup, 400)
+      })
+      try {
+        win?.focus()
+        win?.print()
+      } catch {
+        release()
+        cleanup()
+        return
+      }
+      // 인쇄 창을 닫으면 print()가 반환된다. iframe 쪽 afterprint는 안 올 때가 있다.
+      release()
+      window.setTimeout(cleanup, 60_000)
+    }
+    frame.onload = () => window.setTimeout(startPrint, 300)
+    frame.src = url
+    window.setTimeout(startPrint, 2000)
+  })
 }
 
 function Field({
@@ -461,9 +628,50 @@ function Field({
   className?: string
 }) {
   return (
-    <div className={cn('block space-y-1', className)}>
+    <div className={cn('flex flex-col gap-1', className)}>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {children}
     </div>
+  )
+}
+
+function FormGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-xl border bg-slate-50/60 p-3 dark:bg-muted/20">
+      <h3 className="text-xs font-bold text-slate-500">{title}</h3>
+      <div className="mt-2 grid gap-x-3 gap-y-2.5 sm:grid-cols-2">{children}</div>
+    </div>
+  )
+}
+
+function PrintOptionToggle({
+  label,
+  icon: Icon,
+  checked,
+  onChange,
+}: {
+  label: string
+  icon: LucideIcon
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label
+      className={cn(
+        'flex h-12 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border px-1 text-center transition-all select-none',
+        checked
+          ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+          : 'border-slate-200 bg-background text-slate-600 hover:border-emerald-300 hover:bg-emerald-50/60 dark:border-border dark:bg-card dark:text-slate-300 dark:hover:bg-emerald-500/5',
+      )}
+    >
+      <input
+        type="checkbox"
+        className="sr-only"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <Icon className={cn('size-3.5', checked ? 'text-white/95' : 'text-slate-400')} aria-hidden />
+      <span className="max-w-full truncate px-0.5 text-[10px] leading-tight font-semibold">{label}</span>
+    </label>
   )
 }

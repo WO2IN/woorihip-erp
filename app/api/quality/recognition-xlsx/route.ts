@@ -9,13 +9,16 @@ export const runtime = 'nodejs'
 
 type PersonPayload = {
   name?: string
+  certNo?: string
   department?: string
   duty?: string
   joinDate?: string
+  renewalDate?: string
   issueDate?: string
   photoBase64?: string
   photoMime?: string
   includePhoto?: boolean
+  includeSeal?: boolean
 }
 
 function toInput(person: PersonPayload): RecognitionCertificateInput | null {
@@ -23,13 +26,16 @@ function toInput(person: PersonPayload): RecognitionCertificateInput | null {
   if (!name) return null
   return {
     name,
+    certNo: String(person.certNo ?? '').trim(),
     department: String(person.department ?? '').trim(),
     joinDate: String(person.joinDate ?? '').trim(),
+    renewalDate: String(person.renewalDate ?? '').trim(),
     duty: String(person.duty ?? '').trim(),
     issueDate: String(person.issueDate ?? '').trim(),
     photoBase64: person.photoBase64,
     photoMime: person.photoMime,
     includePhoto: person.includePhoto,
+    includeSeal: person.includeSeal,
   }
 }
 
