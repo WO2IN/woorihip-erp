@@ -10,8 +10,8 @@ type Point = DashboardStats['process']['views']['trend']['week'][number]
 type Range = 'week' | 'month'
 
 const chartConfig = {
-  inbound: { label: '입고', color: '#1d4ed8' },
-  outbound: { label: '출고', color: '#93c5fd' },
+  inbound: { label: '입고', theme: { light: '#1d4ed8', dark: '#60a5fa' } },
+  outbound: { label: '출고', theme: { light: '#93c5fd', dark: '#2563eb' } },
 }
 
 export function MovementTrend({ week, month }: { week: Point[]; month: Point[] }) {
@@ -29,7 +29,7 @@ export function MovementTrend({ week, month }: { week: Point[]; month: Point[] }
           aria-label="입출고 추이 기간"
           value={range}
           onChange={(event) => setRange(event.target.value as Range)}
-          className="h-8 rounded-full border bg-card px-3 text-xs font-semibold text-slate-700 shadow-sm outline-none dark:text-slate-200"
+          className="h-8 rounded-full border border-border bg-card px-3 text-xs font-semibold text-slate-700 shadow-sm outline-none dark:text-slate-200"
         >
           <option value="week">주간</option>
           <option value="month">월간</option>
@@ -46,8 +46,8 @@ export function MovementTrend({ week, month }: { week: Point[]; month: Point[] }
         </BarChart>
       </ChartContainer>
       <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-700" />입고</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-300" />출고</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-700 dark:bg-blue-400" />입고</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-300 dark:bg-blue-600" />출고</span>
         <span className="ml-auto">{range === 'week' ? '최근 7일' : '최근 6개월'} · 건</span>
       </div>
     </article>
@@ -61,12 +61,12 @@ function TrendTip({ active, payload }: { active?: boolean; payload?: ReadonlyArr
     <div className="min-w-36 rounded-xl border bg-card px-3 py-2.5 text-xs shadow-lg">
       <p className="mb-1.5 font-semibold text-slate-800 dark:text-slate-100">{row.full}</p>
       <p className="flex items-center gap-2">
-        <span className="h-2.5 w-2.5 rounded-sm bg-blue-700" />
+        <span className="h-2.5 w-2.5 rounded-sm bg-blue-700 dark:bg-blue-400" />
         <span className="text-muted-foreground">입고</span>
         <span className="ml-auto font-semibold tabular-nums">{row.inbound.toLocaleString('ko-KR')}건</span>
       </p>
       <p className="mt-1 flex items-center gap-2">
-        <span className="h-2.5 w-2.5 rounded-sm bg-blue-300" />
+        <span className="h-2.5 w-2.5 rounded-sm bg-blue-300 dark:bg-blue-600" />
         <span className="text-muted-foreground">출고</span>
         <span className="ml-auto font-semibold tabular-nums">{row.outbound.toLocaleString('ko-KR')}건</span>
       </p>

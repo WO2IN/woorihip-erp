@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Folder,
   FolderOpen,
@@ -25,22 +25,12 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { BAND_BUTTON_PRIMARY, PageHeader } from '@/components/shared/page-header'
+import { BAND_BUTTON_PRIMARY, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MultiSelect } from '@/components/ui/multi-select'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { DocumentMetadata } from '@/lib/types'
 import { yearFromIssueDate } from '@/lib/lot'
 import { FileCard, LIST_GRID } from './file-card'
@@ -49,7 +39,7 @@ import { FilePreviewDrawer } from './file-preview-drawer'
 import { cn } from '@/lib/utils'
 import { FILTER_CONSONANTS, chosungSearch, matchesChosung } from '@/lib/korean'
 import { useDataChanged } from '@/lib/data-events'
-import { getSession, buildAuthHeaders } from '@/lib/auth-client'
+import { getAuthHeaders } from '@/lib/auth-client'
 import { useAuth } from '@/components/auth/auth-context'
 import { toast } from 'sonner'
 
@@ -146,34 +136,6 @@ function ListHeader({
   )
 }
 
-function getInitialConsonant(name: string) {
-  const firstChar = name.charCodeAt(0)
-
-  if (firstChar < 0xac00 || firstChar > 0xd7a3) {
-    return '#'
-  }
-
-  const index = Math.floor((firstChar - 0xac00) / 588)
-
-  const initials = [
-    'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ',
-    'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ',
-    'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
-  ]
-
-  const initial = initials[index]
-
-  const normalize: Record<string, string> = {
-    'ㄲ': 'ㄱ',
-    'ㄸ': 'ㄷ',
-    'ㅃ': 'ㅂ',
-    'ㅆ': 'ㅅ',
-    'ㅉ': 'ㅈ',
-  }
-
-  return normalize[initial] || initial
-}
-
 interface ExplorerViewProps {
   initialCompany?: string
   initialDocType?: string
@@ -185,11 +147,7 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   const [allDocs, setAllDocs] = useState<DocumentMetadata[]>([])
   const [companies, setCompanies] = useState<string[]>([])
   const [docTypes, setDocTypes] = useState<string[]>([])
-  
-  const [products, setProducts] = useState<string[]>([])
-  const [materials, setMaterials] = useState<string[]>([])
-  const [specifications, setSpecifications] = useState<string[]>([])
-  
+
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -197,7 +155,6 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
 
   // Sidebar state
   const [consonant, setConsonant] = useState<string | null>(null)
-  const [selectedInitial, setSelectedInitial] = useState<string | null>(null)
 
 
   // Navigation — 세 상태를 하나의 객체로 관리하여 항상 원자적으로 업데이트
@@ -251,46 +208,14 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [
-      docsRes,
-      compRes,
-      dtRes,
-      productRes,
-      materialRes,
-      specificationRes
-    ] = await Promise.all([
-    
-      fetch('/api/documents', {
-        cache:'no-store'
-      }).then(r=>r.json()),
-    
-      fetch('/api/config?name=companies', {
-        cache:'no-store'
-      }).then(r=>r.json()),
-    
-      fetch('/api/config?name=document-types', {
-        cache:'no-store'
-      }).then(r=>r.json()),
-    
-      fetch('/api/config?name=products', {
-        cache:'no-store'
-      }).then(r=>r.json()),
-    
-      fetch('/api/config?name=materials', {
-        cache:'no-store'
-      }).then(r=>r.json()),
-    
-      fetch('/api/config?name=specifications', {
-        cache:'no-store'
-      }).then(r=>r.json()),
-    
+    const [docsRes, compRes, dtRes] = await Promise.all([
+      fetch('/api/documents', { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/config?name=companies', { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/config?name=document-types', { cache: 'no-store' }).then(r => r.json()),
     ])
     setAllDocs(docsRes.data || [])
     setCompanies(compRes.data || [])
     setDocTypes(dtRes.data || [])
-    setProducts(productRes.data || [])
-    setMaterials(materialRes.data || [])
-    setSpecifications(specificationRes.data || [])
     setLoading(false)
   }, [])
 
@@ -331,17 +256,6 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
       consonant ? matchesChosung(c, consonant) : true
     )
   }, [companies, consonant])
-
-  const companiesByInitial = useMemo(() => {
-    return FILTER_CONSONANTS
-      .map(initial => ({
-        initial,
-        companies: companies.filter(
-          company => getInitialConsonant(company) === initial
-        ),
-      }))
-      .filter(group => group.companies.length > 0)
-  }, [companies])
 
   // --- Content level ---
   const level: Level | null = selectedCompany
@@ -652,9 +566,8 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   
     try {
       const ids = [...selectedDocs]
-      const session = getSession()
-      const authHeaders = session ? buildAuthHeaders(session) : {}
-  
+      const authHeaders = getAuthHeaders()
+
       const responses = await Promise.all(
         ids.map(id =>
           fetch(`/api/documents/${id}`, {
@@ -856,9 +769,9 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   )
 
   return (
-    <div className="flex h-full flex-col gap-4 p-5">
+    <div className={cn(PAGE_SHELL, 'h-full min-h-0')}>
       <PageHeader
-        tone="blue"
+        tone="teal"
         icon={FileText}
         eyebrow="DOCUMENTS · 문서관리"
         title="문서탐색기"
@@ -1287,27 +1200,11 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
         onUpdate={handleUpdateDoc}
       />
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>문서 삭제</AlertDialogTitle>
-            <AlertDialogDescription>
-              선택한 {selectedDocs.length}개의 문서를 삭제하시겠습니까?
-              <br />
-              삭제 후에는 복구할 수 없습니다.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteSelected}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              삭제
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title="문서 삭제" onConfirm={handleDeleteSelected}>
+        선택한 {selectedDocs.length}개의 문서를 삭제하시겠습니까?
+        <br />
+        삭제 후에는 복구할 수 없습니다.
+      </ConfirmDeleteDialog>
     </div>
   )
 }

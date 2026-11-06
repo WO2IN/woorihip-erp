@@ -1,0 +1,117 @@
+.panel {
+  display: grid;
+  grid-template-columns: minmax(300px, 42vw) minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.brand {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  padding: 3rem 2.75rem;
+  color: white;
+  background:
+    radial-gradient(520px 360px at 18% 12%, oklch(0.58 0.16 258 / 0.85), transparent 62%),
+    radial-gradient(420px 340px at 100% 100%, oklch(0.68 0.16 55 / 0.55), transparent 58%),
+    linear-gradient(165deg, oklch(0.34 0.13 262), oklch(0.24 0.07 255) 58%, oklch(0.3 0.08 40));
+}
+
+.brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(oklch(1 0 0 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(1 0 0 / 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to top, black, transparent 72%);
+}
+
+.arc {
+  position: absolute;
+  top: -6rem;
+  right: -8rem;
+  width: min(36rem, 90%);
+  height: auto;
+  color: oklch(0.74 0.16 55 / 0.55);
+  pointer-events: none;
+}
+
+.arcLine {
+  color: oklch(0.78 0.08 258 / 0.45);
+}
+
+.brandInner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.copy li {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.copy li::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: none;
+  border-radius: 9999px;
+  background: oklch(0.78 0.16 55);
+  box-shadow: 0 0 0 4px oklch(0.78 0.16 55 / 0.18);
+}
+
+.main {
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+  padding: 2rem 1.25rem;
+  background:
+    radial-gradient(640px 420px at 100% 0%, oklch(0.9 0.04 258 / 0.35), transparent 60%),
+    oklch(0.985 0.004 250);
+}
+
+:global(.dark) .main {
+  background:
+    radial-gradient(640px 420px at 100% 0%, oklch(0.4 0.08 258 / 0.28), transparent 60%),
+    oklch(0.16 0.016 255);
+}
+
+@media (max-width: 900px) {
+  .panel {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .brand {
+    align-items: center;
+    justify-content: center;
+    padding: 1.75rem 1.25rem;
+  }
+
+  .brandInner {
+    align-items: center;
+    gap: 0;
+  }
+
+  .copy {
+    display: none;
+  }
+
+  .main {
+    min-height: 0;
+    flex: 1;
+    overflow: visible;
+  }
+}

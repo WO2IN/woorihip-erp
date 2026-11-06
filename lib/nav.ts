@@ -37,7 +37,7 @@ export const NAV: NavSection[] = [
   },
   {
     id: 'customer', label: '고객관리', icon: Building2, children: [
-      { label: '고객심사현황', href: '/customer/audit-status', testing: true },
+      { label: '고객심사현황', href: '/customer/audit-status' },
       { label: 'QSA · QPA', href: '/customer/qsa-qpa', soon: true },
     ],
   },
@@ -45,7 +45,7 @@ export const NAV: NavSection[] = [
     id: 'quality', label: '품질관리', icon: ShieldCheck, children: [
       { label: '부적합관리', href: '/quality/nonconformity' },
       { label: '변경점관리 (4M)', href: '/quality/change-points', testing: true },
-      { label: '자격관리', href: '/quality/qualifications', soon: true },
+      { label: '자격인증 관리', href: '/quality/qualifications', testing: true },
       { label: 'IATF 16949', href: '/quality/iatf', soon: true },
     ],
   },

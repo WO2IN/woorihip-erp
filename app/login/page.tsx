@@ -9,8 +9,13 @@ import { Label } from '@/components/ui/label'
 import { setSession, getSession } from '@/lib/auth-client'
 import { SessionUser } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import panelStyles from './login-panel.module.css'
+import glowStyles from './login-glow.module.css'
 
 type Tab = 'login' | 'register'
+
+/** glow = 1번 가운데 카드, panel = 2번 분할 화면 */
+const LOGIN_VARIANT: 'glow' | 'panel' = 'glow'
 
 export default function LoginPage() {
   const [tab, setTab] = useState<Tab>('login')
@@ -124,25 +129,102 @@ export default function LoginPage() {
     }
   }
 
+  const isPanel = LOGIN_VARIANT === 'panel'
+
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="flex justify-center mb-8">
-          <div className="w-[140px] h-[60px] flex items-center justify-center">
+    <div className={isPanel ? panelStyles.panel : 'login-stage'}>
+      {isPanel ? (
+        <aside className={panelStyles.brand}>
+          <svg className={panelStyles.arc} viewBox="0 0 640 640" fill="none" aria-hidden="true">
+            <circle cx="470" cy="150" r="210" stroke="currentColor" strokeWidth="52" strokeLinecap="round" strokeDasharray="760 680" />
+            <circle cx="500" cy="190" r="300" className={panelStyles.arcLine} stroke="currentColor" strokeWidth="16" strokeLinecap="round" strokeDasharray="420 1500" />
+          </svg>
+          <div className={panelStyles.brandInner}>
             <Image
-              src={dark ? '/logo-dark.png' : '/logo.png'}
-              width={140}
-              height={60}
+              src="/logo-dark.png"
+              width={168}
+              height={72}
               alt="WOORI-HIP"
               className="object-contain"
+              style={{ width: 'auto', height: '3.5rem' }}
               priority
             />
+            <div className={panelStyles.copy}>
+              <p className="text-sm font-medium tracking-wide text-white/70">통합 업무 관리 시스템</p>
+              <h2 className="mt-3 text-3xl font-semibold leading-snug text-white">
+                현장 현황을
+                <br />
+                한 화면에서
+              </h2>
+              <ul className="mt-8 flex flex-col gap-2.5 text-sm text-white/80">
+                <li>재고와 입출고</li>
+                <li>품질 · 부적합 · 고객심사</li>
+                <li>공정 · 설비 점검</li>
+              </ul>
+            </div>
           </div>
+        </aside>
+      ) : (
+        <div className="login-bg" aria-hidden="true">
+          <div className="login-wash login-wash-blue" />
+          <div className="login-wash login-wash-amber" />
+          <div className="login-wash login-wash-sky" />
+          <div className={glowStyles.halo} />
+          <svg className="login-arc login-arc-tr" viewBox="0 0 640 640" fill="none">
+            <circle cx="430" cy="150" r="198" stroke="currentColor" strokeWidth="46" strokeLinecap="round" strokeDasharray="720 620" />
+            <circle cx="448" cy="168" r="268" className="login-arc-line" stroke="currentColor" strokeWidth="14" strokeLinecap="round" strokeDasharray="380 1400" />
+            <circle cx="412" cy="132" r="132" stroke="currentColor" strokeWidth="8" strokeLinecap="round" strokeDasharray="180 700" />
+          </svg>
+          <svg className="login-arc login-arc-bl" viewBox="0 0 520 520" fill="none">
+            <circle cx="70" cy="430" r="176" stroke="currentColor" strokeWidth="30" strokeLinecap="round" strokeDasharray="430 780" />
+            <circle cx="48" cy="452" r="236" className="login-arc-line" stroke="currentColor" strokeWidth="12" strokeLinecap="round" strokeDasharray="280 1300" />
+            <circle cx="96" cy="408" r="108" stroke="currentColor" strokeWidth="8" strokeLinecap="round" strokeDasharray="140 560" />
+          </svg>
+          <div className="login-vignette" />
         </div>
+      )}
+
+      <div className={isPanel ? panelStyles.main : 'relative z-10 w-full max-w-sm'}>
+        <div className={isPanel ? 'w-full max-w-sm' : glowStyles.shell}>
+        {!isPanel && (
+          <div className="relative mb-7 flex flex-col items-center">
+            <div className="login-logo-glow" />
+            <div className="relative flex h-24 w-[220px] items-center justify-center">
+              <Image
+                src={dark ? '/logo-dark.png' : '/logo.png'}
+                width={220}
+                height={96}
+                alt="WOORI-HIP"
+                className="object-contain"
+                style={{ width: 'auto', height: '5rem' }}
+                priority
+              />
+            </div>
+            <p className="relative mt-3 flex items-center gap-2 text-[11px] font-medium tracking-[0.22em] text-muted-foreground">
+              <span className={glowStyles.dash} />
+              통합 업무 관리
+              <span className={glowStyles.dashAmber} />
+            </p>
+          </div>
+        )}
 
         {/* Card */}
-        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className={cn(!isPanel && glowStyles.cardWrap)}>
+        {!isPanel && (
+          <>
+            <span className={cn(glowStyles.tick, glowStyles.tickTl)} />
+            <span className={cn(glowStyles.tick, glowStyles.tickTr)} />
+            <span className={cn(glowStyles.tick, glowStyles.tickBl)} />
+            <span className={cn(glowStyles.tick, glowStyles.tickBr)} />
+          </>
+        )}
+        <div className={cn(
+          'overflow-hidden rounded-2xl',
+          isPanel
+            ? 'border border-border bg-card shadow-sm'
+            : 'login-card border border-white/70 bg-card/90 shadow-xl backdrop-blur-md dark:border-white/10'
+        )}>
+          {!isPanel && <div className={glowStyles.cap} />}
           {/* Tabs */}
           <div className="flex border-b border-border">
             <button
@@ -363,10 +445,12 @@ export default function LoginPage() {
             )}
           </div>
         </div>
+        </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-4">
+        <p className="mt-5 text-center text-xs tracking-wide text-muted-foreground/90">
           WOORI-HIP ERP v0.1
         </p>
+        </div>
       </div>
     </div>
   )

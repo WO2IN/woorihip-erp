@@ -1,7 +1,5 @@
 import { compactDate, displayLot, StockMovement } from './stock'
 import { DocumentMetadata } from './types'
-import { ProcessCheckRecord, ProcessFloor, recordFloor } from './process-checklist'
-
 export function lotText(value?: string) {
   const text = (value || '').trim()
   return !text || text === '-' ? '' : text
@@ -59,38 +57,4 @@ export function certificatesFor(anchor: StockMovement, movements: StockMovement[
     matched.push(doc)
   }
   return matched
-}
-
-export function checksFor(anchor: StockMovement, movements: StockMovement[], records: ProcessCheckRecord[]) {
-  const floor = Number(anchor.floor)
-  if (floor !== 1 && floor !== 2 && floor !== 3) return []
-  const dates = new Set(relatedMovements(anchor, movements).map((row) => compactDate(row.issueDate)))
-  dates.add(compactDate(anchor.issueDate))
-  return records
-    .filter((record) => recordFloor(record) === (floor as ProcessFloor) && dates.has(compactDate(record.writtenDate)))
-    .sort((a, b) => compactDate(b.writtenDate).localeCompare(compactDate(a.writtenDate)))
-}
-
-export function inboundNeedsCertificate(row: StockMovement, documents: DocumentMetadata[]) {
-  if (row.kind !== '입고' || row.source === 'document') return false
-  return !documents.some(
-    (doc) => doc.documentType === '성적서' && doc.storagePath !== 'INVENTORY' && movementMatchesDocument(row, doc),
-  )
-}
-
-export function attachCertificateHref(row: StockMovement) {
-  const lot = lotText(row.lot).split('~')[0]?.trim() || ''
-  const params = new URLSearchParams({
-    link: row.id,
-    company: row.company,
-    product: row.product,
-    floor: row.floor || '',
-    lot,
-    date: compactDate(row.issueDate),
-    qty: String(row.quantity),
-    unit: row.unit,
-    movement: row.kind,
-    type: '성적서',
-  })
-  return `/upload?${params.toString()}`
 }

@@ -39,12 +39,6 @@ export async function requireManager() {
   return actor
 }
 
-export async function enforcedFloor(requested?: string | null) {
-  const actor = await currentActor()
-  if (actor?.floor && actor.role !== 'admin') return String(actor.floor)
-  return requested ?? null
-}
-
 export function floorForNewTarget(actor: CheckActor, floor: string | null | undefined, name?: string | null) {
   if (actor.floor && actor.role !== 'admin') {
     if (floor && detectFloor(floor, name) !== String(actor.floor)) {

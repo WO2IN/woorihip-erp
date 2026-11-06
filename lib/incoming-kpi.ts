@@ -34,6 +34,7 @@ export interface KpiState {
 }
 
 export const FLOORS: Floor[] = ['1', '2', '3']
+export type OutgoingFloorScope = 'all' | Floor
 export const DEFAULT_TARGET = 2
 /** 납기준수 KPI 기본 목표(%) — 이상이면 달성 */
 export const DEFAULT_ON_TIME_TARGET = 95
@@ -223,11 +224,6 @@ function stat(key: string, label: string, lots: InspectionLot[], target: number)
   return { key, label, inspected, defect, rate, target, ok: inspected > 0 ? meetsLowerTarget(defect, inspected, target) : null }
 }
 
-function qtyStat(key: string, label: string, inspected: number, defect: number, target: number): PeriodStat {
-  const rate = percent(defect, inspected)
-  return { key, label, inspected, defect, rate, target, ok: inspected > 0 ? meetsLowerTarget(defect, inspected, target) : null }
-}
-
 type ShipBucket = { Kg: number; EA: number; R: number }
 
 function shipBucketForLots(lots: InspectionLot[]): ShipBucket {
@@ -251,10 +247,6 @@ export function outgoingRateBase(lots: InspectionLot[]): { qty: number; unit: 'K
     }
   }
   return { qty, unit }
-}
-
-export function outgoingShipQty(lots: InspectionLot[]): number {
-  return outgoingRateBase(lots).qty
 }
 
 /** 불량률 = 불량수량 ÷ 출하수량. 검사시료는 inspected에만 표시 */
@@ -301,29 +293,23 @@ function sumWorkLogByUnit(logs: Floor3WorkLog[]) {
   return byUnit
 }
 
-function sumWorkLogMonth(logs: Floor3WorkLog[], key: string) {
-  const rows = logs.filter((log) => log.workDate.startsWith(key))
-  return {
-    sample: rows.reduce((sum, log) => sum + (log.sampleQuantity || 0), 0),
-    defect: rows.reduce((sum, log) => sum + (log.defectQuantity || 0), 0),
-  }
-}
-
-/** 작업일보 단위와 같은 성적서 출하 단위로 불량률 분모·분자를 맞춘다 */
+/** 작업일보·성적서 출하 단위를 맞춘 뒤 불량률 분자·분모를 고른다 */
 function pickOutgoingRatePair(ship: ShipBucket, workByUnit: Record<ShipUnit, { sample: number; defect: number }>) {
   const units: ShipUnit[] = ['Kg', 'EA', 'R']
+  const totalDefect = units.reduce((sum, unit) => sum + workByUnit[unit].defect, 0)
   const candidates = units
     .filter((unit) => ship[unit] > 0)
     .map((unit) => ({ unit, shipQty: ship[unit], ...workByUnit[unit] }))
   if (!candidates.length) {
-    const defect = units.reduce((sum, unit) => sum + workByUnit[unit].defect, 0)
-    return { unit: 'Kg' as ShipUnit, shipQty: 0, rateDefect: defect }
+    return { unit: 'Kg' as ShipUnit, shipQty: 0, rateDefect: totalDefect }
   }
   const withWork = candidates.filter((row) => row.defect > 0 || row.sample > 0)
   const pool = withWork.length ? withWork : candidates
   pool.sort((a, b) => b.defect - a.defect || b.sample - a.sample || b.shipQty - a.shipQty)
   const pick = pool[0]
-  return { unit: pick.unit, shipQty: pick.shipQty, rateDefect: pick.defect }
+  /** 선택 출하 단위에 불량이 없어도, 그달 다른 단위 작업일보 불량은 같은 월 출하량으로 나눈다 */
+  const rateDefect = pick.defect > 0 ? pick.defect : totalDefect
+  return { unit: pick.unit, shipQty: pick.shipQty, rateDefect }
 }
 
 function outgoingPeriodStat(
@@ -345,19 +331,37 @@ function outgoingPeriodStat(
   return row
 }
 
+function scopeOutgoingByFloor(
+  lots: InspectionLot[],
+  logs: Floor3WorkLog[],
+  floorScope: OutgoingFloorScope,
+): { lots: InspectionLot[]; logs: Floor3WorkLog[] } {
+  if (floorScope === 'all') return { lots, logs }
+  return {
+    lots: lots.filter((lot) => lot.floor === floorScope),
+    logs: logs.filter((log) => log.floor === Number(floorScope)),
+  }
+}
+
 /** 출하검사 KPI: 불량·검사시료=작업일보(단위 포함), 불량률=같은 단위 불량÷성적서 출하 */
-export function summarizeOutgoingKpi(state: KpiState, workLogs: Floor3WorkLog[], year: number) {
-  const lots = state.lots.filter((lot) => lot.date.startsWith(`${year}-`))
-  const logs = workLogs.filter((log) => log.workDate.startsWith(`${year}-`))
+export function summarizeOutgoingKpi(
+  state: KpiState,
+  workLogs: Floor3WorkLog[],
+  year: number,
+  floorScope: OutgoingFloorScope = 'all',
+) {
+  const yearLots = state.lots.filter((lot) => lot.date.startsWith(`${year}-`))
+  const yearLogs = workLogs.filter((log) => log.workDate.startsWith(`${year}-`))
+  const { lots, logs } = scopeOutgoingByFloor(yearLots, yearLogs, floorScope)
   const months = Array.from({ length: 12 }, (_, index) => {
     const key = monthKey(year, index + 1)
     const label = `${index + 1}월`
     const target = targetFor(state, key)
-    if (kpiMonthNotYetArrived(year, key)) {
-      return { key, label, inspected: 0, defect: 0, rate: 0, target, ok: null, rateBase: 0 }
-    }
     const monthLots = lots.filter((lot) => lot.date.startsWith(key))
     const monthLogs = logs.filter((log) => log.workDate.startsWith(key))
+    if (kpiMonthNotYetArrived(year, key) && monthLots.length === 0 && monthLogs.length === 0) {
+      return { key, label, inspected: 0, defect: 0, rate: 0, target, ok: null, rateBase: 0 }
+    }
     return outgoingPeriodStat(key, label, target, monthLots, monthLogs)
   })
   const quarters = [0, 1, 2, 3].map((quarter) => {
@@ -381,8 +385,14 @@ export function summarizeOutgoingKpi(state: KpiState, workLogs: Floor3WorkLog[],
     if (judged.length) half.ok = judged.every((q) => q.ok === true)
   })
   const floors = FLOORS.map((floor) => {
-    const floorLogs = logs.filter((log) => String(log.floor ?? 3) === floor)
-    return outgoingPeriodStat(floor, `${floor}층`, state.target, lots.filter((lot) => lot.floor === floor), floorLogs)
+    const floorLogs = yearLogs.filter((log) => log.floor === Number(floor))
+    return outgoingPeriodStat(
+      floor,
+      `${floor}층`,
+      state.target,
+      yearLots.filter((lot) => lot.floor === floor),
+      floorLogs,
+    )
   })
   const vendorNames = [...new Set([...logs.map((log) => log.company.trim()), ...lots.map((lot) => lot.vendor.trim())].filter(Boolean))]
   const vendors = vendorNames

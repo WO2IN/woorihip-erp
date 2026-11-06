@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react'
+import { useMemo, useOptimistic, useState, useTransition } from 'react'
+import { useSecretToggle } from '@/hooks/use-secret-toggle'
 import { cn } from '@/lib/utils'
-import { getDayRange, isDayOffDate, isWeekend, scheduledDaysForCycle } from '@/lib/date-utils'
+import { getDayRange, isDayOffDate, isWeekend, scheduledDaysForCycle, toggleDay } from '@/lib/date-utils'
 import { isDueOnDay } from '@/lib/today-check'
 import { FIVE_S_CATEGORIES, FIVE_S_SYMBOLS } from '@/lib/constants/five-s-catalog'
 import {
@@ -11,24 +12,13 @@ import {
   clearFiveSSheetEntries,
   updateFiveSCheckItem,
 } from '@/app/actions/five-s'
-import { Trash2Icon } from 'lucide-react'
 import { formatCheckStamp } from '@/lib/check-stamp'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CellSelect } from '@/components/shared/cell-select'
 import { HolidayPickerPopover } from '@/components/shared/holiday-picker-popover'
 import { RangeFillPopover } from '@/components/shared/range-fill-popover'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { ClearSheetDialog } from '@/components/shared/clear-sheet-dialog'
 
 export interface FiveSCheckItem {
   id: number
@@ -65,25 +55,19 @@ export function FiveSGrid({ sheetId, year, month, items, entries, holidays = [],
   const days = getDayRange(year, month)
   const [, startTransition] = useTransition()
   const [selectedSymbol, setSelectedSymbol] = useState<string>('○')
-  const [clearDialogOpen, setClearDialogOpen] = useState(false)
-  const [adminOpen, setAdminOpen] = useState(false)
+  const [adminOpen] = useSecretToggle()
   const [optimisticHolidays, toggleOptimisticHoliday] = useOptimistic(
     holidays,
-    (state, day: number) =>
-      state.includes(day) ? state.filter((d) => d !== day) : [...state, day].sort((a, b) => a - b),
+    toggleDay,
   )
   const [optimisticWorkdays, toggleOptimisticWorkday] = useOptimistic(
     workdays,
-    (state, day: number) =>
-      state.includes(day) ? state.filter((d) => d !== day) : [...state, day].sort((a, b) => a - b),
+    toggleDay,
   )
 
   function isDayOff(day: number) {
     return isDayOffDate(year, month, day, optimisticHolidays, optimisticWorkdays)
   }
-  const commandBuffer = useRef('')
-  const commandTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   const entryMap = new Map(entries.map((e) => [`${e.itemCode}-${e.day}`, e.value ?? '']))
   const stampMap = new Map(entries.map((e) => [`${e.itemCode}-${e.day}`, formatCheckStamp(e.checkedBy, e.checkedAt)]))
 
@@ -99,26 +83,6 @@ export function FiveSGrid({ sheetId, year, month, items, entries, holidays = [],
   const today = useMemo(() => new Date(), [])
   const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month
   const todayDay = today.getDate()
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return
-      const target = event.target as HTMLElement | null
-      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
-      commandBuffer.current = `${commandBuffer.current}${event.key.toLowerCase()}`.slice(-8)
-      if (commandBuffer.current === 'woorihip') {
-        setAdminOpen((open) => !open)
-        commandBuffer.current = ''
-      }
-      if (commandTimer.current) clearTimeout(commandTimer.current)
-      commandTimer.current = setTimeout(() => { commandBuffer.current = '' }, 1500)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      if (commandTimer.current) clearTimeout(commandTimer.current)
-    }
-  }, [])
 
   function handleItemFieldBlur(item: FiveSCheckItem, field: 'content' | 'cycle', value: string) {
     if (!canManage || value === item[field]) return
@@ -180,7 +144,6 @@ export function FiveSGrid({ sheetId, year, month, items, entries, holidays = [],
   }
 
   function handleClearAll() {
-    setClearDialogOpen(false)
     startTransition(() => {
       for (const item of items) {
         for (const day of days) {
@@ -259,38 +222,11 @@ export function FiveSGrid({ sheetId, year, month, items, entries, holidays = [],
           )}
 
         {canManage && (
-        <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
-          <AlertDialogTrigger
-            render={
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1.5 px-2.5 text-destructive hover:text-destructive"
-              />
-            }
-          >
-            <Trash2Icon className="size-3.5" />
-            전체 지우기
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>이번 달 체크 내용을 모두 지울까요?</AlertDialogTitle>
-              <AlertDialogDescription>
-                {year}년 {month}월 3정 5S Check Sheet에 입력된 모든 표시가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>취소</AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-white hover:bg-destructive/90"
-                onClick={handleClearAll}
-              >
-                전체 지우기
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-          </AlertDialog>
+          <ClearSheetDialog
+            title="이번 달 체크 내용을 모두 지울까요?"
+            description={`${year}년 ${month}월 3정 5S Check Sheet에 입력된 모든 표시가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`}
+            onConfirm={handleClearAll}
+          />
         )}
         </div>
       </div>

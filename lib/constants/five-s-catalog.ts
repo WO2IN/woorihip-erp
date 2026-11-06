@@ -38,9 +38,3 @@ export const FIVE_S_CATALOG: FiveSItem[] = [
 
 // Symbol cycle for input: ◎ (4) -> ○ (3) -> △ (2) -> V (1) -> × (0) -> N/A -> blank
 export const FIVE_S_SYMBOLS = ["◎", "○", "△", "V", "×", "N/A", ""] as const
-
-export function nextFiveSSymbol(current: string | null | undefined): string {
-  const idx = FIVE_S_SYMBOLS.indexOf((current ?? "") as any)
-  const nextIdx = (idx + 1) % FIVE_S_SYMBOLS.length
-  return FIVE_S_SYMBOLS[nextIdx]
-}

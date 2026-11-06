@@ -126,12 +126,6 @@ export async function findRecords<T>(collection: string, predicate: (row: T) => 
   return matches
 }
 
-export async function getRecord<T>(collection: string, id: string | number): Promise<T | null> {
-  const { rows } = await loadCollection(collection)
-  const row = rows.find((candidate) => candidate.id === String(id))
-  return row ? (clone(row.data) as T) : null
-}
-
 // ─── Write ───────────────────────────────────────────────────────────────────
 
 export async function insertRecord<T extends { id: string | number }>(
@@ -409,17 +403,6 @@ export async function bulkWrite(
 }
 
 // ─── Sequence ────────────────────────────────────────────────────────────────
-
-export async function nextSequence(name: string): Promise<number> {
-  await recordsReady()
-  const [row] = await query<{ value: string }>(
-    `INSERT INTO sequences (name, value) VALUES ($1, 1)
-     ON CONFLICT (name) DO UPDATE SET value = sequences.value + 1
-     RETURNING value`,
-    [name],
-  )
-  return Number(row.value)
-}
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 

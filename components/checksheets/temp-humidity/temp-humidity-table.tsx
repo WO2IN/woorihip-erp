@@ -1,26 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react'
+import { useMemo, useOptimistic, useState, useTransition } from 'react'
+import { useSecretToggle } from '@/hooks/use-secret-toggle'
 import { cn } from '@/lib/utils'
-import { getDayRange, isDayOffDate } from '@/lib/date-utils'
+import { getCheckerInitial, getDayRange, isDayOffDate } from '@/lib/date-utils'
 import { filledValue } from '@/lib/today-check'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { bulkUpsertTempHumidityEntries, upsertTempHumidityEntry, clearTempHumidityEntries } from '@/app/actions/temp-humidity'
-import { CalendarCheck2Icon, DicesIcon, Trash2Icon } from 'lucide-react'
+import { CalendarCheck2Icon, DicesIcon } from 'lucide-react'
 import { formatCheckStamp } from '@/lib/check-stamp'
 import { HolidayPickerPopover } from '@/components/shared/holiday-picker-popover'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { ClearSheetDialog } from '@/components/shared/clear-sheet-dialog'
 import {
   Popover,
   PopoverContent,
@@ -68,11 +59,6 @@ function parseRangeValues(tempMin: string, tempMax: string, humidityMin: string,
   return { min, max, hMin, hMax }
 }
 
-function getCheckerInitial(manager: string) {
-  const trimmed = manager.trim()
-  return trimmed ? trimmed[0] : ''
-}
-
 export function TempHumidityTable({
   sheetId,
   year,
@@ -89,14 +75,11 @@ export function TempHumidityTable({
   const lastDay = days.length
   const [, startTransition] = useTransition()
   const [fillOpen, setFillOpen] = useState(false)
-  const [adminOpen, setAdminOpen] = useState(false)
+  const [adminOpen] = useSecretToggle()
   const [tempMin, setTempMin] = useState('10')
   const [tempMax, setTempMax] = useState('30')
   const [humidityMin, setHumidityMin] = useState('0')
   const [humidityMax, setHumidityMax] = useState('60')
-  const commandBuffer = useRef('')
-  const commandTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   const today = useMemo(() => new Date(), [])
   const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month
   const todayDay = today.getDate()
@@ -120,26 +103,6 @@ export function TempHumidityTable({
       return next
     },
   )
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return
-      const target = event.target as HTMLElement | null
-      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
-      commandBuffer.current = `${commandBuffer.current}${event.key.toLowerCase()}`.slice(-8)
-      if (commandBuffer.current === 'woorihip') {
-        setAdminOpen((open) => !open)
-        commandBuffer.current = ''
-      }
-      if (commandTimer.current) clearTimeout(commandTimer.current)
-      commandTimer.current = setTimeout(() => { commandBuffer.current = '' }, 1500)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      if (commandTimer.current) clearTimeout(commandTimer.current)
-    }
-  }, [])
 
   function handleBlur(day: number, field: 'temperature' | 'humidity' | 'checker', value: string) {
     if (!canManage) return
@@ -328,38 +291,12 @@ export function TempHumidityTable({
           )}
 
           {canManage && (
-          <AlertDialog>
-            <AlertDialogTrigger
-              render={
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto h-8 gap-1.5 px-2.5 text-destructive hover:text-destructive"
-                />
-              }
-            >
-              <Trash2Icon className="size-3.5" />
-              전체 지우기
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>이번 달 온/습도 내용을 모두 지울까요?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {year}년 {month}월 온/습도 체크시트에 입력된 온도, 습도, 점검자 값이 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>취소</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-white hover:bg-destructive/90"
-                  onClick={handleClearAll}
-                >
-                  전체 지우기
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            <ClearSheetDialog
+              className="ml-auto"
+              title="이번 달 온/습도 내용을 모두 지울까요?"
+              description={`${year}년 ${month}월 온/습도 체크시트에 입력된 온도, 습도, 점검자 값이 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`}
+              onConfirm={handleClearAll}
+            />
           )}
         </div>
       </div>

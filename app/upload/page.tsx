@@ -2,7 +2,9 @@
 
 import { Suspense } from 'react'
 import { Upload } from 'lucide-react'
+import { PAGE_SHELL } from '@/components/shared/page-header'
 import { UploadForm } from '@/components/upload/upload-form'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth/auth-context'
 
 export default function UploadPage() {
@@ -33,7 +35,7 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col p-6">
+    <div className={cn(PAGE_SHELL, 'h-full min-h-0')}>
       <div className="mb-4 shrink-0">
         <div className="mb-2 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-50 dark:bg-green-950/30">

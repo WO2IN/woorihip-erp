@@ -1,15 +1,26 @@
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export type PageTone = 'blue' | 'green' | 'amber' | 'violet' | 'rose' | 'slate'
+/** 본문 페이지 여백·너비 (고객심사현황 기준) */
+export const PAGE_MAX_WIDTH = 'max-w-[1500px]'
+export const PAGE_PADDING = 'p-4 sm:p-6'
+export const PAGE_SHELL = cn('mx-auto flex w-full flex-col gap-5', PAGE_MAX_WIDTH, PAGE_PADDING)
+export const PAGE_SHELL_RELATIVE = cn('relative mx-auto flex w-full flex-col gap-5', PAGE_MAX_WIDTH, PAGE_PADDING)
+export const PAGE_INSET = cn('mx-auto w-full', PAGE_MAX_WIDTH, PAGE_PADDING)
+
+export type PageTone = 'blue' | 'indigo' | 'green' | 'cyan' | 'amber' | 'rose' | 'violet' | 'teal' | 'slate' | 'steel'
 
 const BAND: Record<PageTone, string> = {
-  blue: 'bg-[linear-gradient(135deg,oklch(0.52_0.19_258),oklch(0.40_0.16_265))]',
-  green: 'bg-[linear-gradient(135deg,oklch(0.60_0.14_165),oklch(0.46_0.12_172))]',
-  amber: 'bg-[linear-gradient(135deg,oklch(0.74_0.16_62),oklch(0.62_0.17_45))]',
-  violet: 'bg-[linear-gradient(135deg,oklch(0.56_0.18_288),oklch(0.43_0.17_295))]',
-  rose: 'bg-[linear-gradient(135deg,oklch(0.64_0.21_25),oklch(0.52_0.20_18))]',
-  slate: 'bg-[linear-gradient(135deg,oklch(0.42_0.07_262),oklch(0.29_0.05_265))]',
+  blue: 'bg-[linear-gradient(135deg,oklch(0.58_0.16_230),oklch(0.44_0.14_236))]',
+  indigo: 'bg-[linear-gradient(135deg,oklch(0.52_0.18_275),oklch(0.40_0.16_282))]',
+  green: 'bg-[linear-gradient(135deg,oklch(0.60_0.14_155),oklch(0.46_0.12_162))]',
+  cyan: 'bg-[linear-gradient(135deg,oklch(0.62_0.12_210),oklch(0.46_0.11_216))]',
+  amber: 'bg-[linear-gradient(135deg,oklch(0.74_0.16_68),oklch(0.60_0.16_48))]',
+  rose: 'bg-[linear-gradient(135deg,oklch(0.64_0.20_18),oklch(0.50_0.18_12))]',
+  violet: 'bg-[linear-gradient(135deg,oklch(0.56_0.18_300),oklch(0.44_0.17_308))]',
+  teal: 'bg-[linear-gradient(135deg,oklch(0.58_0.11_185),oklch(0.42_0.09_192))]',
+  slate: 'bg-[linear-gradient(135deg,oklch(0.48_0.03_250),oklch(0.34_0.03_255))]',
+  steel: 'bg-[linear-gradient(135deg,oklch(0.46_0.06_250),oklch(0.32_0.05_262))]',
 }
 
 /** 머리글 띠 위에 올리는 보조 버튼 */
@@ -20,15 +31,18 @@ export const BAND_BUTTON_PRIMARY =
   'border border-white bg-white text-[oklch(0.25_0.04_262)] shadow-sm hover:bg-white/90 hover:text-[oklch(0.25_0.04_262)] dark:bg-white dark:hover:bg-white/90 disabled:opacity-60'
 
 export const GROUP_TONE: Record<string, PageTone> = {
-  고객관리: 'blue',
+  대시보드: 'blue',
+  고객관리: 'indigo',
   품질관리: 'green',
-  개발관리: 'blue',
+  'KPI 관리': 'cyan',
+  개발관리: 'green',
   공정관리: 'amber',
+  '재고 관리': 'rose',
   설비관리: 'violet',
-  '일일 점검': 'violet',
-  문서관리: 'blue',
+  '일일 점검': 'amber',
+  문서관리: 'teal',
   '조직/사용자': 'slate',
-  시스템관리: 'slate',
+  시스템관리: 'steel',
 }
 
 interface PageHeaderProps {

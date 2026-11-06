@@ -14,10 +14,3 @@ export function readJsonFile<T>(file: string, fallback: T): T {
     throw new Error(`${path.basename(file)} 파일을 읽을 수 없습니다. 원본을 ${path.basename(backup)}로 보관했습니다.`, { cause: error })
   }
 }
-
-export function writeJsonFile(file: string, data: unknown) {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
-  fs.renameSync(tmp, file)
-}

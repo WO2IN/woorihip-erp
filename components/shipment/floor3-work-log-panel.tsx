@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
-import { buildAuthHeaders, getSession } from '@/lib/auth-client'
+import { getJsonAuthHeaders } from '@/lib/auth-client'
+import { formatDefectRate } from '@/lib/format'
 import { Floor3WorkLog } from '@/lib/floor3-work-log'
 import {
   ProcessAnswer,
@@ -20,19 +21,6 @@ import {
 } from '@/lib/process-checklist'
 import { displayDate, formatQuantity } from '@/lib/stock'
 import { cn } from '@/lib/utils'
-
-function authHeaders() {
-  const session = getSession()
-  return {
-    'Content-Type': 'application/json',
-    ...(session ? buildAuthHeaders(session) : {}),
-  }
-}
-
-function rateText(defect: number, work: number) {
-  if (work <= 0) return null
-  return `${((defect / work) * 100).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}%`
-}
 
 const emptyForm = (company: string, product: string, unit: string, floor: 1 | 2 | 3) => ({
   id: '',
@@ -169,7 +157,7 @@ export function Floor3WorkLogPanel({
     try {
       const response = await fetch('/api/floor3-work-logs', {
         method: 'POST',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({
           id: form.id || undefined,
           company: form.company,
@@ -214,7 +202,7 @@ export function Floor3WorkLogPanel({
     try {
       const response = await fetch('/api/floor3-work-logs', {
         method: 'DELETE',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({ id: row.id }),
       })
       const result = await response.json().catch(() => ({}))
@@ -275,8 +263,8 @@ export function Floor3WorkLogPanel({
                 <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.workQuantity, row.unit)}</td>
                 <td className="px-4 py-3 text-right">
                   <div className="font-semibold tabular-nums">{formatQuantity(row.defectQuantity)}</div>
-                  {rateText(row.defectQuantity, row.workQuantity) && (
-                    <div className="text-[11px] leading-4 text-muted-foreground">불량률 {rateText(row.defectQuantity, row.workQuantity)}</div>
+                  {formatDefectRate(row.defectQuantity, row.workQuantity) && (
+                    <div className="text-[11px] leading-4 text-muted-foreground">불량률 {formatDefectRate(row.defectQuantity, row.workQuantity)}</div>
                   )}
                 </td>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.sampleQuantity)}</td>
@@ -293,13 +281,28 @@ export function Floor3WorkLogPanel({
             ))}
           </tbody>
           {rows.length > 0 && (
-            <tfoot className="border-t bg-muted/30 text-xs">
+            <tfoot className="border-t-2 border-slate-200 bg-slate-100/90 text-sm dark:border-border dark:bg-muted/60">
               <tr>
-                <td className="px-4 py-3 text-left font-medium" colSpan={3}>합계 {rows.length}건</td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(totals.work)}</td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(totals.defect)}</td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(totals.sample)}</td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(totals.work)}</td>
+                <td
+                  className="px-4 py-3.5 text-left text-sm font-bold text-slate-800 dark:text-slate-100"
+                  colSpan={floor === 'all' ? 4 : 3}
+                >
+                  합계{' '}
+                  <span className="text-base font-extrabold tabular-nums text-slate-900 dark:text-white">{rows.length}</span>
+                  건
+                </td>
+                <td className="px-4 py-3.5 text-right text-base font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+                  {formatQuantity(totals.work)}
+                </td>
+                <td className="px-4 py-3.5 text-right text-base font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+                  {formatQuantity(totals.defect)}
+                </td>
+                <td className="px-4 py-3.5 text-right text-base font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+                  {formatQuantity(totals.sample)}
+                </td>
+                <td className="px-4 py-3.5 text-right text-base font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+                  {formatQuantity(totals.work)}
+                </td>
                 {editable && <td />}
               </tr>
             </tfoot>

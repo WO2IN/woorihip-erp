@@ -5,13 +5,16 @@ import { ChevronDown, CircleHelp, ClipboardList, Pencil, Plus, Printer, Search, 
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
 import { FilterChip, FilterSelect } from '@/components/shared/list-filters'
-import { BAND_BUTTON, PageHeader } from '@/components/shared/page-header'
+import { BAND_BUTTON, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import { Button, buttonVariants } from '@/components/ui/button'
+import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
-import { buildAuthHeaders, getSession } from '@/lib/auth-client'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from '@/components/ui/select'
+import { getAuthHeaders, getJsonAuthHeaders } from '@/lib/auth-client'
+import { formatDotDate } from '@/lib/date-utils'
 import { asKind, openOf, rateOf, statusOf, type AuditKind as Kind, type AuditRow } from '@/lib/customer-audit'
 import { chosungSearch } from '@/lib/korean'
 import { cn } from '@/lib/utils'
@@ -20,9 +23,19 @@ const EMPTY_ROW: Omit<AuditRow, 'id'> = {
   kind: 'QSA', company: '', scope: '', auditDate: '', count: 0, done: 0, dueDate: '', closeDate: '', doneDate: '', dept: '', owner: '',
 }
 
-function display(date: string) {
-  if (!date) return '—'
-  return date.replace(/-/g, '.')
+const SELECT_EMPTY = '__select_empty__'
+
+function PersonOptionLabel({ label }: { label: string }) {
+  const space = label.indexOf(' ')
+  if (space <= 0) return <span className="font-medium">{label}</span>
+  const rank = label.slice(0, space)
+  const name = label.slice(space + 1)
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">{rank}</span>
+      <span className="truncate font-medium text-foreground">{name}</span>
+    </span>
+  )
 }
 
 function totalOf(row: AuditRow) {
@@ -76,6 +89,7 @@ export function AuditStatusView() {
   const [editing, setEditing] = useState<AuditRow | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [formKey, setFormKey] = useState(0)
+  const [deleteTarget, setDeleteTarget] = useState<AuditRow | null>(null)
 
   useEffect(() => {
     fetch('/api/customer/audits', { cache: 'no-store' })
@@ -132,7 +146,7 @@ export function AuditStatusView() {
     statusFilter !== 'all' && statusFilter,
     companyFilter !== 'all' && companyFilter,
     deptFilter !== 'all' && deptFilter,
-    (startDate || endDate) && `심사일 ${startDate ? display(startDate) : '처음'} ~ ${endDate ? display(endDate) : '끝'}`,
+    (startDate || endDate) && `심사일 ${formatDotDate(startDate, '처음')} ~ ${formatDotDate(endDate, '끝')}`,
     query.trim() && `검색 “${query.trim()}”`,
   ].filter(Boolean).join(' · ')
 
@@ -173,7 +187,7 @@ export function AuditStatusView() {
     try {
       const response = await fetch('/api/customer/audits', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(user) },
+        headers: getJsonAuthHeaders(user),
         body: JSON.stringify({ rows: next, detail }),
       })
       const result = await response.json().catch(() => ({}))
@@ -211,19 +225,25 @@ export function AuditStatusView() {
     }
   }
 
-  const remove = async (row: AuditRow) => {
-    if (!window.confirm(`‘${row.company} ${row.kind}’ 심사를 삭제할까요?`)) return
+  const requestRemove = (row: AuditRow) => setDeleteTarget(row)
+
+  const confirmRemove = async () => {
+    if (!deleteTarget) return
+    const row = deleteTarget
     const ok = await persist(rows.filter((item) => item.id !== row.id), `고객심사 삭제 · ${row.kind} ${row.company}`)
-    if (ok) toast.success('삭제했습니다.')
+    if (ok) {
+      toast.success('삭제했습니다.')
+      setDeleteTarget(null)
+    }
   }
 
   const editable = canManage
   const columns = canManage ? 14 : 13
 
   return (
-    <main className="audit-print mx-auto flex w-full max-w-[1500px] flex-col gap-5 p-4 sm:p-6 print:min-h-[calc(200mm/var(--audit-print-zoom,1))] print:max-w-none print:gap-2 print:p-0 print:[zoom:var(--audit-print-zoom,1)]">
+    <main className={cn('audit-print print:min-h-[calc(200mm/var(--audit-print-zoom,1))] print:max-w-none print:gap-2 print:p-0 print:[zoom:var(--audit-print-zoom,1)]', PAGE_SHELL)}>
       <PageHeader
-        tone="blue"
+        tone="indigo"
         icon={ClipboardList}
         eyebrow="CUSTOMER · 고객관리"
         title="고객심사현황"
@@ -335,7 +355,7 @@ export function AuditStatusView() {
             {deptFilter !== 'all' && <FilterChip label={deptFilter} onClear={() => setDeptFilter('all')} />}
             {(startDate || endDate) && (
               <FilterChip
-                label={`${startDate ? display(startDate) : '처음'} ~ ${endDate ? display(endDate) : '끝'}`}
+                label={`${formatDotDate(startDate, '처음')} ~ ${formatDotDate(endDate, '끝')}`}
                 onClear={() => {
                   setStartDate('')
                   setEndDate('')
@@ -371,12 +391,12 @@ export function AuditStatusView() {
           ) : groups.length === 0 ? (
             <tr><td colSpan={columns} className="px-3 py-10 text-center text-muted-foreground">조건에 맞는 심사가 없습니다.</td></tr>
           ) : (
-            <GroupRows {...groups[0]} editable={editable} canManage={canManage} busy={saving} onEdit={openEdit} onDelete={remove} />
+            <GroupRows {...groups[0]} editable={editable} canManage={canManage} busy={saving} onEdit={openEdit} onDelete={requestRemove} />
           )}
         </AuditGroupCard>
         {!loading && groups.slice(1).map((group) => (
           <AuditGroupCard key={group.kind} canManage={canManage} grow={group.rows.length + 2}>
-            <GroupRows {...group} editable={editable} canManage={canManage} busy={saving} onEdit={openEdit} onDelete={remove} />
+            <GroupRows {...group} editable={editable} canManage={canManage} busy={saving} onEdit={openEdit} onDelete={requestRemove} />
           </AuditGroupCard>
         ))}
       </section>
@@ -389,6 +409,24 @@ export function AuditStatusView() {
         saving={saving}
         onSubmit={submit}
       />
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && !saving && setDeleteTarget(null)}
+        title="심사 삭제"
+        onConfirm={() => void confirmRemove()}
+        pending={saving}
+        pendingLabel="삭제 중…"
+        keepOpenOnConfirm
+      >
+        {deleteTarget && (
+          <>
+            <span className="font-semibold text-foreground">‘{deleteTarget.company} {deleteTarget.kind}’</span> 심사를 삭제할까요?
+            <br />
+            삭제 후에는 복구할 수 없습니다.
+          </>
+        )}
+      </ConfirmDeleteDialog>
     </main>
   )
 }
@@ -412,8 +450,7 @@ function AuditFormDialog({ open, onOpenChange, initial, saving, onSubmit }: {
 
   useEffect(() => {
     if (!open) return
-    const session = getSession()
-    const headers = session ? buildAuthHeaders(session) : {}
+    const headers = getAuthHeaders()
     fetch('/api/config?name=companies', { headers, cache: 'no-store' })
       .then((response) => response.json())
       .then((result) => setCompanies(Array.isArray(result.data) ? result.data : []))
@@ -524,16 +561,49 @@ function AuditFormDialog({ open, onOpenChange, initial, saving, onSubmit }: {
           <FormSection title="담당">
             <div className="grid gap-3 sm:grid-cols-2">
               <FormField label="담당부서">
-                <select value={form.dept} onChange={(event) => changeDept(event.target.value)} className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm">
-                  <option value="">부서 선택</option>
-                  {deptOptions.map((name) => <option key={name} value={name}>{name}</option>)}
-                </select>
+                <Select
+                  value={form.dept || SELECT_EMPTY}
+                  onValueChange={(value) => changeDept(!value || value === SELECT_EMPTY ? '' : value)}
+                >
+                  <SelectTrigger aria-label="담당부서" className="h-9 w-full bg-background">
+                    {form.dept || '부서 선택'}
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    <SelectGroup>
+                      <SelectItem value={SELECT_EMPTY} className="py-2 text-muted-foreground">
+                        부서 선택
+                      </SelectItem>
+                      {deptOptions.map((name) => (
+                        <SelectItem key={name} value={name} className="py-2">
+                          <span className="font-medium">{name}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </FormField>
               <FormField label="담당자">
-                <select value={form.owner} onChange={(event) => set('owner', event.target.value)} disabled={!form.dept} className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60">
-                  <option value="">{form.dept ? '담당자 선택' : '부서를 먼저 선택'}</option>
-                  {ownerOptions.map((name) => <option key={name} value={name}>{name}</option>)}
-                </select>
+                <Select
+                  disabled={!form.dept}
+                  value={form.owner || SELECT_EMPTY}
+                  onValueChange={(value) => set('owner', !value || value === SELECT_EMPTY ? '' : value)}
+                >
+                  <SelectTrigger aria-label="담당자" className="h-9 w-full bg-background disabled:opacity-60">
+                    {form.owner ? <PersonOptionLabel label={form.owner} /> : form.dept ? '담당자 선택' : '부서를 먼저 선택'}
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72 p-1">
+                    <SelectGroup>
+                      <SelectItem value={SELECT_EMPTY} className="py-2.5 text-muted-foreground">
+                        {form.dept ? '담당자 선택' : '부서를 먼저 선택'}
+                      </SelectItem>
+                      {ownerOptions.map((name) => (
+                        <SelectItem key={name} value={name} className="py-2.5">
+                          <PersonOptionLabel label={name} />
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </FormField>
             </div>
           </FormSection>
@@ -659,7 +729,29 @@ function CriteriaHelp() {
   )
 }
 
-const AUDIT_TABLE_CLASS = 'w-full min-w-[1000px] text-center text-sm print:h-full print:min-w-0 print:[&_td]:!px-2 print:[&_td]:!py-1 print:[&_td]:!text-[12.5px] print:[&_td]:leading-tight print:[&_td]:whitespace-nowrap print:[&_th]:!px-2 print:[&_th]:!py-1.5 print:[&_th]:!text-[12px] print:[&_th]:whitespace-nowrap print:[&_span]:!text-[11.5px] print:[&_tr]:break-inside-avoid'
+const AUDIT_TABLE_CLASS =
+  'w-full min-w-[1080px] table-fixed text-center text-sm print:h-full print:min-w-0 print:table-auto print:[&_td]:!px-2 print:[&_td]:!py-1 print:[&_td]:!text-[12.5px] print:[&_td]:leading-tight print:[&_td]:whitespace-nowrap print:[&_th]:!px-2 print:[&_th]:!py-1.5 print:[&_th]:!text-[12px] print:[&_th]:whitespace-nowrap print:[&_span]:!text-[11.5px] print:[&_tr]:break-inside-avoid'
+
+function AuditTableColGroup({ canManage }: { canManage: boolean }) {
+  return (
+    <colgroup>
+      <col className="w-[76px]" />
+      <col className="w-[108px]" />
+      <col />
+      <col className="w-[100px]" />
+      <col className="w-[64px]" />
+      <col className="w-[52px]" />
+      <col className="w-[52px]" />
+      <col className="w-[118px]" />
+      <col className="w-[100px]" />
+      <col className="w-[100px]" />
+      <col className="w-[100px]" />
+      <col className="w-[72px]" />
+      <col className="w-[188px]" />
+      {canManage && <col className="w-[72px]" />}
+    </colgroup>
+  )
+}
 
 function AuditTableHead({ canManage }: { canManage: boolean }) {
   return (
@@ -667,7 +759,7 @@ function AuditTableHead({ canManage }: { canManage: boolean }) {
       <tr>
         <th className="whitespace-nowrap px-3 py-3">구분</th>
         <th className="whitespace-nowrap px-3 py-3">고객사</th>
-        <th className="whitespace-nowrap px-3 py-3">심사명 / 범위</th>
+        <th className="whitespace-nowrap px-3 py-3 text-left">심사명 / 범위</th>
         <th className="whitespace-nowrap px-3 py-3">심사일</th>
         <th className="whitespace-nowrap px-3 py-3">지적건수</th>
         <th className="whitespace-nowrap px-2 py-3">완료</th>
@@ -709,6 +801,7 @@ function AuditGroupCard({ title, action, canManage, grow = 1, children }: {
       {children && (
         <div className="overflow-x-auto print:flex-1 print:overflow-visible">
           <table className={AUDIT_TABLE_CLASS}>
+            <AuditTableColGroup canManage={canManage} />
             <AuditTableHead canManage={canManage} />
             <tbody>{children}</tbody>
           </table>
@@ -750,9 +843,9 @@ function GroupRows({ kind, caption, rows, editable, canManage, busy, onEdit, onD
                 <p className="text-[11px] text-white/80">{caption}</p>
               </td>
             )}
-            <td className="px-3 py-2.5 font-semibold">{row.company}</td>
-            <td className="px-3 py-2.5 text-muted-foreground">{row.scope || '—'}</td>
-            <td className="px-3 py-2.5 tabular-nums">{display(row.auditDate)}</td>
+            <td className="truncate px-3 py-2.5 font-semibold">{row.company}</td>
+            <td className="truncate px-3 py-2.5 text-left text-muted-foreground">{row.scope || '—'}</td>
+            <td className="px-3 py-2.5 tabular-nums">{formatDotDate(row.auditDate)}</td>
             <td className="px-2 py-2.5 font-medium tabular-nums">{countText(row, row.count)}</td>
             <td className="px-2 py-2.5 tabular-nums">{countText(row, row.done)}</td>
             <td className="px-2 py-2.5 tabular-nums">{countText(row, openOf(row))}</td>
@@ -766,22 +859,21 @@ function GroupRows({ kind, caption, rows, editable, canManage, busy, onEdit, onD
                 </div>
               )}
             </td>
-            <td className={cn('px-2 py-2.5 tabular-nums', status === '지연' && 'font-semibold text-rose-600')}>{display(row.dueDate)}</td>
-            <td className="px-2 py-2.5 tabular-nums">{display(row.closeDate)}</td>
-            <td className="px-2 py-2.5 tabular-nums">{display(row.doneDate)}</td>
+            <td className={cn('px-2 py-2.5 tabular-nums', status === '지연' && 'font-semibold text-rose-600')}>{formatDotDate(row.dueDate)}</td>
+            <td className="px-2 py-2.5 tabular-nums">{formatDotDate(row.closeDate)}</td>
+            <td className="px-2 py-2.5 tabular-nums">{formatDotDate(row.doneDate)}</td>
             <td className="px-3 py-2.5">
               <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold', STATUS_TONE[status])}>{status}</span>
             </td>
-            <td className="whitespace-nowrap px-3 py-2.5">{[row.dept, row.owner].filter(Boolean).join(' · ') || '—'}</td>
+            <td className="truncate px-3 py-2.5" title={[row.dept, row.owner].filter(Boolean).join(' · ')}>{[row.dept, row.owner].filter(Boolean).join(' · ') || '—'}</td>
             {canManage && (
-              <td className="no-print px-2 py-2">
-                <div className="flex items-center justify-center gap-1">
-                  <button type="button" onClick={() => onEdit(row)} disabled={busy} className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-[11px] font-semibold hover:bg-muted disabled:opacity-50">
+              <td className="no-print whitespace-nowrap px-2 py-2">
+                <div className="flex flex-nowrap items-center justify-center gap-0.5">
+                  <button type="button" aria-label={`${row.company} 수정`} title="수정" onClick={() => onEdit(row)} disabled={busy} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
                     <Pencil className="h-3.5 w-3.5" />
-                    수정
                   </button>
                   {editable && (
-                    <button type="button" aria-label={`${row.company} 삭제`} onClick={() => onDelete(row)} disabled={busy} className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
+                    <button type="button" aria-label={`${row.company} 삭제`} title="삭제" onClick={() => onDelete(row)} disabled={busy} className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}

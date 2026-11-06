@@ -13,6 +13,73 @@ import { useAuth } from '@/components/auth/auth-context'
 
 const LEVELS: Record<Role, number> = { viewer: 1, editor: 2, admin: 3 }
 
+const SECTION_ACCENT: Record<string, { icon: string; active: string; child: string; dot: string }> = {
+  dashboard: {
+    icon: 'text-sky-600 dark:text-sky-300',
+    active: 'bg-sky-500/10 text-slate-900 after:bg-sky-600 dark:bg-sky-400/15 dark:text-white dark:after:bg-sky-300',
+    child: 'bg-sky-500/10 font-semibold text-sky-700 before:bg-sky-600 dark:bg-sky-400/15 dark:text-sky-200 dark:before:bg-sky-300',
+    dot: 'bg-sky-600 dark:bg-sky-300',
+  },
+  process: {
+    icon: 'text-amber-600 dark:text-amber-300',
+    active: 'bg-amber-500/10 text-slate-900 after:bg-amber-500 dark:bg-amber-400/15 dark:text-white dark:after:bg-amber-300',
+    child: 'bg-amber-500/10 font-semibold text-amber-800 before:bg-amber-500 dark:bg-amber-400/15 dark:text-amber-200 dark:before:bg-amber-300',
+    dot: 'bg-amber-500 dark:bg-amber-300',
+  },
+  customer: {
+    icon: 'text-indigo-600 dark:text-indigo-300',
+    active: 'bg-indigo-500/10 text-slate-900 after:bg-indigo-600 dark:bg-indigo-400/15 dark:text-white dark:after:bg-indigo-300',
+    child: 'bg-indigo-500/10 font-semibold text-indigo-700 before:bg-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-200 dark:before:bg-indigo-300',
+    dot: 'bg-indigo-600 dark:bg-indigo-300',
+  },
+  quality: {
+    icon: 'text-emerald-600 dark:text-emerald-300',
+    active: 'bg-emerald-500/10 text-slate-900 after:bg-emerald-600 dark:bg-emerald-400/15 dark:text-white dark:after:bg-emerald-300',
+    child: 'bg-emerald-500/10 font-semibold text-emerald-700 before:bg-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-200 dark:before:bg-emerald-300',
+    dot: 'bg-emerald-600 dark:bg-emerald-300',
+  },
+  kpi: {
+    icon: 'text-cyan-600 dark:text-cyan-300',
+    active: 'bg-cyan-500/10 text-slate-900 after:bg-cyan-600 dark:bg-cyan-400/15 dark:text-white dark:after:bg-cyan-300',
+    child: 'bg-cyan-500/10 font-semibold text-cyan-800 before:bg-cyan-600 dark:bg-cyan-400/15 dark:text-cyan-200 dark:before:bg-cyan-300',
+    dot: 'bg-cyan-600 dark:bg-cyan-300',
+  },
+  shipment: {
+    icon: 'text-rose-600 dark:text-rose-300',
+    active: 'bg-rose-500/10 text-slate-900 after:bg-rose-500 dark:bg-rose-400/15 dark:text-white dark:after:bg-rose-300',
+    child: 'bg-rose-500/10 font-semibold text-rose-700 before:bg-rose-500 dark:bg-rose-400/15 dark:text-rose-200 dark:before:bg-rose-300',
+    dot: 'bg-rose-500 dark:bg-rose-300',
+  },
+  equipment: {
+    icon: 'text-violet-600 dark:text-violet-300',
+    active: 'bg-violet-500/10 text-slate-900 after:bg-violet-600 dark:bg-violet-400/15 dark:text-white dark:after:bg-violet-300',
+    child: 'bg-violet-500/10 font-semibold text-violet-700 before:bg-violet-600 dark:bg-violet-400/15 dark:text-violet-200 dark:before:bg-violet-300',
+    dot: 'bg-violet-600 dark:bg-violet-300',
+  },
+  documents: {
+    icon: 'text-teal-600 dark:text-teal-300',
+    active: 'bg-teal-500/10 text-slate-900 after:bg-teal-600 dark:bg-teal-400/15 dark:text-white dark:after:bg-teal-300',
+    child: 'bg-teal-500/10 font-semibold text-teal-800 before:bg-teal-600 dark:bg-teal-400/15 dark:text-teal-200 dark:before:bg-teal-300',
+    dot: 'bg-teal-600 dark:bg-teal-300',
+  },
+  organization: {
+    icon: 'text-slate-600 dark:text-slate-300',
+    active: 'bg-slate-500/10 text-slate-900 after:bg-slate-500 dark:bg-slate-400/15 dark:text-white dark:after:bg-slate-300',
+    child: 'bg-slate-500/10 font-semibold text-slate-700 before:bg-slate-500 dark:bg-slate-400/15 dark:text-slate-200 dark:before:bg-slate-300',
+    dot: 'bg-slate-500 dark:bg-slate-300',
+  },
+  system: {
+    icon: 'text-blue-800 dark:text-blue-200',
+    active: 'bg-blue-900/10 text-slate-900 after:bg-blue-800 dark:bg-blue-300/15 dark:text-white dark:after:bg-blue-200',
+    child: 'bg-blue-900/10 font-semibold text-blue-900 before:bg-blue-800 dark:bg-blue-300/15 dark:text-blue-100 dark:before:bg-blue-200',
+    dot: 'bg-blue-800 dark:bg-blue-200',
+  },
+}
+
+function sectionAccent(id: string) {
+  return SECTION_ACCENT[id] ?? SECTION_ACCENT.dashboard
+}
+
 function matches(href: string, pathname: string, tab: string | null) {
   const [path, query] = href.split('?')
   if (path === '/') return pathname === '/'
@@ -258,15 +325,17 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
         const childActive = items.some((item) => containsActive(item, pathname, tab))
         const selfActive = isActive(section.href, pathname, tab)
 
+        const accent = sectionAccent(section.id)
+        const sectionOn = selfActive || childActive
         const headerClass = cn(
           'group relative flex h-11 w-full items-center rounded-lg text-[15px] font-bold transition-colors',
           collapsed ? 'justify-center px-0' : 'px-3',
-          selfActive || (collapsed && childActive)
-            ? 'bg-[oklch(0.52_0.19_258/0.1)] dark:bg-white/10 text-slate-900 dark:text-white after:absolute after:-right-3 after:top-1.5 after:h-8 after:w-[3px] after:rounded-full after:bg-[oklch(0.52_0.19_258)] dark:after:bg-[oklch(0.78_0.14_220)]'
+          sectionOn
+            ? cn('after:absolute after:-right-3 after:top-1.5 after:h-8 after:w-[3px] after:rounded-full', accent.active)
             : 'text-slate-800 dark:text-white/90 hover:bg-slate-100 dark:hover:bg-white/5',
         )
         const iconEl = (
-          <Icon className={cn('h-[18px] w-[18px] shrink-0', selfActive || childActive ? 'text-[oklch(0.52_0.19_258)] dark:text-[oklch(0.8_0.13_220)]' : 'text-slate-400 dark:text-white/55')} />
+          <Icon className={cn('h-[18px] w-[18px] shrink-0', sectionOn ? accent.icon : 'text-slate-400 dark:text-white/55')} />
         )
         if (reordering && !collapsed) {
           return (
@@ -359,11 +428,11 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
                             className={cn(
                               'flex h-8 items-center gap-2 rounded-md px-1.5 text-[13.5px] transition-colors',
                               active
-                                ? 'bg-white font-semibold text-[oklch(0.52_0.19_258)] dark:bg-white/10 dark:text-[oklch(0.85_0.12_215)]'
+                                ? cn('bg-white dark:bg-white/10', accent.child)
                                 : 'text-slate-700 hover:bg-white/70 hover:text-slate-950 dark:text-white/80 dark:hover:bg-white/5 dark:hover:text-white',
                             )}
                           >
-                            <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? 'bg-[oklch(0.52_0.19_258)] dark:bg-[oklch(0.85_0.12_215)]' : 'bg-slate-400 dark:bg-white/45')} />
+                            <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? accent.dot : 'bg-slate-400 dark:bg-white/45')} />
                             <span className="truncate">{child.label}</span>
                           </Link>
                         )
@@ -378,7 +447,7 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
                     className={cn(
                       'relative flex h-9 items-center rounded-md px-3 text-[15px] transition-colors',
                       isActive(item.href, pathname, tab)
-                        ? 'bg-[oklch(0.52_0.19_258/0.09)] dark:bg-[oklch(0.78_0.14_220/0.14)] font-semibold text-[oklch(0.52_0.19_258)] dark:text-[oklch(0.85_0.12_215)] before:absolute before:-left-[13px] before:top-2 before:h-5 before:w-[2px] before:bg-[oklch(0.52_0.19_258)] dark:before:bg-[oklch(0.78_0.14_220)]'
+                        ? cn('before:absolute before:-left-[13px] before:top-2 before:h-5 before:w-[2px]', accent.child)
                         : item.soon
                           ? 'text-slate-700 dark:text-white/70 hover:bg-slate-100 dark:hover:bg-white/5'
                           : 'text-slate-800 dark:text-white/90 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-950 dark:hover:text-white',

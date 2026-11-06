@@ -472,21 +472,10 @@ export function buildLedger(movements: StockMovement[], startDate = '', endDate 
   }
 }
 
-export function ledgerRows(movements: StockMovement[], startDate = '', endDate = '') {
-  return buildLedger(movements, startDate, endDate).rows
-}
-
 export interface InboundBatch {
   key: string
   inbound: StockMovement | null
   rows: StockMovement[]
-}
-
-function sameStockItem(left: StockMovement, right: StockMovement) {
-  return left.company === right.company
-    && left.product === right.product
-    && left.floor === right.floor
-    && left.unit === right.unit
 }
 
 function byMovementOrder(left: StockMovement, right: StockMovement) {
@@ -535,57 +524,6 @@ export function inboundBatches(movements: StockMovement[]): InboundBatch[] {
   }
 
   return batches
-}
-
-function outboundTotal(batch: InboundBatch) {
-  return batch.rows.filter((row) => row.kind === '출고').reduce((sum, row) => sum + row.quantity, 0)
-}
-
-/** 이 입고분 수량을 넘는 출고. 그날부터 다음 입고분을 같이 쓴 것으로 본다. */
-function closingOutbound(batch: InboundBatch) {
-  if (!batch.inbound) return null
-  let consumed = 0
-  for (const row of batch.rows) {
-    if (row.kind !== '출고') continue
-    consumed = roundQty(consumed + row.quantity)
-    if (consumed >= batch.inbound.quantity - QTY_EPS) return row
-  }
-  return null
-}
-
-function nextCompactDate(value: string) {
-  const year = Number(value.slice(0, 4))
-  const month = Number(value.slice(4, 6))
-  const day = Number(value.slice(6, 8))
-  const date = new Date(Date.UTC(year, month - 1, day))
-  date.setUTCDate(date.getUTCDate() + 1)
-  const nextMonth = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const nextDay = String(date.getUTCDate()).padStart(2, '0')
-  return `${date.getUTCFullYear()}${nextMonth}${nextDay}`
-}
-
-/**
- * 선입선출로 이 입고분을 실제 작업한 기간.
- * 앞 입고분이 소진된 날(넘친 경우 그날 포함)부터, 이 입고분이 소진된 날까지.
- */
-export function inboundWorkSpan(batch: InboundBatch, batches: InboundBatch[]) {
-  if (!batch.inbound) return null
-  const inboundLots = batches.filter((item) => item.inbound)
-  const index = inboundLots.findIndex((item) => item.key === batch.key)
-  if (index < 0) return null
-  const inboundDate = compactDate(batch.inbound.issueDate)
-  let start = inboundDate
-  if (index > 0) {
-    const previous = inboundLots[index - 1]
-    const previousClose = closingOutbound(previous)
-    if (!previousClose || !previous.inbound) return null
-    const closeDate = compactDate(previousClose.issueDate)
-    const overflow = outboundTotal(previous) > previous.inbound.quantity + QTY_EPS
-    const openedOn = overflow ? closeDate : nextCompactDate(closeDate)
-    start = openedOn > inboundDate ? openedOn : inboundDate
-  }
-  const close = closingOutbound(batch)
-  return { start, end: close ? compactDate(close.issueDate) : '' }
 }
 
 export type FlowStage = 'waiting' | 'working' | 'ready' | 'done'
@@ -665,12 +603,4 @@ export function buildLotFlow(movements: StockMovement[]): LotFlow {
   lots.sort((a, b) => a.inbound.issueDate.localeCompare(b.inbound.issueDate))
   unregistered.sort((a, b) => b.lastDate.localeCompare(a.lastDate))
   return { lots, unregistered }
-}
-
-export function batchForMovement(anchor: StockMovement, movements: StockMovement[]): InboundBatch {
-  const same = movements.filter((row) => sameStockItem(row, anchor))
-  const batches = inboundBatches(same)
-  const key = `${anchor.source}-${anchor.id}`
-  return batches.find((batch) => batch.rows.some((row) => `${row.source}-${row.id}` === key))
-    ?? { key, inbound: anchor.kind === '입고' ? anchor : null, rows: [anchor] }
 }

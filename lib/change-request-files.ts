@@ -27,10 +27,6 @@ export function isPhotoBuffer(buffer: Buffer) {
   return buffer.length > 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP'
 }
 
-export function attachmentPath(id: string, side: 'before' | 'after', name: string) {
-  return legacyAttachmentPath(id, side, name)
-}
-
 export { legacyAttachmentPath }
 
 export function decodeAttachments(value: unknown): ChangeRequestFile[] {

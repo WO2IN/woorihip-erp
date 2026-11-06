@@ -1,14 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Download, FilePlus2, History, ImagePlus, PenLine, Save, Search, Trash2, X } from 'lucide-react'
+import { Check, ChevronLeft, Download, FilePlus2, ImagePlus, PenLine, Save, Search, Stamp, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
-import { PageHeader } from '@/components/shared/page-header'
+import { useSecretToggle } from '@/hooks/use-secret-toggle'
+import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { buildAuthHeaders, getSession } from '@/lib/auth-client'
+import { getJsonAuthHeaders, getSession } from '@/lib/auth-client'
+import { formatDotDate } from '@/lib/date-utils'
 import {
   CONTENT_OPTIONS,
   HANDLING_OPTIONS,
@@ -26,15 +29,73 @@ import { cn } from '@/lib/utils'
 
 const API = '/api/development/change-requests'
 
-function displayDate(value: string) {
-  return value ? value.replace(/-/g, '.') : '—'
-}
-
 function savedAt(value: string) {
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  const h = String(date.getHours()).padStart(2, '0')
+  const min = String(date.getMinutes()).padStart(2, '0')
+  return `${y}.${m}.${d} ${h}:${min}`
+}
+
+type ApprovalStatus = 'writing' | 'waiting' | 'in_progress' | 'done'
+
+function hasStampSign(row: ChangeRequest, key: StampKey) {
+  return Boolean(row.signs?.[key]?.trim())
+}
+
+/** 입안·심의·결정·전결 칸의 서명 기준 (전결 모드는 입안 → 전결) */
+function sideApprovalStage(row: ChangeRequest, side: 'our' | 'customer'): ApprovalStatus {
+  const jeongyeol = side === 'our' ? row.ourJeongyeol : row.customerJeongyeol
+  const draft = side === 'our' ? 'ourDraft' : 'customerDraft'
+  const review = side === 'our' ? 'ourReview' : 'customerReview'
+  const decision = side === 'our' ? 'ourDecision' : 'customerDecision'
+  const final = side === 'our' ? 'ourFinal' : 'customerFinal'
+
+  if (jeongyeol) {
+    if (hasStampSign(row, final)) return 'done'
+    if (hasStampSign(row, draft)) return 'waiting'
+    return 'writing'
+  }
+  if (hasStampSign(row, decision)) return 'done'
+  if (hasStampSign(row, review)) return 'in_progress'
+  if (hasStampSign(row, draft)) return 'waiting'
+  return 'writing'
+}
+
+const APPROVAL_RANK: Record<ApprovalStatus, number> = {
+  writing: 0,
+  waiting: 1,
+  in_progress: 2,
+  done: 3,
+}
+
+function approvalStatus(row: ChangeRequest): ApprovalStatus {
+  const our = sideApprovalStage(row, 'our')
+  const customer = sideApprovalStage(row, 'customer')
+  return APPROVAL_RANK[our] >= APPROVAL_RANK[customer] ? our : customer
+}
+
+const APPROVAL_BADGE: Record<ApprovalStatus, { label: string; className: string }> = {
+  writing: {
+    label: '작성 중',
+    className: 'bg-zinc-100 text-zinc-600 ring-zinc-200 dark:bg-zinc-800/80 dark:text-zinc-300 dark:ring-zinc-600/45',
+  },
+  waiting: {
+    label: '결재 대기',
+    className: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800/80 dark:text-slate-200 dark:ring-slate-600/45',
+  },
+  in_progress: {
+    label: '결재 진행',
+    className: 'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/45 dark:text-amber-200 dark:ring-amber-500/35',
+  },
+  done: {
+    label: '결재 완료',
+    className: 'bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950/45 dark:text-emerald-200 dark:ring-emerald-500/35',
+  },
 }
 
 function currentRow(form: ChangeRequest, beforeFiles: string[] | null, afterFiles: string[] | null): ChangeRequest {
@@ -48,14 +109,14 @@ export function ChangeRequestView() {
   const [saved, setSaved] = useState<ChangeRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [status, setStatus] = useState('')
   const [fileKey, setFileKey] = useState(0)
   const [beforeFiles, setBeforeFiles] = useState<string[] | null>(null)
   const [afterFiles, setAfterFiles] = useState<string[] | null>(null)
   const [beforeBlobs, setBeforeBlobs] = useState<File[] | null>(null)
   const [afterBlobs, setAfterBlobs] = useState<File[] | null>(null)
-  const [mode, setMode] = useState<'write' | 'history'>('write')
+  const [mode, setMode] = useState<'write' | 'history'>('history')
   const [query, setQuery] = useState('')
+  const [listUnlocked] = useSecretToggle()
 
   useEffect(() => {
     fetch(API, { cache: 'no-store' })
@@ -67,7 +128,6 @@ export function ChangeRequestView() {
 
   const patch = (partial: Partial<ChangeRequest>) => {
     setForm((current) => ({ ...current, ...partial }))
-    setStatus('')
   }
 
   const toggle = (key: 'reasons' | 'targets' | 'contents' | 'handling', value: string) => {
@@ -75,7 +135,6 @@ export function ChangeRequestView() {
       ...current,
       [key]: current[key].includes(value) ? current[key].filter((item) => item !== value) : [...current[key], value],
     }))
-    setStatus('')
   }
 
   const setSubmission = (key: SubmissionKey, value: SubmissionValue) => {
@@ -83,23 +142,38 @@ export function ChangeRequestView() {
       ...current,
       submissions: { ...current.submissions, [key]: current.submissions[key] === value ? '' : value },
     }))
-    setStatus('')
   }
 
-  const applyRow = (row: ChangeRequest, message: string) => {
+  const applyRow = (row: ChangeRequest) => {
     setForm({ ...emptyChangeRequest(), ...row, signs: { ...row.signs }, submissions: { ...emptyChangeRequest().submissions, ...row.submissions } })
     setBeforeFiles(null)
     setAfterFiles(null)
     setBeforeBlobs(null)
     setAfterBlobs(null)
     setFileKey((key) => key + 1)
-    setStatus(message)
   }
 
   const resetForm = () => {
     const filled = form.docNo || form.title || form.reason || form.before || form.after || form.reasons.length || form.contents.length
-    if (filled && !window.confirm('작성 중인 내용을 지우고 새 변경요청을 시작할까요?')) return
-    applyRow(emptyChangeRequest(), '')
+    if (filled && !window.confirm('작성 중인 내용을 지우고 새로 작성할까요?')) return false
+    applyRow(emptyChangeRequest())
+    return true
+  }
+
+  const goToList = () => {
+    applyRow(emptyChangeRequest())
+    setMode('history')
+  }
+
+  /** 목록에서 작성: 확인 없이 새 양식. 작성 화면에서 작성: 입력 중이면 확인 */
+  const startNewWrite = () => {
+    if (mode === 'history') {
+      applyRow(emptyChangeRequest())
+      setMode('write')
+      return
+    }
+    if (!resetForm()) return
+    setMode('write')
   }
 
   const save = async () => {
@@ -112,7 +186,7 @@ export function ChangeRequestView() {
       const files = await encodeAttachments(beforeBlobs, afterBlobs)
       const response = await fetch(API, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(session) },
+        headers: getJsonAuthHeaders(session),
         body: JSON.stringify({ row, files, detail: `4M 변경요청 저장 · ${row.docNo || row.title || '제목 없음'}` }),
       })
       const result = await response.json().catch(() => null)
@@ -122,7 +196,7 @@ export function ChangeRequestView() {
       }
       const next = result.data as ChangeRequest
       setSaved((current) => [next, ...current.filter((item) => item.id !== next.id)])
-      applyRow(next, '저장 완료')
+      applyRow(next)
       toast.success('저장했습니다.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '저장하지 못했습니다.')
@@ -132,7 +206,7 @@ export function ChangeRequestView() {
   }
 
   const openHistory = (row: ChangeRequest) => {
-    applyRow(row, '불러왔습니다.')
+    applyRow(row)
     setMode('write')
   }
 
@@ -143,7 +217,7 @@ export function ChangeRequestView() {
     if (!session) return
     const response = await fetch(API, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(session) },
+      headers: getJsonAuthHeaders(session),
       body: JSON.stringify({ id: row.id }),
     })
     if (!response.ok) {
@@ -152,7 +226,7 @@ export function ChangeRequestView() {
       return
     }
     setSaved((current) => current.filter((item) => item.id !== row.id))
-    if (form.id === row.id) applyRow(emptyChangeRequest(), '')
+    if (form.id === row.id) applyRow(emptyChangeRequest())
     toast.success('삭제했습니다.')
   }
 
@@ -165,10 +239,9 @@ export function ChangeRequestView() {
       toast.error(error instanceof Error ? error.message : '첨부파일을 읽지 못했습니다.')
       return
     }
-    const session = getSession()
     const response = await fetch(`${API}/excel`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(session ? buildAuthHeaders(session) : {}) },
+      headers: getJsonAuthHeaders(),
       body: JSON.stringify({ row, files }),
     })
     if (!response.ok) {
@@ -188,21 +261,65 @@ export function ChangeRequestView() {
 
   const beforeNames = beforeFiles ?? form.beforeFiles
   const afterNames = afterFiles ?? form.afterFiles
+  const canSignStamp = (key: StampKey) => {
+    const ourLine: StampKey[] = ['ourDraft', 'ourReview', 'ourDecision']
+    const customerLine: StampKey[] = ['customerDraft', 'customerReview', 'customerDecision']
+    if (key === 'ourFinal') return form.ourJeongyeol
+    if (key === 'customerFinal') return form.customerJeongyeol
+    if (ourLine.includes(key)) {
+      if (!form.ourJeongyeol) return true
+      return key === 'ourDraft'
+    }
+    if (customerLine.includes(key)) {
+      if (!form.customerJeongyeol) return true
+      return key === 'customerDraft'
+    }
+    return false
+  }
+
   const sign = (key: StampKey) => {
+    if (!canSignStamp(key)) return
     const next = { ...form.signs }
     if (next[key]) {
       delete next[key]
-      patch({ signs: next })
+      patch({ signs: next, [key]: '' })
       return
     }
     if (!user?.hasSignature || !user.id) {
       toast.error('오른쪽 위 내 정보에서 서명 그림을 먼저 올려 주세요.')
       return
     }
-    patch({ signs: { ...next, [key]: user.id } })
+    const name = user.displayName?.trim() || ''
+    patch({ signs: { ...next, [key]: user.id }, [key]: name })
+  }
+
+  const setJeongyeol = (side: 'our' | 'customer', enabled: boolean) => {
+    const signs = { ...form.signs }
+    const strip = side === 'our'
+      ? (['ourReview', 'ourDecision', 'ourFinal'] as StampKey[])
+      : (['customerReview', 'customerDecision', 'customerFinal'] as StampKey[])
+    if (enabled) {
+      for (const key of side === 'our' ? (['ourReview', 'ourDecision'] as StampKey[]) : (['customerReview', 'customerDecision'] as StampKey[])) {
+        delete signs[key]
+      }
+    } else {
+      for (const key of strip) delete signs[key]
+    }
+    patch(
+      side === 'our'
+        ? { ourJeongyeol: enabled, signs }
+        : { customerJeongyeol: enabled, signs },
+    )
   }
   const approvals = [
-    form.ourDraft, form.ourReview, form.ourDecision, form.customerDraft, form.customerReview, form.customerDecision,
+    form.ourDraft,
+    form.ourReview,
+    form.ourDecision,
+    form.ourFinal,
+    form.customerDraft,
+    form.customerReview,
+    form.customerDecision,
+    form.customerFinal,
     ...Object.values(form.signs ?? {}),
   ]
   const progress = [
@@ -219,9 +336,10 @@ export function ChangeRequestView() {
   const history = [...saved]
     .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
     .filter((row) => !query.trim() || [row.docNo, row.title, row.customerName, row.company, row.reason, ...(row.reasons ?? [])].some((value) => chosungSearch(value || '', query.trim())))
+  const visibleHistory = listUnlocked ? history : []
 
   return (
-    <main className="mx-auto flex w-full max-w-[1320px] flex-col gap-5 p-4 sm:p-6">
+    <main className={PAGE_SHELL}>
       <PageHeader
         tone="green"
         icon={FilePlus2}
@@ -229,117 +347,184 @@ export function ChangeRequestView() {
         title="변경점관리 (4M)"
         description="변경요청서를 작성·저장하고 변경점신고서 엑셀로 출력합니다."
         stat={mode === 'history'
-          ? { label: '저장', value: String(saved.length), unit: '건' }
+          ? { label: '저장', value: listUnlocked ? String(saved.length) : '—', unit: '건' }
           : { label: '작성', value: `${doneCount}/${progress.length}`, sub: form.docNo || '관리번호 없음' }}
       />
 
-      <div className="flex gap-2">
-        <button type="button" onClick={() => setMode('write')} className={cn('rounded-lg px-4 py-2 text-sm font-semibold', mode === 'write' ? 'bg-emerald-600 text-white' : 'bg-card text-muted-foreground ring-1 ring-border hover:bg-muted')}>작성</button>
-        <button type="button" onClick={() => setMode('history')} className={cn('rounded-lg px-4 py-2 text-sm font-semibold', mode === 'history' ? 'bg-emerald-600 text-white' : 'bg-card text-muted-foreground ring-1 ring-border hover:bg-muted')}>
-          <History className="mr-1.5 inline size-4" />이력 {saved.length}
-        </button>
-      </div>
-
       {mode === 'history' ? (
-        <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="flex flex-col gap-4 border-b bg-muted/20 px-5 py-5 sm:flex-row sm:items-end sm:justify-between">
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold">저장된 변경요청</h2>
-              <p className="mt-1 text-sm text-muted-foreground">카드를 선택해 작성 화면으로 불러옵니다.</p>
+              <h2 className="text-xl font-bold tracking-tight">작성 목록</h2>
+              <p className="mt-1 text-sm text-muted-foreground">최근 저장 순입니다. 행을 누르면 불러와 수정할 수 있습니다.</p>
             </div>
-            <label className="relative w-full sm:max-w-sm">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="관리번호, 제목, 고객사 검색" className="bg-background pl-9" />
-            </label>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <label className="relative w-full sm:w-72">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="관리번호, 제목, 고객사 검색" className="bg-background pl-9" />
+              </label>
+              <Button type="button" onClick={startNewWrite}>
+                <PenLine />작성
+              </Button>
+            </div>
           </div>
-          {loading ? (
+          {loading && listUnlocked ? (
             <p className="px-5 py-16 text-center text-sm text-muted-foreground">불러오는 중…</p>
-          ) : history.length === 0 ? (
+          ) : !listUnlocked || visibleHistory.length === 0 ? (
             <div className="px-5 py-16 text-center">
-              <p className="text-sm text-muted-foreground">{saved.length === 0 ? '저장된 변경요청이 없습니다.' : '검색 결과가 없습니다.'}</p>
-              {saved.length === 0 && (
-                <Button type="button" className="mt-4" onClick={() => setMode('write')}><FilePlus2 />작성 탭에서 새로 만들기</Button>
+              <p className="text-sm text-muted-foreground">
+                {listUnlocked
+                  ? saved.length === 0
+                    ? '작성한 변경요청이 없습니다.'
+                    : '검색 결과가 없습니다.'
+                  : '표시할 항목이 없습니다.'}
+              </p>
+              {(listUnlocked ? saved.length === 0 : true) && (
+                <Button type="button" className="mt-4" onClick={startNewWrite}><PenLine />작성</Button>
               )}
             </div>
           ) : (
-            <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
-              {history.map((row) => (
-                <article
-                  key={row.id}
-                  className={cn(
-                    'flex flex-col rounded-xl border bg-background p-4 shadow-sm transition-shadow hover:shadow-md',
-                    row.id === form.id && 'ring-2 ring-emerald-500/60',
-                  )}
-                >
-                  <div className="mb-3 flex items-start justify-between gap-2">
-                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
-                      {row.docNo || '관리번호 없음'}
-                    </span>
-                    {row.id === form.id && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-200">편집 중</span>}
-                  </div>
-                  <h3 className="line-clamp-2 min-h-[2.5rem] text-base font-bold leading-snug">{row.title || '제목 없음'}</h3>
-                  <dl className="mt-3 space-y-1.5 text-xs">
-                    <div className="flex gap-2">
-                      <dt className="w-14 shrink-0 text-muted-foreground">고객사</dt>
-                      <dd className="truncate font-medium">{row.customerName || '—'}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="w-14 shrink-0 text-muted-foreground">적용일</dt>
-                      <dd className="tabular-nums">{displayDate(row.applyDate)}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="w-14 shrink-0 text-muted-foreground">저장</dt>
-                      <dd className="tabular-nums text-muted-foreground">{savedAt(row.updatedAt)}</dd>
-                    </div>
-                  </dl>
-                  {row.reasons?.length ? (
-                    <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">{row.reasons.join(' · ')}</p>
-                  ) : null}
-                  <div className="mt-4 flex gap-2 border-t pt-4">
-                    <Button type="button" className="flex-1" size="sm" onClick={() => openHistory(row)}>
-                      {row.id === form.id ? '작성 탭으로' : '불러오기'}
-                    </Button>
-                    {canManage && (
-                      <Button type="button" size="icon-sm" variant="outline" aria-label="변경요청 삭제" className="text-destructive hover:text-destructive" onClick={() => remove(row)}>
-                        <Trash2 className="size-4" />
-                      </Button>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
+            <Table className="min-w-[920px] table-fixed">
+              <colgroup>
+                <col className="w-[100px]" />
+                <col className="w-[120px]" />
+                <col />
+                <col className="w-[136px]" />
+                <col className="w-[112px]" />
+                <col className="w-[156px]" />
+                <col className="w-[52px]" />
+              </colgroup>
+              <TableHeader className="[&_th]:!text-[13px] [&_th]:!font-semibold [&_th]:text-foreground/90">
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="h-11 px-3 text-center">결재</TableHead>
+                  <TableHead className="h-11 px-4 text-center">관리번호</TableHead>
+                  <TableHead className="h-11 px-4 text-center">제목</TableHead>
+                  <TableHead className="h-11 px-4 text-center">고객사</TableHead>
+                  <TableHead className="h-11 px-4 text-center">적용일</TableHead>
+                  <TableHead className="h-11 px-4 text-center">저장</TableHead>
+                  <TableHead className="h-11 px-2 text-center" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleHistory.map((row) => {
+                  const selected = row.id === form.id
+                  const approval = APPROVAL_BADGE[approvalStatus(row)]
+                  return (
+                    <TableRow
+                      key={row.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openHistory(row)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          openHistory(row)
+                        }
+                      }}
+                      className={cn(
+                        'cursor-pointer',
+                        selected && 'bg-emerald-50/80 hover:bg-emerald-50/80 dark:bg-emerald-400/10 dark:hover:bg-emerald-400/10',
+                      )}
+                    >
+                      <TableCell className="px-3 py-3 text-center align-middle text-sm">
+                        <span className={cn('inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1', approval.className)}>
+                          {approval.label}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-center align-middle text-sm whitespace-normal">
+                        <span className="inline-flex max-w-full flex-wrap items-center justify-center gap-1.5">
+                          <span className="font-medium tabular-nums text-foreground">{row.docNo || '번호 없음'}</span>
+                          {selected && (
+                            <span className="rounded-full bg-emerald-100 px-1.5 py-px text-[10px] font-semibold text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-200">
+                              편집 중
+                            </span>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-center align-middle text-sm whitespace-normal">
+                        <span className="line-clamp-2 font-normal leading-snug text-foreground/90">{row.title || '제목 없음'}</span>
+                      </TableCell>
+                      <TableCell className="truncate px-4 py-3 text-center align-middle text-sm text-muted-foreground">{row.customerName || '—'}</TableCell>
+                      <TableCell className="px-4 py-3 text-center text-sm tabular-nums text-muted-foreground">{formatDotDate(row.applyDate)}</TableCell>
+                      <TableCell className="px-4 py-3 text-center text-sm tabular-nums text-muted-foreground">{savedAt(row.updatedAt)}</TableCell>
+                      <TableCell className="px-2 py-3 text-center">
+                        {canManage && (
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label="변경요청 삭제"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              void remove(row)
+                            }}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
           )}
         </section>
       ) : (
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
         <article className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="border-b bg-muted/25 px-4 py-2.5 sm:px-6">
+            <Button type="button" variant="outline" size="sm" onClick={goToList} className="h-8 gap-1 bg-background shadow-sm">
+              <ChevronLeft className="size-4" />
+              목록
+            </Button>
+          </div>
           <header className="flex flex-wrap items-start justify-between gap-4 border-b px-6 py-5">
             <div>
               <h2 className="text-xl font-extrabold tracking-tight">변경요청서</h2>
               <p className="text-xs text-muted-foreground">Engineering Change Request</p>
             </div>
-            <label className="flex w-60 items-center gap-2 whitespace-nowrap text-xs font-semibold text-muted-foreground">
-              관리번호
-              <Input value={form.docNo} placeholder="관리번호" onChange={(event) => patch({ docNo: event.target.value })} />
-            </label>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <label className="flex min-w-[9.5rem] flex-1 items-center gap-2 whitespace-nowrap text-xs font-semibold text-muted-foreground sm:max-w-[11rem] sm:flex-none">
+                관리번호
+                <Input value={form.docNo} placeholder="관리번호" onChange={(event) => patch({ docNo: event.target.value })} />
+              </label>
+              <label className="flex min-w-[11rem] flex-1 items-center gap-2 whitespace-nowrap text-xs font-semibold text-muted-foreground sm:max-w-[14rem] sm:flex-none">
+                고객사
+                <Input value={form.customerName} placeholder="고객사명" onChange={(event) => patch({ customerName: event.target.value })} />
+              </label>
+            </div>
           </header>
 
           <Group id="cr-approval" title="결재">
-            <div className="grid gap-4 p-5 md:grid-cols-2">
+            <div className="grid gap-4 p-5 lg:grid-cols-2">
               <StampBox
                 title="우리하이피"
-                keys={['ourDraft', 'ourReview', 'ourDecision']}
-                values={[form.ourDraft, form.ourReview, form.ourDecision]}
+                jeongyeol={form.ourJeongyeol}
+                onJeongyeolChange={(enabled) => setJeongyeol('our', enabled)}
+                stampKeys={['ourDraft', 'ourReview', 'ourDecision', 'ourFinal']}
+                values={[form.ourDraft, form.ourReview, form.ourDecision, form.ourFinal]}
                 signs={form.signs}
-                onChange={(index, value) => patch([{ ourDraft: value }, { ourReview: value }, { ourDecision: value }][index])}
+                onChange={(index, value) =>
+                  patch([{ ourDraft: value }, { ourReview: value }, { ourDecision: value }, { ourFinal: value }][index])
+                }
+                canSign={canSignStamp}
                 onSign={sign}
               />
               <StampBox
                 title={<input value={form.customerName} placeholder="고객사명" onChange={(event) => patch({ customerName: event.target.value })} className="w-full bg-transparent font-semibold outline-none placeholder:font-normal placeholder:text-muted-foreground" />}
-                keys={['customerDraft', 'customerReview', 'customerDecision']}
-                values={[form.customerDraft, form.customerReview, form.customerDecision]}
+                jeongyeol={form.customerJeongyeol}
+                onJeongyeolChange={(enabled) => setJeongyeol('customer', enabled)}
+                stampKeys={['customerDraft', 'customerReview', 'customerDecision', 'customerFinal']}
+                values={[form.customerDraft, form.customerReview, form.customerDecision, form.customerFinal]}
                 signs={form.signs}
-                onChange={(index, value) => patch([{ customerDraft: value }, { customerReview: value }, { customerDecision: value }][index])}
+                onChange={(index, value) =>
+                  patch(
+                    [{ customerDraft: value }, { customerReview: value }, { customerDecision: value }, { customerFinal: value }][index],
+                  )
+                }
+                canSign={canSignStamp}
                 onSign={sign}
               />
             </div>
@@ -414,9 +599,8 @@ export function ChangeRequestView() {
         <aside className="no-print order-first space-y-4 lg:sticky lg:top-4 lg:order-none">
           <div className="rounded-xl border bg-card p-4 shadow-sm">
             <Button type="button" className="h-10 w-full" onClick={save} disabled={!canManage || saving}><Save />{saving ? '저장 중…' : '저장'}</Button>
-            <p className="mt-2 min-h-4 text-center text-xs text-emerald-700 dark:text-emerald-300">{status}</p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" onClick={resetForm}><FilePlus2 />새로 작성</Button>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" onClick={startNewWrite}><PenLine />작성</Button>
               <Button type="button" variant="outline" onClick={exportExcel}><Download />엑셀</Button>
             </div>
           </div>
@@ -456,7 +640,14 @@ export function ChangeRequestView() {
 function Group({ id, title, last, children }: { id: string; title: string; last?: boolean; children: React.ReactNode }) {
   return (
     <section id={id} className={cn('scroll-mt-4', !last && 'border-b')}>
-      <h3 className="border-b bg-muted/40 px-6 py-2 text-xs font-bold tracking-wide text-muted-foreground">{title}</h3>
+      <h3
+        className={cn(
+          'border-b bg-muted/40 px-6 font-bold tracking-wide text-muted-foreground',
+          title === '결재' ? 'py-3 text-base text-foreground/90' : 'py-2 text-xs',
+        )}
+      >
+        {title}
+      </h3>
       {children}
     </section>
   )
@@ -471,55 +662,188 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-const STAMPS = ['입안', '심의', '결정']
+const STAMP_LABELS = ['입안', '심의', '결정', '전결'] as const
 
-function StampBox({ title, keys, values, signs, onChange, onSign }: { title: React.ReactNode; keys: StampKey[]; values: string[]; signs?: Partial<Record<StampKey, string>>; onChange: (index: number, value: string) => void; onSign: (key: StampKey) => void }) {
+function JeongyeolToggle({ active, onChange }: { active: boolean; onChange: (next: boolean) => void }) {
   return (
-    <div className="overflow-hidden rounded-lg border">
-      <div className="border-b bg-muted/40 px-3 py-2 text-sm font-semibold">{title}</div>
-      <div className="grid grid-cols-3 divide-x">
-        {STAMPS.map((stamp, index) => {
-          const key = keys[index]
-          const signId = signs?.[key]
+    <button
+      type="button"
+      role="switch"
+      aria-checked={active}
+      aria-label="전결 처리"
+      title="전결 시 입안·전결 칸만 서명합니다"
+      onClick={() => onChange(!active)}
+      className={cn(
+        'group relative inline-flex shrink-0 items-center gap-1.5 overflow-hidden rounded-full border px-3 py-1.5 text-[11px] font-bold tracking-wide transition-all duration-200',
+        active
+          ? 'border-blue-500/40 bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 text-white shadow-[0_4px_14px_-2px_rgba(37,99,235,0.55)] ring-2 ring-blue-400/35'
+          : 'border-slate-200/90 bg-gradient-to-b from-white to-slate-50 text-slate-600 shadow-sm hover:border-blue-300 hover:from-blue-50 hover:to-white hover:text-blue-700 dark:border-border dark:from-muted/40 dark:to-muted/20 dark:text-slate-200 dark:hover:border-blue-500/40 dark:hover:from-blue-950/40',
+      )}
+    >
+      {active && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(105deg,transparent_40%,rgba(255,255,255,0.22)_50%,transparent_60%)] opacity-80"
+        />
+      )}
+      <Stamp
+        className={cn(
+          'relative size-3.5 shrink-0 transition-transform duration-200 group-hover:scale-110',
+          active ? 'text-blue-100 drop-shadow-sm' : 'text-slate-400 group-hover:text-blue-500',
+        )}
+      />
+      <span className="relative">전결</span>
+      <span
+        className={cn(
+          'relative rounded-full px-1.5 py-px text-[9px] font-extrabold uppercase leading-none tracking-wider',
+          active ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500 dark:bg-muted dark:text-slate-400',
+        )}
+      >
+        {active ? '적용' : 'OFF'}
+      </span>
+    </button>
+  )
+}
+
+function StampSignCell({
+  stamp,
+  stampKey,
+  signId,
+  signable,
+  highlight,
+  onSign,
+}: {
+  stamp: string
+  stampKey: StampKey
+  signId?: string
+  signable: boolean
+  highlight?: boolean
+  onSign: (key: StampKey) => void
+}) {
+  return (
+    <div className="flex flex-col">
+      <span
+        className={cn(
+          'border-b py-1 text-center text-[11px] font-semibold',
+          highlight
+            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 font-bold text-white'
+            : 'text-muted-foreground',
+        )}
+      >
+        {stamp}
+      </span>
+      <div className="p-1.5">
+        {!signable ? (
+          <div className="flex h-20 items-center justify-center rounded-md border border-dashed border-transparent bg-muted/20 text-[11px] text-muted-foreground">
+            서명 없음
+          </div>
+        ) : signId ? (
+          <div className="group relative flex h-20 items-center justify-center rounded-md border border-emerald-300 bg-white dark:border-emerald-400/40">
+            <img src={`/api/auth/signature?userId=${encodeURIComponent(signId)}`} alt={`${stamp} 서명`} className="max-h-16 max-w-[90%] object-contain" />
+            <button
+              type="button"
+              onClick={() => onSign(stampKey)}
+              aria-label={`${stamp} 서명 해제`}
+              title="서명 해제"
+              className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-destructive"
+            >
+              <X className="size-3" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSign(stampKey)}
+            className="flex h-20 w-full flex-col items-center justify-center gap-1 rounded-md border border-dashed text-muted-foreground transition-colors hover:border-emerald-400 hover:bg-emerald-50/60 hover:text-emerald-700 dark:hover:bg-emerald-400/10 dark:hover:text-emerald-300"
+          >
+            <PenLine className="size-4" />
+            <span className="text-xs font-medium">서명하기</span>
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StampBox({
+  title,
+  jeongyeol,
+  onJeongyeolChange,
+  stampKeys,
+  values,
+  signs,
+  onChange,
+  canSign,
+  onSign,
+}: {
+  title: React.ReactNode
+  jeongyeol: boolean
+  onJeongyeolChange: (enabled: boolean) => void
+  stampKeys: [StampKey, StampKey, StampKey, StampKey]
+  values: string[]
+  signs?: Partial<Record<StampKey, string>>
+  onChange: (index: number, value: string) => void
+  canSign: (key: StampKey) => boolean
+  onSign: (key: StampKey) => void
+}) {
+  return (
+    <div
+      className={cn(
+        'min-w-[17rem] overflow-hidden rounded-lg border transition-shadow duration-200',
+        jeongyeol && 'border-blue-300/80 shadow-md shadow-blue-500/10 ring-1 ring-blue-400/20 dark:border-blue-500/35',
+      )}
+    >
+      <div
+        className={cn(
+          'flex items-center justify-between gap-2 border-b px-3 py-2',
+          jeongyeol ? 'bg-gradient-to-r from-blue-50/90 to-indigo-50/50 dark:from-blue-950/30 dark:to-indigo-950/20' : 'bg-muted/40',
+        )}
+      >
+        <div className="min-w-0 text-sm font-semibold">{title}</div>
+        <JeongyeolToggle active={jeongyeol} onChange={onJeongyeolChange} />
+      </div>
+      <div className="grid grid-cols-4 divide-x">
+        {STAMP_LABELS.map((stamp, index) => {
+          const key = stampKeys[index]
+          const isFinal = index === 3
+          const finalActive = isFinal && jeongyeol
           return (
-            <div key={stamp} className="flex flex-col">
-              <span className="border-b py-1 text-center text-[11px] font-semibold text-muted-foreground">{stamp}</span>
-              <div className="p-1.5">
-                {signId ? (
-                  <div className="group relative flex h-20 items-center justify-center rounded-md border border-emerald-300 bg-white dark:border-emerald-400/40">
-                    <img src={`/api/auth/signature?userId=${encodeURIComponent(signId)}`} alt={`${stamp} 서명`} className="max-h-16 max-w-[90%] object-contain" />
-                    <button
-                      type="button"
-                      onClick={() => onSign(key)}
-                      aria-label={`${stamp} 서명 해제`}
-                      title="서명 해제"
-                      className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-destructive"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onSign(key)}
-                    className="flex h-20 w-full flex-col items-center justify-center gap-1 rounded-md border border-dashed text-muted-foreground transition-colors hover:border-emerald-400 hover:bg-emerald-50/60 hover:text-emerald-700 dark:hover:bg-emerald-400/10 dark:hover:text-emerald-300"
-                  >
-                    <PenLine className="size-4" />
-                    <span className="text-xs font-medium">서명하기</span>
-                  </button>
-                )}
-              </div>
+            <div
+              key={stamp}
+              className={cn(
+                finalActive && 'bg-blue-50/60 ring-1 ring-inset ring-blue-200/80 dark:bg-blue-950/25 dark:ring-blue-500/25',
+                jeongyeol && !isFinal && index > 0 && index < 3 && 'bg-muted/15 opacity-90',
+              )}
+            >
+              <StampSignCell
+                stamp={stamp}
+                stampKey={key}
+                signId={signs?.[key]}
+                signable={canSign(key)}
+                highlight={finalActive}
+                onSign={onSign}
+              />
               <input
                 aria-label={stamp}
                 value={values[index]}
-                placeholder="이름"
+                placeholder={isFinal ? '전결자' : '이름'}
                 onChange={(event) => onChange(index, event.target.value)}
-                className="h-8 w-full border-t bg-transparent px-2 text-center text-sm outline-none placeholder:text-muted-foreground/60 focus:bg-emerald-50/60 dark:focus:bg-emerald-400/10"
+                className={cn(
+                  'h-8 w-full border-t bg-transparent px-1 text-center text-sm outline-none placeholder:text-muted-foreground/60',
+                  finalActive
+                    ? 'border-blue-200/80 bg-blue-50/50 font-semibold text-blue-950 focus:bg-blue-100/80 dark:border-blue-500/30 dark:bg-blue-950/30 dark:text-blue-100'
+                    : 'focus:bg-emerald-50/60 dark:focus:bg-emerald-400/10',
+                )}
               />
             </div>
           )
         })}
       </div>
+      {jeongyeol && (
+        <p className="border-t bg-blue-50/50 px-3 py-1.5 text-center text-[10px] font-medium text-blue-800 dark:bg-blue-950/20 dark:text-blue-200">
+          전결 · 입안과 전결 칸만 서명
+        </p>
+      )}
     </div>
   )
 }

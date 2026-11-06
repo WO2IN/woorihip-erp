@@ -197,6 +197,240 @@
   display: none;
 }
 
+.suitability-one-page {
+  display: none;
+}
+
+@page suitability-one {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+
+@media print {
+  html.suitability-print-root,
+  body.suitability-print {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  body.suitability-print {
+    page: suitability-one;
+    margin: 0 !important;
+  }
+
+  body.suitability-print .app-shell > aside,
+  body.suitability-print .app-shell-column > header,
+  body.suitability-print nav[aria-label='자격인증 관리 메뉴'] {
+    display: none !important;
+  }
+
+  body.suitability-print .app-shell,
+  body.suitability-print .app-shell-column,
+  body.suitability-print .app-shell-main,
+  body.suitability-print .app-shell-main > main {
+    display: block !important;
+    height: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  body.suitability-print .app-shell-main > main > :not(.suitability-sheet-print),
+  body.suitability-print .suitability-sheet-print > :not(.suitability-one-page) {
+    display: none !important;
+  }
+
+  body.suitability-print .suitability-one-page {
+    display: flex !important;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+    height: 281mm;
+    max-height: 281mm;
+    overflow: hidden;
+    color: #111;
+    background: white;
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  body.suitability-print .suitability-one-head {
+    position: relative;
+    min-height: 18mm;
+    margin: 0 0 2mm;
+  }
+
+  body.suitability-print .suitability-one-head h2 {
+    margin: 1.5mm 62mm 0 8mm;
+    text-align: center;
+    font-size: 16pt;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  body.suitability-print .suitability-one-approval {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 58mm;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  body.suitability-print .suitability-one-approval th,
+  body.suitability-print .suitability-one-approval td {
+    border: 1px solid #334155;
+    padding: 0.3mm 0.6mm;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 8pt;
+    font-weight: 700;
+    line-height: 1.1;
+    background: white;
+  }
+
+  body.suitability-print .suitability-one-approval .suit-print-approval-label {
+    width: 7mm;
+    background: #f1f5f9;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    writing-mode: vertical-rl;
+  }
+
+  body.suitability-print .suitability-one-approval .suit-print-approval-sign {
+    height: 10mm;
+  }
+
+  body.suitability-print .suitability-one-approval img {
+    display: block;
+    max-height: 9mm;
+    max-width: 92%;
+    margin: 0 auto;
+    object-fit: contain;
+  }
+
+  body.suitability-print .suitability-one-page h3 {
+    margin: 2.5mm 0 1mm;
+    font-size: 10pt;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  body.suitability-print .suitability-one-subject,
+  body.suitability-print .suitability-one-scores,
+  body.suitability-print .suitability-one-extra {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    flex: 0 0 auto;
+  }
+
+  body.suitability-print .suitability-one-extra-grant tr {
+    height: 10mm;
+  }
+
+  body.suitability-print .suitability-one-extra-practical tr {
+    height: 12mm;
+  }
+
+  body.suitability-print .suitability-one-scores tr {
+    height: 12mm;
+  }
+
+  body.suitability-print .suitability-one-subject th,
+  body.suitability-print .suitability-one-subject td,
+  body.suitability-print .suitability-one-scores th,
+  body.suitability-print .suitability-one-scores td,
+  body.suitability-print .suitability-one-extra th,
+  body.suitability-print .suitability-one-extra td {
+    border: 1px solid #334155;
+    padding: 1mm 1.2mm;
+    vertical-align: middle;
+    text-align: center;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  body.suitability-print .suitability-one-subject th,
+  body.suitability-print .suitability-one-extra th,
+  body.suitability-print .suitability-one-scores th {
+    background: #f1f5f9;
+    font-size: 8.5pt;
+    font-weight: 700;
+  }
+
+  body.suitability-print .suitability-one-subject td {
+    font-size: 9.5pt;
+    font-weight: 700;
+  }
+
+  body.suitability-print .suitability-one-extra td {
+    padding: 0.8mm 1.2mm;
+    font-size: 9pt;
+  }
+
+  body.suitability-print .suitability-one-scores th,
+  body.suitability-print .suitability-one-scores td {
+    padding: 1.2mm 1.2mm;
+    font-size: 10pt;
+  }
+
+  body.suitability-print .suitability-one-scores thead th {
+    text-align: center;
+  }
+
+  body.suitability-print .suitability-one-scores tbody .suit-print-col-group,
+  body.suitability-print .suitability-one-scores tbody .suit-print-col-select,
+  body.suitability-print .suitability-one-scores tbody .suit-print-col-score {
+    text-align: center;
+  }
+
+  body.suitability-print .suitability-one-scores tbody .suit-print-col-item {
+    text-align: left;
+  }
+
+  body.suitability-print .suitability-one-scores .suit-print-col-score {
+    font-weight: 800;
+  }
+
+  body.suitability-print .suitability-one-extra td:nth-child(2),
+  body.suitability-print .suitability-one-extra td:nth-child(3) {
+    text-align: left;
+  }
+
+  body.suitability-print .suitability-one-extra td:first-child,
+  body.suitability-print .suitability-one-extra td:last-child,
+  body.suitability-print .suitability-one-extra th {
+    text-align: center;
+  }
+
+  body.suitability-print .suitability-one-scores col.group {
+    width: 22mm;
+  }
+
+  body.suitability-print .suitability-one-scores col.score {
+    width: 16mm;
+  }
+
+  body.suitability-print .suitability-one-scores td:last-child,
+  body.suitability-print .suitability-one-scores th:last-child,
+  body.suitability-print .suitability-one-extra td:last-child {
+    font-weight: 800;
+  }
+
+  body.suitability-print .suitability-one-total {
+    margin: 2mm 0 0;
+    text-align: right;
+    font-size: 10pt;
+    font-weight: 800;
+  }
+}
+
 .kpi-close-print-source {
   display: none;
 }
@@ -216,6 +450,11 @@
   @page {
     size: A4 landscape;
     margin: 4mm;
+  }
+
+  @page suitability-one {
+    size: A4 portrait;
+    margin: 8mm;
   }
 
   .temp-humidity-page main.print-page {
@@ -871,6 +1110,57 @@ table:not(.border-collapse) thead th {
   margin: 4mm;
 }
 
+/* 출력 시트가 화면에 떠 있을 때도 표가 남은 높이를 채운다 */
+body.kpi-close-print-delivery .app-shell-main {
+  display: flex;
+  flex-direction: column;
+}
+
+body.kpi-close-print-delivery .kpi-close-sheet,
+body.kpi-close-print-delivery .kpi-close-sheet-delivery {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  gap: 0.75rem;
+}
+
+body.kpi-close-print-delivery .kpi-close-delivery {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  gap: 0.75rem;
+}
+
+body.kpi-close-print-delivery .kpi-close-report-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+body.kpi-close-print-delivery .kpi-close-report-card > div:last-child {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+body.kpi-close-print-delivery .kpi-close-report {
+  height: 100%;
+}
+
+body.kpi-close-print-delivery .kpi-close-report tbody tr {
+  height: 1px;
+}
+
+body.kpi-close-print-delivery .kpi-close-report th,
+body.kpi-close-print-delivery .kpi-close-report td {
+  height: 100%;
+  vertical-align: middle;
+}
+
 @media print {
   .kpi-close-print-source {
     display: block !important;
@@ -993,11 +1283,12 @@ table:not(.border-collapse) thead th {
 
   body.kpi-close-print-delivery .kpi-close-sheet,
   body.kpi-close-print-delivery .kpi-close-sheet-delivery {
-    display: block !important;
-    min-height: 0 !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 201mm !important;
+    min-height: 201mm !important;
+    max-height: 201mm !important;
+    overflow: hidden !important;
     gap: 2mm !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -1016,8 +1307,10 @@ table:not(.border-collapse) thead th {
   }
 
   body.kpi-close-print-delivery .kpi-close-delivery {
-    display: block !important;
-    gap: 0 !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    gap: 2mm !important;
     min-height: 0 !important;
   }
 
@@ -1145,8 +1438,13 @@ table:not(.border-collapse) thead th {
   }
 
   body.kpi-close-print-delivery .kpi-close-report-card {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    margin: 0 !important;
     padding: 0 !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
@@ -1156,18 +1454,28 @@ table:not(.border-collapse) thead th {
   }
 
   body.kpi-close-print-delivery .kpi-close-report-card > div:last-child {
-    overflow: visible !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
 
   body.kpi-close-print-delivery .kpi-close-report {
+    height: 100% !important;
     min-width: 0 !important;
     font-size: 9px !important;
   }
 
+  body.kpi-close-print-delivery .kpi-close-report tbody tr {
+    height: 1px;
+  }
+
   body.kpi-close-print-delivery .kpi-close-report th,
   body.kpi-close-print-delivery .kpi-close-report td {
-    padding: 0.35mm 1.5mm !important;
+    height: 100%;
+    padding: 2.8mm 1.2mm !important;
     line-height: 1.15 !important;
+    vertical-align: middle !important;
   }
 
   body.kpi-close-print-delivery .kpi-close-report tbody tr {
@@ -1248,5 +1556,168 @@ table:not(.border-collapse) thead th {
 
   .checksheet-print-page .print-photo-box figcaption {
     font-size: 8px !important;
+  }
+
+}
+
+/* Login backdrop — blue wordmark + amber swoosh */
+.login-stage {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 1rem;
+  background:
+    radial-gradient(980px 620px at 8% -8%, oklch(0.86 0.08 258 / 0.55), transparent 62%),
+    radial-gradient(820px 560px at 108% 112%, oklch(0.88 0.1 62 / 0.5), transparent 58%),
+    oklch(0.972 0.008 248);
+}
+
+.dark .login-stage {
+  background:
+    radial-gradient(900px 580px at 6% -10%, oklch(0.38 0.12 258 / 0.55), transparent 60%),
+    radial-gradient(760px 520px at 108% 114%, oklch(0.42 0.1 55 / 0.32), transparent 58%),
+    oklch(0.155 0.02 255);
+}
+
+.login-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.login-wash {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(36px);
+  will-change: transform;
+}
+
+.login-wash-blue {
+  top: -16rem;
+  left: -12rem;
+  width: 38rem;
+  height: 38rem;
+  background: radial-gradient(circle, oklch(0.68 0.16 258 / 0.42), transparent 68%);
+  animation: login-drift 24s ease-in-out infinite;
+}
+
+.login-wash-amber {
+  right: -14rem;
+  bottom: -16rem;
+  width: 34rem;
+  height: 34rem;
+  background: radial-gradient(circle, oklch(0.78 0.16 55 / 0.46), transparent 68%);
+  animation: login-drift 28s ease-in-out infinite reverse;
+}
+
+.login-wash-sky {
+  top: 22%;
+  right: 8%;
+  width: 22rem;
+  height: 22rem;
+  background: radial-gradient(circle, oklch(0.84 0.08 210 / 0.34), transparent 70%);
+  animation: login-drift 32s ease-in-out infinite;
+  animation-delay: -9s;
+}
+
+.dark .login-wash-blue {
+  background: radial-gradient(circle, oklch(0.52 0.18 258 / 0.48), transparent 68%);
+}
+
+.dark .login-wash-amber {
+  background: radial-gradient(circle, oklch(0.62 0.15 55 / 0.28), transparent 68%);
+}
+
+.dark .login-wash-sky {
+  background: radial-gradient(circle, oklch(0.48 0.1 210 / 0.28), transparent 70%);
+}
+
+.login-arc {
+  position: absolute;
+  color: oklch(0.68 0.16 52 / 0.5);
+}
+
+.login-arc-tr {
+  top: -7rem;
+  right: -8rem;
+  width: min(42rem, 78vw);
+  height: auto;
+}
+
+.login-arc-bl {
+  bottom: -8rem;
+  left: -7rem;
+  width: min(34rem, 70vw);
+  height: auto;
+  color: oklch(0.55 0.16 258 / 0.28);
+}
+
+.login-arc-line {
+  color: oklch(0.52 0.16 258 / 0.22);
+}
+
+.dark .login-arc {
+  color: oklch(0.74 0.14 58 / 0.32);
+}
+
+.dark .login-arc-bl,
+.dark .login-arc-line {
+  color: oklch(0.68 0.12 258 / 0.28);
+}
+
+.login-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 52% 48% at 50% 46%, transparent 0%, oklch(0.9 0.02 250 / 0.18) 100%);
+}
+
+.dark .login-vignette {
+  background: radial-gradient(ellipse 50% 46% at 50% 46%, transparent 0%, oklch(0.1 0.02 255 / 0.35) 100%);
+}
+
+.login-logo-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14rem;
+  height: 6rem;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  background: radial-gradient(circle, oklch(0.72 0.14 258 / 0.28), oklch(0.78 0.12 55 / 0.12) 55%, transparent 72%);
+  filter: blur(10px);
+}
+
+.login-card {
+  box-shadow:
+    0 1px 0 oklch(1 0 0 / 0.7) inset,
+    0 24px 60px -28px oklch(0.42 0.14 258 / 0.45),
+    0 8px 24px -16px oklch(0.55 0.12 50 / 0.28);
+}
+
+.dark .login-card {
+  box-shadow:
+    0 1px 0 oklch(1 0 0 / 0.06) inset,
+    0 28px 70px -24px oklch(0.05 0.02 255 / 0.8);
+}
+
+@keyframes login-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(26px, -20px, 0) scale(1.07);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-wash {
+    animation: none;
   }
 }

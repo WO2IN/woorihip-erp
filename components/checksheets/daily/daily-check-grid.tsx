@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react'
+import { useMemo, useOptimistic, useState, useTransition } from 'react'
+import { useSecretToggle } from '@/hooks/use-secret-toggle'
 import { cn } from '@/lib/utils'
-import { getCheckerInitial, getDayRange, isDayOffDate, isWeekend, scheduledDaysForCycle } from '@/lib/date-utils'
+import { getCheckerInitial, getDayRange, isDayOffDate, isWeekend, scheduledDaysForCycle, toggleDay } from '@/lib/date-utils'
 import { isDueOnDay } from '@/lib/today-check'
 import {
   upsertDailyCheckEntry,
@@ -13,23 +14,12 @@ import {
 import { updateDailyCheckItem, updateEquipment } from '@/app/actions/equipment'
 import { CHECK_METHODS, ITEM_CYCLES, STAFF_CYCLES } from '@/lib/constants/check-catalog'
 import { formatCheckStamp } from '@/lib/check-stamp'
-import { Trash2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CellSelect } from '@/components/shared/cell-select'
 import { HolidayPickerPopover } from '@/components/shared/holiday-picker-popover'
 import { RangeFillPopover } from '@/components/shared/range-fill-popover'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { ClearSheetDialog } from '@/components/shared/clear-sheet-dialog'
 
 const SYMBOLS = ['O', 'X', '△'] as const
 
@@ -94,9 +84,7 @@ export function DailyCheckGrid({
   const days = getDayRange(year, month)
   const [, startTransition] = useTransition()
   const [selectedSymbol, setSelectedSymbol] = useState<string>('O')
-  const [adminOpen, setAdminOpen] = useState(false)
-  const commandBuffer = useRef('')
-  const commandTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [adminOpen] = useSecretToggle()
 
   const [inspectorInfo, setInspectorInfo] = useState<StaffInfo>({
     name: inspector?.name ?? '',
@@ -111,13 +99,11 @@ export function DailyCheckGrid({
 
   const [optimisticHolidays, toggleOptimisticHoliday] = useOptimistic(
     holidays,
-    (state, day: number) =>
-      state.includes(day) ? state.filter((d) => d !== day) : [...state, day].sort((a, b) => a - b),
+    toggleDay,
   )
   const [optimisticWorkdays, toggleOptimisticWorkday] = useOptimistic(
     workdays,
-    (state, day: number) =>
-      state.includes(day) ? state.filter((d) => d !== day) : [...state, day].sort((a, b) => a - b),
+    toggleDay,
   )
 
   function isDayOff(day: number) {
@@ -149,18 +135,14 @@ export function DailyCheckGrid({
     inspectorMarks,
     (state, update: { day: number; days?: number[] }) => {
       if (update.days) return update.days
-      return state.includes(update.day)
-        ? state.filter((d) => d !== update.day)
-        : [...state, update.day].sort((a, b) => a - b)
+      return toggleDay(state, update.day)
     },
   )
   const [optimisticManagerMarks, setOptimisticManagerMarks] = useOptimistic(
     managerMarks,
     (state, update: { day: number; days?: number[] }) => {
       if (update.days) return update.days
-      return state.includes(update.day)
-        ? state.filter((d) => d !== update.day)
-        : [...state, update.day].sort((a, b) => a - b)
+      return toggleDay(state, update.day)
     },
   )
 
@@ -169,26 +151,6 @@ export function DailyCheckGrid({
   const todayDay = today.getDate()
   const inspectorInitial = getCheckerInitial(inspectorInfo.name) || '✓'
   const managerInitial = getCheckerInitial(managerInfo.name) || '✓'
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return
-      const target = event.target as HTMLElement | null
-      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
-      commandBuffer.current = `${commandBuffer.current}${event.key.toLowerCase()}`.slice(-8)
-      if (commandBuffer.current === 'woorihip') {
-        setAdminOpen((open) => !open)
-        commandBuffer.current = ''
-      }
-      if (commandTimer.current) clearTimeout(commandTimer.current)
-      commandTimer.current = setTimeout(() => { commandBuffer.current = '' }, 1500)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      if (commandTimer.current) clearTimeout(commandTimer.current)
-    }
-  }, [])
 
   function handleCellClick(itemId: number, day: number) {
     if (!canManage) return
@@ -370,38 +332,11 @@ export function DailyCheckGrid({
           )}
 
           {canManage && (
-          <AlertDialog>
-            <AlertDialogTrigger
-              render={
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5 px-2.5 text-destructive hover:text-destructive"
-                />
-              }
-            >
-              <Trash2Icon className="size-3.5" />
-              전체 지우기
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>이번 달 점검 내용을 모두 지울까요?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {year}년 {month}월 일상점검 체크시트에 입력된 모든 표시와 점검자·관리자 서명이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>취소</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-white hover:bg-destructive/90"
-                  onClick={handleClearAll}
-                >
-                  전체 지우기
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            <ClearSheetDialog
+              title="이번 달 점검 내용을 모두 지울까요?"
+              description={`${year}년 ${month}월 일상점검 체크시트에 입력된 모든 표시와 점검자·관리자 서명이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`}
+              onConfirm={handleClearAll}
+            />
           )}
         </div>
       </div>

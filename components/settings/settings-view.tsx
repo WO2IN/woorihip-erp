@@ -5,7 +5,7 @@ import { Building2, ChevronRight, FileType, Layers, Package, Settings2, Sparkles
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ConfigManager } from './config-manager'
 import { PlatingInfoManager } from './plating-info-manager'
-import { PageHeader } from '@/components/shared/page-header'
+import { PAGE_INSET, PageHeader } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
 
 type Tone = 'blue' | 'violet' | 'green' | 'amber' | 'rose' | 'cyan'
@@ -80,9 +80,9 @@ export function SettingsView() {
   const total = Object.values(summaries).reduce((sum, s) => sum + s.count, 0)
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-6 p-4 sm:p-6">
+    <div className={cn(PAGE_INSET, 'space-y-6')}>
       <PageHeader
-        tone="slate"
+        tone="steel"
         icon={Settings2}
         eyebrow="SYSTEM · 시스템관리"
         title="기준정보 설정"

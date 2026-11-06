@@ -1,3 +1,13 @@
+/** `YYYY-MM-DD` → `YYYY.MM.DD`, 빈 값이면 `empty` */
+export function formatDotDate(value: string | null | undefined, empty = '—') {
+  return value ? value.replace(/-/g, '.') : empty
+}
+
+/** 정렬된 일자 목록에서 `day`를 넣거나 뺀다 */
+export function toggleDay(days: readonly number[], day: number): number[] {
+  return days.includes(day) ? days.filter((d) => d !== day) : [...days, day].sort((a, b) => a - b)
+}
+
 export function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
@@ -19,12 +29,6 @@ export function isDayOffDate(
   return isWeekend(year, month, day) && !workdays.includes(day)
 }
 
-export function dayOfWeekLabel(year: number, month: number, day: number): string {
-  const labels = ["일", "월", "화", "수", "목", "금", "토"]
-  const date = new Date(year, month - 1, day)
-  return labels[date.getDay()]
-}
-
 export function getDayRange(year: number, month: number): number[] {
   const count = daysInMonth(year, month)
   return Array.from({ length: count }, (_, i) => i + 1)
@@ -38,16 +42,6 @@ export function currentYearMonth(): { year: number; month: number } {
 export function getCheckerInitial(name: string) {
   const trimmed = name.trim()
   return trimmed ? trimmed[0] : ''
-}
-
-export function lastWorkingDaysByWeek(
-  year: number,
-  month: number,
-  fromDay: number,
-  toDay: number,
-  isDayOff: (day: number) => boolean,
-): number[] {
-  return scheduledDaysForCycle(year, month, fromDay, toDay, '1회/주', isDayOff)
 }
 
 export function parseCheckCycle(cycle: string): { unit: '일' | '주' | '월'; times: number } {

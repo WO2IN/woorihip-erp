@@ -83,10 +83,6 @@ export function readProcessChecks() {
   return listRecords<ProcessCheckRecord>('processChecks')
 }
 
-export function writeProcessChecks(records: ProcessCheckRecord[]) {
-  return replaceRecords('processChecks', records)
-}
-
 export async function appendProcessCheck(record: ProcessCheckRecord) {
   await insertRecord('processChecks', record, 'first')
 }
@@ -160,10 +156,6 @@ export function deleteProcessNonconformity(id: string) {
 
 export function readMetadata() {
   return listRecords<DocumentMetadata>('metadata')
-}
-
-export function writeMetadata(data: DocumentMetadata[]) {
-  return replaceRecords('metadata', data)
 }
 
 export async function appendMetadata(doc: DocumentMetadata) {

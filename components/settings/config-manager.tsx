@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
 import { notifyDataChanged } from '@/lib/data-events'
-import { getSession, buildAuthHeaders } from '@/lib/auth-client'
+import { getJsonAuthHeaders, getSession } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
 import {
   AlertDialog,
@@ -31,10 +31,7 @@ function authHeadersOrThrow(): HeadersInit {
   if (!session) {
     throw new Error('로그인이 필요합니다.')
   }
-  return {
-    'Content-Type': 'application/json',
-    ...buildAuthHeaders(session),
-  }
+  return getJsonAuthHeaders(session)
 }
 
 function Highlight({ text, keyword }: { text: string; keyword: string }) {

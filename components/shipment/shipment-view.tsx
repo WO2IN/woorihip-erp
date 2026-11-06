@@ -1,13 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowDown,
   ArrowUp,
   Calendar,
   ChevronDown,
-  ChevronRight,
   Download,
   Package,
   PackageCheck,
@@ -28,7 +27,7 @@ import { LotDetailPanel } from '@/components/shipment/lot-detail-panel'
 import { StockDashboard } from '@/components/shipment/stock-status-board'
 import { ProcessCheckRecord, ProcessTemplate } from '@/lib/process-checklist'
 import { Button } from '@/components/ui/button'
-import { BAND_BUTTON, BAND_BUTTON_PRIMARY, PageHeader } from '@/components/shared/page-header'
+import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import {
   Dialog,
   DialogContent,
@@ -42,7 +41,9 @@ import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { FilterChip, FilterSelect } from '@/components/shared/list-filters'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/components/auth/auth-context'
-import { buildAuthHeaders, getSession } from '@/lib/auth-client'
+import { getAuthHeaders, getJsonAuthHeaders } from '@/lib/auth-client'
+import { formatDotDate } from '@/lib/date-utils'
+import { formatDefectRate } from '@/lib/format'
 import { useDataChanged } from '@/lib/data-events'
 import { PdfViewerModal } from '@/components/explorer/pdf-viewer-modal'
 import { Floor3WorkLog } from '@/lib/floor3-work-log'
@@ -64,8 +65,19 @@ import {
   type WorkStage,
 } from '@/lib/stock'
 import { LotFlowBoard } from '@/components/shipment/lot-flow-board'
+import { cn } from '@/lib/utils'
 
 type TabKey = 'flow' | 'stock' | 'in' | 'out' | 'work'
+
+const FLOW_STAGE_LABELS: { key: FlowLot['stage']; label: string }[] = [
+  { key: 'waiting', label: '입고 대기' },
+  { key: 'working', label: '작업 중' },
+  { key: 'ready', label: '출고 대기' },
+  { key: 'done', label: '출고 완료' },
+]
+
+const STOCK_TAB_ACCENT =
+  'bg-[oklch(0.58_0.20_18)] text-white shadow-sm dark:bg-[oklch(0.52_0.18_12)]'
 const isTabKey = (v: string | null): v is TabKey => v === 'flow' || v === 'stock' || v === 'in' || v === 'out' || v === 'work'
 type InventoryForm = {
   id?: string
@@ -92,23 +104,9 @@ const emptyForm = (): InventoryForm => ({
   sampleQuantity: '',
 })
 
-function defectRateText(defect: number, incoming: number) {
-  if (incoming <= 0) return null
-  const rate = (defect / incoming) * 100
-  return `${rate.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}%`
-}
-
 function uniqueSorted(values: string[], locale = true) {
   const items = [...new Set(values.filter((item) => item && item !== '-'))]
   return locale ? items.sort((a, b) => a.localeCompare(b, 'ko')) : items.sort()
-}
-
-function authHeaders() {
-  const session = getSession()
-  return {
-    'Content-Type': 'application/json',
-    ...(session ? buildAuthHeaders(session) : {}),
-  }
 }
 
 export function ShipmentView() {
@@ -171,8 +169,7 @@ export function ShipmentView() {
     if (manual) setRefreshing(true)
     else setLoading(true)
     try {
-      const session = getSession()
-      const headers = session ? buildAuthHeaders(session) : {}
+      const headers = getAuthHeaders()
       const [docRes, invRes, checkRes, templateRes, workRes] = await Promise.all([
         fetch('/api/documents', { cache: 'no-store', headers }),
         fetch('/api/inventory', { cache: 'no-store', headers }),
@@ -448,7 +445,7 @@ export function ShipmentView() {
   }, [endDate, filteredMovements, selectedGroup, startDate])
   const selectedLedger = selectedLedgerView.rows
   const ledgerRangeLabel = startDate || endDate
-    ? `${startDate ? startDate.replace(/-/g, '.') : '처음'} ~ ${endDate ? endDate.replace(/-/g, '.') : '오늘'}`
+    ? `${formatDotDate(startDate, '처음')} ~ ${formatDotDate(endDate, '오늘')}`
     : selectedLedger.length
       ? `${displayDate(selectedLedger[0].issueDate)} ~ ${displayDate(selectedLedger[selectedLedger.length - 1].issueDate)}`
       : '전체 기간'
@@ -473,7 +470,7 @@ export function ShipmentView() {
       }
       const response = await fetch('/api/inventory', {
         method: form.id ? 'PATCH' : 'POST',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify(payload),
       })
       const result = await response.json().catch(() => ({}))
@@ -494,7 +491,7 @@ export function ShipmentView() {
     try {
       const response = await fetch('/api/inventory', {
         method: 'DELETE',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({ id }),
       })
       const result = await response.json().catch(() => ({}))
@@ -545,7 +542,7 @@ export function ShipmentView() {
     try {
       const response = await fetch('/api/inventory', {
         method: 'PATCH',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({ id: lot.inbound.id, workStage: stage }),
       })
       const result = await response.json().catch(() => ({}))
@@ -581,12 +578,12 @@ export function ShipmentView() {
     const response = row.source === 'inventory'
       ? await fetch('/api/inventory', {
           method: 'PATCH',
-          headers: authHeaders(),
+          headers: getJsonAuthHeaders(),
           body: JSON.stringify({ id: row.id, quantity, quantityUnit: row.unit || 'EA' }),
         })
       : await fetch('/api/documents', {
           method: 'PATCH',
-          headers: authHeaders(),
+          headers: getJsonAuthHeaders(),
           body: JSON.stringify({ id: row.id, quantity }),
         })
     const result = await response.json().catch(() => ({}))
@@ -673,7 +670,7 @@ export function ShipmentView() {
           sample: row.sample,
           workQuantity: row.workQuantity,
           finalStock: row.finalStock,
-          defectRate: defectRateText(row.defect, row.incoming) || '-',
+          defectRate: formatDefectRate(row.defect, row.incoming) || '-',
           lastDate: displayDate(row.lastDate),
         })),
         ledger: [...inbound, ...outbound]
@@ -706,82 +703,102 @@ export function ShipmentView() {
     }
   }
 
+  const inProgressLots = lotFlow.lots.length - stageCount('done')
+
   return (
-    <main className="p-6 md:p-8">
+    <main className={PAGE_SHELL}>
       <PageHeader
-        className="mb-6"
-        tone="blue"
+        tone="rose"
         icon={Package}
         eyebrow="STOCK · 재고 관리"
-        title={
-          <span className="flex items-center gap-2.5">
-            재고 관리
-            <span
-              title="입고가 아직 관리되지 않아 재고와 진행현황이 실제와 다릅니다. 화면 확인용입니다."
-              className="cursor-help rounded-md bg-white/90 px-2 py-0.5 text-xs font-bold tracking-normal text-sky-700"
-            >
-              테스트 중
-            </span>
-          </span>
-        }
-        description="고객 소재가 입고 → 작업 → 출고로 어디까지 왔는지 입고 건별로 봅니다. 출고는 성적서 등록 시 자동으로 잡힙니다."
-        actions={
-          <>
-            <Button variant="outline" className={BAND_BUTTON} onClick={() => void load(true)} disabled={refreshing}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+        title="재고 관리"
+        description="고객 소재의 입고 → 작업 → 출고 흐름을 입고 건별로 추적합니다. 출고는 성적서 등록 시 자동 반영됩니다."
+        stat={{
+          label: '진행 중',
+          value: String(inProgressLots),
+          unit: '건',
+          sub: `재고 ${groups.length.toLocaleString('ko-KR')}종 · 마이너스 ${negativeCount.toLocaleString('ko-KR')}종`,
+        }}
+      />
+
+      <section className="rounded-2xl border bg-card p-3 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <nav className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl bg-muted/40 p-1" aria-label="재고 관리 메뉴">
+            {(
+              [
+                ['flow', '진행현황', inProgressLots],
+                ['stock', '재고현황', groups.length],
+                ['in', '입고내역', inbound.length],
+                ['out', '출고내역', outbound.length],
+                ['work', '작업일보', workRows.length],
+              ] as const
+            ).map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={cn(
+                  'shrink-0 rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors',
+                  tab === key ? STOCK_TAB_ACCENT : 'text-muted-foreground hover:bg-card hover:text-foreground',
+                )}
+              >
+                {label}
+                <span className={cn('ml-1.5 tabular-nums text-xs', tab === key ? 'text-white/85' : 'text-muted-foreground')}>{count}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+            <Button variant="outline" className="h-10 bg-background" onClick={() => void load(true)} disabled={refreshing}>
+              <RefreshCw className={cn('mr-2 h-4 w-4', refreshing && 'animate-spin')} />
               새로고침
             </Button>
-            <Button variant="outline" className={BAND_BUTTON} onClick={() => void downloadExcel()} disabled={loading || downloading || groups.length === 0}>
-              <Download className="mr-2 h-4 w-4" /> 엑셀 다운로드
+            <Button
+              variant="outline"
+              className="h-10 bg-background"
+              onClick={() => void downloadExcel()}
+              disabled={loading || downloading || groups.length === 0}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              <span className="sm:hidden">엑셀</span>
+              <span className="hidden sm:inline">엑셀 다운로드</span>
             </Button>
             {editable && (
               <Button
-                className={BAND_BUTTON_PRIMARY}
+                className={cn('h-10', STOCK_TAB_ACCENT)}
                 onClick={() => {
                   setForm(emptyForm())
                   setFormOpen(true)
                 }}
               >
-                <Plus className="mr-2 h-4 w-4" /> 입고 등록
+                <Plus className="mr-2 h-4 w-4" />
+                입고 등록
               </Button>
             )}
-          </>
-        }
-      />
+          </div>
+        </div>
+      </section>
 
-      <div className="mb-4 flex gap-10 border-b">
-        {(
-          [
-            ['flow', '진행현황', lotFlow.lots.length - stageCount('done')],
-            ['stock', '재고현황', groups.length],
-            ['in', '입고내역', inbound.length],
-            ['out', '출고내역', outbound.length],
-            ['work', '작업일보', workRows.length],
-          ] as const
-        ).map(([key, label, count]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`-mb-px border-b-2 px-1 pb-2.5 text-sm font-semibold transition-colors ${
-              tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {label}
-            <span className={`ml-1 tabular-nums ${tab === key ? 'text-blue-600/80' : 'text-muted-foreground'}`}>{count}</span>
-          </button>
-        ))}
-      </div>
+      {(user?.role === 'viewer' || (editFloor != null && user?.role !== 'viewer')) && (
+        <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-100">
+          {user?.role === 'viewer' && <p>뷰어 계정은 입출고를 조회만 할 수 있습니다.</p>}
+          {editFloor != null && user?.role !== 'viewer' && (
+            <p>등록·수정은 {editFloor}층만 가능합니다. 다른 층 데이터는 조회만 됩니다.</p>
+          )}
+          <p className="mt-1 text-xs text-amber-800/90 dark:text-amber-200/80">
+            입고 등록이 아직 전면 도입되지 않아 재고·진행 수치는 참고용입니다.
+          </p>
+        </div>
+      )}
 
-      <section className="mb-4">
-        {user?.role === 'viewer' && (
-          <p className="mb-2 text-sm text-muted-foreground">뷰어 계정은 입출고를 보기만 할 수 있습니다.</p>
-        )}
-        {editFloor != null && user?.role !== 'viewer' && (
-          <p className="mb-2 text-sm text-muted-foreground">등록과 수정은 {editFloor}층만 가능합니다. 다른 층은 조회만 됩니다.</p>
-        )}
+      {user?.role !== 'viewer' && editFloor == null && (
+        <p className="rounded-xl border border-dashed bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
+          입고 등록이 아직 전면 도입되지 않아 재고·진행 수치는 참고용입니다. 출고는 성적서 등록 시 자동 반영됩니다.
+        </p>
+      )}
+
+      <section className="rounded-2xl border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5" role="tablist" aria-label="층 선택">
+          <div className="flex h-10 items-center gap-0.5 rounded-lg border bg-muted/30 p-1" role="tablist" aria-label="층 선택">
             {(['all', '1', '2', '3'] as const).map((floor) => (
               <button
                 key={floor}
@@ -789,9 +806,10 @@ export function ShipmentView() {
                 role="tab"
                 aria-selected={floorFilter === floor}
                 onClick={() => setFloorFilter(floor)}
-                className={`h-10 rounded-lg px-4 text-sm font-semibold transition-colors ${
-                  floorFilter === floor ? 'bg-blue-600 text-white shadow-sm' : 'border bg-card text-foreground hover:bg-muted'
-                }`}
+                className={cn(
+                  'h-full rounded-md px-3.5 text-sm font-semibold transition-colors',
+                  floorFilter === floor ? STOCK_TAB_ACCENT : 'text-muted-foreground hover:bg-card hover:text-foreground',
+                )}
               >
                 {floor === 'all' ? '전체' : `${floor}층`}
               </button>
@@ -804,7 +822,7 @@ export function ShipmentView() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="업체명, 품목, 로트번호 검색..."
-              className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-10 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-10 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             {query && (
               <button
@@ -818,23 +836,37 @@ export function ShipmentView() {
             )}
           </label>
           {tab !== 'flow' && unitOrder.length > 1 && (
-            <div className="flex h-10 items-center gap-1 rounded-lg border bg-card p-1">
+            <div className="flex h-10 items-center gap-1 rounded-lg border bg-muted/30 p-1">
               {unitOrder.map((unit) => (
                 <button
                   key={unit}
                   type="button"
                   aria-pressed={activeUnit === unit}
                   onClick={() => setUnitView(unit)}
-                  className={`h-8 rounded-md px-2.5 text-xs font-semibold ${activeUnit === unit ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-muted-foreground hover:bg-muted'}`}
+                  className={cn(
+                    'h-8 rounded-md px-2.5 text-xs font-semibold transition-colors',
+                    activeUnit === unit ? STOCK_TAB_ACCENT : 'text-muted-foreground hover:bg-card hover:text-foreground',
+                  )}
                 >
                   {unit}
                 </button>
               ))}
             </div>
           )}
+          {tab === 'stock' && negativeCount > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              className={cn('h-10', negativeOnly && 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200')}
+              onClick={() => setNegativeOnly((value) => !value)}
+            >
+              <TriangleAlert className="mr-2 h-4 w-4" />
+              {negativeOnly ? '전체 재고' : '마이너스만'}
+            </Button>
+          )}
           <Button
             variant="outline"
-            className={`h-10 ${filtersOpen || activeFilterCount ? 'border-foreground/30 bg-muted' : 'bg-card'}`}
+            className={cn('h-10', filtersOpen || activeFilterCount ? 'border-foreground/30 bg-muted' : 'bg-background')}
             onClick={() => setFiltersOpen((value) => !value)}
             aria-expanded={filtersOpen}
           >
@@ -843,12 +875,23 @@ export function ShipmentView() {
             {activeFilterCount > 0 && (
               <span className="ml-1.5 rounded-full bg-foreground px-1.5 text-[11px] font-bold text-background tabular-nums">{activeFilterCount}</span>
             )}
-            <ChevronDown className={`ml-1.5 h-4 w-4 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={cn('ml-1.5 h-4 w-4 transition-transform', filtersOpen && 'rotate-180')} />
           </Button>
+          {tab === 'stock' && (
+            <span className="hidden text-sm text-muted-foreground tabular-nums lg:inline">
+              {stockRows.length.toLocaleString('ko-KR')} / {groups.length.toLocaleString('ko-KR')}종
+            </span>
+          )}
+          {tab === 'in' && (
+            <span className="hidden text-sm text-muted-foreground tabular-nums lg:inline">{inbound.length.toLocaleString('ko-KR')}건</span>
+          )}
+          {tab === 'out' && (
+            <span className="hidden text-sm text-muted-foreground tabular-nums lg:inline">{outbound.length.toLocaleString('ko-KR')}건</span>
+          )}
         </div>
 
         {filtersOpen && (
-          <div className="mt-2 grid gap-3 rounded-xl border bg-card p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-4">
             <FilterSelect label="업체명" value={activeCompany} onChange={setCompanyFilter} allLabel="전체 업체" options={availableCompanies} counts={companyCounts} />
             <FilterSelect label="품목" value={activeProduct} onChange={setProductFilter} allLabel="전체 품목" options={availableProducts} counts={productCounts} />
             <label className="space-y-1.5 text-sm font-medium lg:col-span-2">
@@ -863,12 +906,12 @@ export function ShipmentView() {
         )}
 
         {activeFilterCount > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t pt-3">
             {companyFilter !== 'all' && <FilterChip label={companyFilter} onClear={() => setCompanyFilter('all')} />}
             {productFilter !== 'all' && <FilterChip label={productFilter} onClear={() => setProductFilter('all')} />}
             {(startDate || endDate) && (
               <FilterChip
-                label={`${startDate ? startDate.replace(/-/g, '.') : '처음'} ~ ${endDate ? endDate.replace(/-/g, '.') : '오늘'}`}
+                label={`${formatDotDate(startDate, '처음')} ~ ${formatDotDate(endDate, '오늘')}`}
                 onClear={() => {
                   setStartDate('')
                   setEndDate('')
@@ -891,22 +934,21 @@ export function ShipmentView() {
         )}
       </section>
 
-      {tab !== 'flow' && (
-        <section className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StockKpi icon={<ArrowDown className="h-4 w-4" />} iconClass="bg-blue-500" label="입고" lines={forUnit(cardIncoming)} hint={periodFiltered ? '선택한 기간 입고 수량' : '이번 달 총 입고 수량'} />
-            <StockKpi icon={<ArrowUp className="h-4 w-4" />} iconClass="bg-orange-400" label="출고" lines={forUnit(cardOutgoing)} hint={periodFiltered ? '선택한 기간 출고 수량' : '이번 달 총 출고 수량'} />
-            <StockKpi icon={<Package className="h-4 w-4" />} iconClass="bg-emerald-500" label="현재 재고" lines={forUnit(stockLines)} hint={stockHint} />
-            <StockKpi icon={<TriangleAlert className="h-4 w-4" />} iconClass="bg-rose-500" label="재고 마이너스" lines={[{ unit: '종', value: negativeForUnit }]} hint="대부분 입고 미등록" warn />
+      {tab === 'flow' && (
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {FLOW_STAGE_LABELS.map(({ key, label }) => (
+            <StockKpi key={key} label={label} lines={[{ unit: '건', value: stageCount(key) }]} hint={key === 'done' ? '최근 완료 포함' : '현재 단계 입고 건'} />
+          ))}
         </section>
       )}
 
-      {tab === 'stock' && (negativeOnly || negativeCount > 0) && (
-        <div className="mb-4 flex justify-end">
-          <button type="button" className="inline-flex items-center text-sm font-semibold text-muted-foreground hover:text-foreground" onClick={() => setNegativeOnly((value) => !value)}>
-            {negativeOnly ? '전체 재고 보기' : '마이너스 재고만 보기'}
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
+      {tab !== 'flow' && (
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StockKpi label="입고" lines={forUnit(cardIncoming)} hint={periodFiltered ? '선택한 기간 입고 수량' : '이번 달 총 입고 수량'} />
+          <StockKpi label="출고" lines={forUnit(cardOutgoing)} hint={periodFiltered ? '선택한 기간 출고 수량' : '이번 달 총 출고 수량'} />
+          <StockKpi label="현재 재고" lines={forUnit(stockLines)} hint={stockHint} />
+          <StockKpi label="재고 마이너스" lines={[{ unit: '종', value: negativeForUnit }]} hint="입고 미등록·과출고 등" warn />
+        </section>
       )}
 
       {tab === 'flow' && (
@@ -1363,39 +1405,38 @@ function KindBadge({ kind }: { kind: '입고' | '출고' }) {
 }
 
 function StockKpi({
-  icon,
-  iconClass,
   label,
   lines,
   hint,
   warn = false,
 }: {
-  icon: ReactNode
-  iconClass: string
   label: string
   lines: { unit: string; value: number }[]
   hint: string
   warn?: boolean
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border bg-card px-4 py-4 shadow-[0_1px_3px_oklch(0_0_0/0.06)]">
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white ${iconClass}`}>{icon}</span>
-      <div className="min-w-0">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        {lines.length === 0 ? (
-          <p className="mt-1 text-[1.65rem] font-bold leading-none tabular-nums">—</p>
-        ) : (
-          <div className="mt-1 space-y-1">
-            {lines.map((line) => (
-              <p key={line.unit} className={`whitespace-nowrap text-2xl font-bold leading-none tabular-nums ${warn ? 'text-rose-600' : ''}`}>
-                {line.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
-                <span className="ml-1 text-sm font-medium text-muted-foreground">{line.unit}</span>
-              </p>
-            ))}
-          </div>
-        )}
-        <p className="mt-2 truncate text-xs text-muted-foreground">{hint}</p>
-      </div>
+    <div className="rounded-2xl border bg-card px-4 py-3.5 shadow-sm">
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      {lines.length === 0 ? (
+        <p className="mt-1 text-[28px] font-extrabold leading-none tabular-nums tracking-tight">—</p>
+      ) : (
+        <div className="mt-1 space-y-0.5">
+          {lines.map((line) => (
+            <p
+              key={line.unit}
+              className={cn(
+                'whitespace-nowrap text-[28px] font-extrabold leading-none tabular-nums tracking-tight',
+                warn && line.value > 0 && 'text-rose-600 dark:text-rose-400',
+              )}
+            >
+              {line.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+              <span className="ml-0.5 text-xs font-medium text-muted-foreground">{line.unit}</span>
+            </p>
+          ))}
+        </div>
+      )}
+      <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{hint}</p>
     </div>
   )
 }
@@ -1463,7 +1504,7 @@ function StockTable({
               </tr>
             ) : (
               sorted.map((row) => {
-                const rate = defectRateText(row.defect, row.workQuantity > 0 ? row.workQuantity : row.incoming)
+                const rate = formatDefectRate(row.defect, row.workQuantity > 0 ? row.workQuantity : row.incoming)
                 return (
                   <tr
                     key={row.key}
@@ -1538,7 +1579,7 @@ function MovementTable({
 }) {
   const canEditRow = (row: StockMovement) => Boolean(canManage) && (editFloor == null || String(editFloor) === row.floor)
   return (
-    <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
+    <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
       {note && <p className="border-b px-5 py-3 text-xs text-muted-foreground">{note}</p>}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[800px] text-sm">
@@ -1582,8 +1623,8 @@ function MovementTable({
                     <>
                       <td className="px-4 py-3 text-right">
                         <div className="font-semibold tabular-nums">{formatQuantity(row.defect)}</div>
-                        {defectRateText(row.defect, row.quantity) && (
-                          <div className="text-[11px] leading-4 text-muted-foreground">불량률 {defectRateText(row.defect, row.quantity)}</div>
+                        {formatDefectRate(row.defect, row.quantity) && (
+                          <div className="text-[11px] leading-4 text-muted-foreground">불량률 {formatDefectRate(row.defect, row.quantity)}</div>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.sample)}</td>

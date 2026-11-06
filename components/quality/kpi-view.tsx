@@ -1,25 +1,22 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Line, LineChart, ReferenceLine, XAxis, YAxis } from 'recharts'
-import { ArrowDown, ArrowUp, ArrowUpDown, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Lock, LockOpen, Package, Pencil, Printer, Search, Target, Trash2, TriangleAlert, Trophy } from 'lucide-react'
+import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, ReferenceLine, XAxis, YAxis } from 'recharts'
+import { BarChart3, CheckCircle2, Package, Printer, Target, TriangleAlert, Trophy } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
-import { PageHeader } from '@/components/shared/page-header'
+import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
 import { ChartContainer, ChartTooltip } from '@/components/ui/chart'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { SearchableCombobox } from '@/components/ui/searchable-combobox'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from '@/components/ui/select'
-import { buildAuthHeaders } from '@/lib/auth-client'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { getJsonAuthHeaders } from '@/lib/auth-client'
+import { formatNumber1 } from '@/lib/format'
 import type { Floor3WorkLog } from '@/lib/floor3-work-log'
 import {
   EMPTY_STATE,
   FLOORS,
   KPI_KINDS,
   defaultKpiSummaryTableTitle,
-  SCAR_LABEL,
   kpiMonthNotYetArrived,
   monthKey,
   sampleState,
@@ -30,27 +27,17 @@ import {
   summarizeOutgoingKpi,
   summarizeDeliveryKpi,
   summarizeReply,
-  targetFor,
   formatKpiRate,
   formatKpiRateFromParts,
   formatKpiRateGap,
+  type OutgoingFloorScope,
   type KpiKind,
   type Floor,
-  type LotResult,
   type InspectionLot,
   type KpiState,
   type PeriodStat,
-  type ScarStatus,
 } from '@/lib/incoming-kpi'
-import { chosungSearch } from '@/lib/korean'
 import { cn } from '@/lib/utils'
-
-const DELIVERY_ACTION_LABEL: Record<ScarStatus, string> = {
-  none: '미조치',
-  issued: '원인 등록',
-  action: '조치 중',
-  closed: '조치 완료',
-}
 
 const FIELD = 'h-9 rounded-lg border bg-card px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40'
 /** 출하 ComposedChart — 카드 높이에 맞춰 늘림 */
@@ -60,12 +47,6 @@ const KPI_OUTGOING_CHART_CLASS =
 const KPI_RATE_BAR_CHART_CLASS =
   '!aspect-auto block h-full min-h-[280px] w-full flex-1 !justify-start [&_.recharts-responsive-container]:!h-full [&_.recharts-responsive-container]:!min-h-[280px] [&_.recharts-responsive-container]:!w-full'
 const pct = formatKpiRate
-const dot = (date: string) => date.replace(/-/g, '.')
-
-function todayIso() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
 
 export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
   const spec = KPI_KINDS[kind]
@@ -83,6 +64,7 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
   const [shipmentByMonth, setShipmentByMonth] = useState<Record<string, number>>({})
   const [workLogs, setWorkLogs] = useState<Floor3WorkLog[]>([])
   const [targetsOpen, setTargetsOpen] = useState(false)
+  const [outgoingFloor, setOutgoingFloor] = useState<OutgoingFloorScope>('all')
 
   const derived = kind === 'outgoing'
   const linked = kind === 'outgoing' || kind === 'customer'
@@ -140,9 +122,9 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
     () => (delivery
       ? summarizeDeliveryKpi(state, year, deliveryShipmentByMonth)
       : kind === 'outgoing'
-        ? summarizeOutgoingKpi(state, workLogs, year)
+        ? summarizeOutgoingKpi(state, workLogs, year, outgoingFloor)
         : summarize(state, year)),
-    [delivery, deliveryShipmentByMonth, kind, state, workLogs, year],
+    [delivery, deliveryShipmentByMonth, kind, outgoingFloor, state, workLogs, year],
   )
   const deliveryOrdersByMonth = useMemo(
     () => (delivery ? deliveryOrderCountIndex(state.lots, deliveryShipmentByMonth, year) : {}),
@@ -172,7 +154,7 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
     try {
       const response = await fetch('/api/quality/kpi', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(user) },
+        headers: getJsonAuthHeaders(user),
         body: JSON.stringify({ kind, state: next, detail }),
       })
       const result = await response.json().catch(() => ({}))
@@ -260,9 +242,62 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
   return (
     <>
     {!printing && (
-    <div className="mx-auto box-border flex w-full min-w-0 max-w-[1400px] flex-col gap-3 px-4 py-4 sm:px-6 sm:py-5">
+    <div className={cn(PAGE_SHELL, 'box-border min-w-0')}>
+        {!loading && years.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {derived ? (
+              <div
+                className="flex h-10 items-center gap-0.5 rounded-lg border border-border/80 bg-card p-1 shadow-sm"
+                role="tablist"
+                aria-label="층별 출하검사 KPI"
+              >
+                {(['all', ...FLOORS] as const).map((floor) => (
+                  <button
+                    key={floor}
+                    type="button"
+                    role="tab"
+                    aria-selected={outgoingFloor === floor}
+                    onClick={() => setOutgoingFloor(floor)}
+                    className={cn(
+                      'h-full rounded-md px-3.5 text-sm font-semibold transition-colors',
+                      outgoingFloor === floor
+                        ? 'bg-cyan-600 text-white shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )}
+                  >
+                    {floor === 'all' ? '전체' : `${floor}층`}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span />
+            )}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={printReport}
+                className="h-[38px] border-border/80 bg-white px-4 text-sm font-semibold text-foreground shadow-sm hover:bg-slate-50 dark:border-white/20 dark:bg-white dark:text-slate-900 dark:hover:bg-white/95"
+              >
+                <Printer className="h-[1.125rem] w-[1.125rem]" /> 출력
+              </Button>
+              <select
+                aria-label="연도"
+                value={year}
+                onChange={(event) => setYear(Number(event.target.value))}
+                className={`${FIELD} h-[38px]`}
+              >
+                {years.map((item) => (
+                  <option key={item} value={item}>
+                    {item}년
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
         <PageHeader
-          tone="green"
+          tone="cyan"
           icon={BarChart3}
           eyebrow="KPI · KPI 관리"
           title={spec.title}
@@ -283,11 +318,11 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
           : derived
           ? {
             label: `${year}년 출하검사 불량률`,
-            value: summary.total.inspected ? summary.total.rate.toFixed(3) : '—',
-            unit: summary.total.inspected ? '%' : undefined,
+            value: summary.total.rateBase && summary.total.rateBase > 0 ? summary.total.rate.toFixed(3) : '—',
+            unit: summary.total.rateBase && summary.total.rateBase > 0 ? '%' : undefined,
             sub: summary.total.rateBase && summary.total.rateBase > 0
-              ? `불량 ${summary.total.defect.toLocaleString('ko-KR')} ÷ 출하 ${summary.total.rateBase.toLocaleString('ko-KR')} · 목표 ${state.target}% 이하`
-              : '성적서 출하수량 없음',
+              ? `${outgoingFloor === 'all' ? '전체' : `${outgoingFloor}층`} · 불량 ${summary.total.defect.toLocaleString('ko-KR')} ÷ 출하 ${summary.total.rateBase.toLocaleString('ko-KR')} · 목표 ${state.target}% 이하`
+              : `${outgoingFloor === 'all' ? '전체' : `${outgoingFloor}층`} · 성적서 출하수량 없음`,
           }
           : { label: `${year}년 LOT 불량률`, value: summary.total.inspected ? summary.total.rate.toFixed(3) : '—', unit: summary.total.inspected ? '%' : undefined, sub: `목표 ${state.target}% 이하` }}
         />
@@ -304,11 +339,10 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
           delivery={delivery}
           shipmentByMonth={deliveryShipmentByMonth}
           onOpenTargets={canManage ? () => setTargetsOpen(true) : undefined}
-          onPrint={printReport}
-          years={years}
-          onYearChange={setYear}
           summaryTableTitle={defaultKpiSummaryTableTitle(kind)}
           workLogs={kind === 'outgoing' ? workLogs : undefined}
+          outgoingFloor={derived ? outgoingFloor : undefined}
+          onSelectOutgoingFloor={derived ? setOutgoingFloor : undefined}
         />
       )}
 
@@ -362,13 +396,41 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
   )
 }
 
-function Overview({ state, year, certificates = false, customer = false, process = false, delivery = false, shipmentByMonth = {}, onOpenTargets, onPrint, years, onYearChange, summaryTableTitle, workLogs = [] }: { state: KpiState; year: number; certificates?: boolean; customer?: boolean; process?: boolean; delivery?: boolean; shipmentByMonth?: Record<string, number>; onOpenTargets?: () => void; onPrint?: () => void; years?: number[]; onYearChange?: (year: number) => void; summaryTableTitle: string; workLogs?: Floor3WorkLog[] }) {
+function Overview({
+  state,
+  year,
+  certificates = false,
+  customer = false,
+  process = false,
+  delivery = false,
+  shipmentByMonth = {},
+  onOpenTargets,
+  summaryTableTitle,
+  workLogs = [],
+  outgoingFloor = 'all',
+  onSelectOutgoingFloor,
+}: {
+  state: KpiState
+  year: number
+  certificates?: boolean
+  customer?: boolean
+  process?: boolean
+  delivery?: boolean
+  shipmentByMonth?: Record<string, number>
+  onOpenTargets?: () => void
+  summaryTableTitle: string
+  workLogs?: Floor3WorkLog[]
+  outgoingFloor?: OutgoingFloorScope
+  onSelectOutgoingFloor?: (floor: OutgoingFloorScope) => void
+}) {
   const summary = useMemo(() => {
     if (delivery) return summarizeDeliveryKpi(state, year, shipmentByMonth)
-    if (certificates) return summarizeOutgoingKpi(state, workLogs, year)
+    if (certificates) return summarizeOutgoingKpi(state, workLogs, year, outgoingFloor)
     return summarize(state, year)
-  }, [certificates, delivery, shipmentByMonth, state, workLogs, year])
+  }, [certificates, delivery, outgoingFloor, shipmentByMonth, state, workLogs, year])
   const { total, months, quarters, halves, judged, achieved, zeroMonths } = summary
+  const scopedSummaryTitle =
+    certificates && outgoingFloor !== 'all' ? `${summaryTableTitle} · ${outgoingFloor}층` : summaryTableTitle
   const deliveryOrderByMonth = useMemo(() => {
     if (!delivery) return { map: new Map<string, number>(), total: 0 }
     const index = deliveryOrderCountIndex(state.lots, shipmentByMonth, year)
@@ -385,7 +447,12 @@ function Overview({ state, year, certificates = false, customer = false, process
   }, [delivery, deliveryOrderByMonth.map, months])
   const replySummary = useMemo(() => (customer ? summarizeReply({ ...state, lots: summary.lots }, year) : null), [customer, state, summary.lots, year])
   const shipped = useMemo(() => quantityByMonth(summary.lots), [summary.lots])
-  const outgoingMonthOpen = (key: string) => !kpiMonthNotYetArrived(year, key)
+  const outgoingMonthOpen = (key: string) => {
+    const month = months.find((item) => item.key === key)
+    if (!kpiMonthNotYetArrived(year, key)) return true
+    if (!month) return false
+    return (month.rateBase ?? 0) > 0 || month.defect > 0 || month.inspected > 0
+  }
   const achieveRate = judged ? Math.round((achieved / judged) * 100) : 0
   const received = customer ? summary.lots.filter((lot) => lot.result === 'fail') : []
   const replied = received.filter((lot) => lot.scar === 'closed').length
@@ -478,25 +545,11 @@ function Overview({ state, year, certificates = false, customer = false, process
   const primaryShipUnit = defaultShipUnit(shipped)
   const otherShipText = shipUnits
     .filter((unit) => unit !== primaryShipUnit)
-    .map((unit) => `${formatShipQuantity(shipped.total[unit])} ${unit}`)
+    .map((unit) => `${formatNumber1(shipped.total[unit])} ${unit}`)
     .join(' · ')
 
   return (
     <div className="space-y-3">
-      {(onPrint || (years && years.length > 0 && onYearChange)) && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {onPrint && (
-            <Button type="button" variant="outline" size="sm" onClick={onPrint}>
-              <Printer /> 출력
-            </Button>
-          )}
-          {years && years.length > 0 && onYearChange && (
-            <select aria-label="연도" value={year} onChange={(event) => onYearChange(Number(event.target.value))} className={FIELD}>
-              {years.map((item) => <option key={item} value={item}>{item}년</option>)}
-            </select>
-          )}
-        </div>
-      )}
       <section className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5 xl:gap-4">
         {delivery ? (
           <>
@@ -543,10 +596,10 @@ function Overview({ state, year, certificates = false, customer = false, process
             <StatTile
               icon={Package}
               label="총 생산량(검사수량)"
-              value={formatQty(processTotals.produced)}
+              value={formatNumber1(processTotals.produced)}
               sub={`${year}년 누계 · 검사 ${summary.lots.length.toLocaleString('ko-KR')}건`}
             />
-            <StatTile icon={TriangleAlert} label="총 불량수량" value={formatQty(processTotals.defect)} sub={`${year}년 누계`} tone={processTotals.defect > 0 ? 'rose' : undefined} />
+            <StatTile icon={TriangleAlert} label="총 불량수량" value={formatNumber1(processTotals.defect)} sub={`${year}년 누계`} tone={processTotals.defect > 0 ? 'rose' : undefined} />
             <StatTile icon={CheckCircle2} label="누계 공정 불량률" value={processTotals.rate == null ? '—' : processTotals.rate.toFixed(3)} unit={processTotals.rate == null ? undefined : '%'} sub={`목표 ${total.target}% 이하`} tone={processTotals.rate == null ? undefined : processTotals.rate <= total.target ? 'green' : 'rose'} />
             <StatTileRange
               icon={BarChart3}
@@ -586,10 +639,32 @@ function Overview({ state, year, certificates = false, customer = false, process
           </>
         ) : certificates ? (
           <>
+            {outgoingFloor === 'all' && 'floors' in summary && summary.floors.length > 0 && (
+              <div className="col-span-full grid gap-2 sm:grid-cols-3">
+                {summary.floors.map((row) => (
+                  <button
+                    key={row.key}
+                    type="button"
+                    onClick={() => onSelectOutgoingFloor?.(row.key as Floor)}
+                    className="rounded-xl border bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-cyan-500/40 hover:bg-cyan-50/50 dark:hover:bg-cyan-950/20"
+                  >
+                    <p className="text-xs font-semibold text-muted-foreground">{row.label}</p>
+                    <p className="mt-1 text-lg font-bold tabular-nums text-foreground">
+                      {row.rateBase && row.rateBase > 0 ? row.rate.toFixed(3) : '—'}
+                      {row.rateBase && row.rateBase > 0 ? <span className="ml-0.5 text-xs font-medium text-muted-foreground">%</span> : null}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      불량 {row.defect.toLocaleString('ko-KR')} · 출하 {row.rateBase ? row.rateBase.toLocaleString('ko-KR') : '—'}
+                      {row.rateBaseUnit ? ` ${row.rateBaseUnit}` : ''}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
             <StatTile
               icon={Package}
               label="총 출하수량"
-              value={shipUnits.length ? formatShipQuantity(shipped.total[primaryShipUnit]) : '—'}
+              value={shipUnits.length ? formatNumber1(shipped.total[primaryShipUnit]) : '—'}
               unit={shipUnits.length ? primaryShipUnit : undefined}
               sub={otherShipText ? `+ ${otherShipText}` : `${year}년 성적서 누계`}
             />
@@ -723,7 +798,7 @@ function Overview({ state, year, certificates = false, customer = false, process
 
       <section className="min-w-0">
         <Card
-          title={summaryTableTitle}
+          title={scopedSummaryTitle}
           aside={onOpenTargets ? (
             <Button type="button" variant="outline" size="sm" onClick={onOpenTargets}>
               <Target /> 목표 설정
@@ -754,11 +829,11 @@ function Overview({ state, year, certificates = false, customer = false, process
                 ) : process && processTotals ? (
                   <>
                     <SummaryRow label="목표" months={processMonths} cell={(month) => `${month.target}%`} total={`${total.target}%`} emphasis />
-                    <SummaryRow label="생산량" months={processMonths} cell={(month) => (month.inspected ? formatQty(month.produced) : '—')} total={processTotals.produced ? formatQty(processTotals.produced) : '—'} />
+                    <SummaryRow label="생산량" months={processMonths} cell={(month) => (month.inspected ? formatNumber1(month.produced) : '—')} total={processTotals.produced ? formatNumber1(processTotals.produced) : '—'} />
                     <SummaryRow label="검사수량" months={processMonths} cell={(month) => (month.inspected ? String(month.inspected) : '—')} total={String(summary.lots.length)} />
-                    <SummaryRow label="불량수량" months={processMonths} cell={(month) => (month.inspected ? formatQty(month.defectQty) : '—')} total={formatQty(processTotals.defect)} />
+                    <SummaryRow label="불량수량" months={processMonths} cell={(month) => (month.inspected ? formatNumber1(month.defectQty) : '—')} total={formatNumber1(processTotals.defect)} />
                     <SummaryRow label="불량률" months={processMonths} cell={(month) => (month.qtyRate == null ? '—' : pct(month.qtyRate))} total={processTotals.rate == null ? '—' : pct(processTotals.rate)} danger />
-                    <SummaryRow label="목표 대비" months={processMonths} cell={(month) => (month.qtyRate == null ? '—' : gapText(month.qtyRate, month.target))} total={processTotals.rate == null ? '—' : gapText(processTotals.rate, total.target)} compare totalOk={processTotals.rate == null ? null : processTotals.rate <= total.target} />
+                    <SummaryRow label="목표 대비" months={processMonths} cell={(month) => (month.qtyRate == null ? '—' : <DefectGap rate={month.qtyRate} target={month.target} />)} total={processTotals.rate == null ? '—' : <DefectGap rate={processTotals.rate} target={total.target} />} compare totalOk={processTotals.rate == null ? null : processTotals.rate <= total.target} />
                   </>
                 ) : certificates ? (
                   <>
@@ -768,17 +843,17 @@ function Overview({ state, year, certificates = false, customer = false, process
                         key={unit}
                         label={`출하수량(${unit})`}
                         months={months}
-                        cell={(month) => (outgoingMonthOpen(month.key) ? formatShipQuantity(shipped.byMonth.get(month.key)?.[unit] ?? 0) : '—')}
-                        total={formatShipQuantity(shipped.total[unit] ?? 0)}
+                        cell={(month) => (outgoingMonthOpen(month.key) ? formatNumber1(shipped.byMonth.get(month.key)?.[unit] ?? 0) : '—')}
+                        total={formatNumber1(shipped.total[unit] ?? 0)}
                       />
                     ))}
-                    <SummaryRow label="검사수량" months={months} cell={(month) => (outgoingMonthOpen(month.key) ? formatQty(month.inspected) : '—')} total={formatQty(total.inspected)} />
-                    <SummaryRow label="불량수량" months={months} cell={(month) => (outgoingMonthOpen(month.key) ? formatQty(month.defect) : '—')} total={formatQty(total.defect)} />
+                    <SummaryRow label="검사수량" months={months} cell={(month) => (outgoingMonthOpen(month.key) ? formatNumber1(month.inspected) : '—')} total={formatNumber1(total.inspected)} />
+                    <SummaryRow label="불량수량" months={months} cell={(month) => (outgoingMonthOpen(month.key) ? formatNumber1(month.defect) : '—')} total={formatNumber1(total.defect)} />
                     <SummaryRow
                       label="불량률"
                       months={months}
                       cell={(month) => (outgoingMonthOpen(month.key)
-                        ? <span title={outgoingRateHint(month)}>{formatKpiRateFromParts(month.defect, (month as PeriodStat).rateBase ?? 0)}{(month as PeriodStat).rateBaseUnit ? ` (${(month as PeriodStat).rateBaseUnit})` : ''}</span>
+                        ? <span title={outgoingRateHint(month)}>{pct(month.rate)}{(month as PeriodStat).rateBaseUnit ? ` (${(month as PeriodStat).rateBaseUnit})` : ''}</span>
                         : '—')}
                       total={(total.rateBase ?? 0) > 0 ? <span title={outgoingRateHint(total)}>{pct(total.rate)}{total.rateBaseUnit ? ` (${total.rateBaseUnit})` : ''}</span> : '—'}
                       danger
@@ -786,8 +861,8 @@ function Overview({ state, year, certificates = false, customer = false, process
                     <SummaryRow
                       label="목표대비"
                       months={months}
-                      cell={(month) => (outgoingMonthOpen(month.key) ? <span title={outgoingRateHint(month)}>{gapText(month.rate, month.target)}</span> : '—')}
-                      total={<span title={outgoingRateHint(total)}>{gapText(total.rate, total.target)}</span>}
+                      cell={(month) => (outgoingMonthOpen(month.key) ? <span title={outgoingRateHint(month)}><DefectGap rate={month.rate} target={month.target} /></span> : '—')}
+                      total={<span title={outgoingRateHint(total)}><DefectGap rate={total.rate} target={total.target} /></span>}
                       compare
                       totalOk={total.ok}
                     />
@@ -861,575 +936,6 @@ function Overview({ state, year, certificates = false, customer = false, process
         </Card>
       </section>
     </div>
-  )
-}
-
-const PAGE_SIZE = 25
-const LOT_SORT_KEYS = ['date', 'vendor', 'product', 'floor', 'quantity', 'result', 'defect', null] as const
-type LotSortKey = Exclude<(typeof LOT_SORT_KEYS)[number], null>
-
-function compareLots(a: InspectionLot, b: InspectionLot, key: LotSortKey) {
-  if (key === 'date') return a.date.localeCompare(b.date)
-  if (key === 'vendor') return a.vendor.localeCompare(b.vendor, 'ko')
-  if (key === 'product') return a.product.localeCompare(b.product, 'ko')
-  if (key === 'floor') return Number(a.floor) - Number(b.floor)
-  if (key === 'quantity') return a.quantity - b.quantity
-  if (key === 'result') return (a.result === 'fail' ? 1 : 0) - (b.result === 'fail' ? 1 : 0)
-  return (a.defect || a.note).localeCompare(b.defect || b.note, 'ko')
-}
-
-function LotsTab({ lots, closed, canManage, certificates = false, customer = false, delivery = false, onEdit, onRemove }: { lots: InspectionLot[]; closed: Set<string>; canManage: boolean; certificates?: boolean; customer?: boolean; delivery?: boolean; onEdit: (lot: InspectionLot) => void; onRemove: (lot: InspectionLot) => void }) {
-  const [month, setMonth] = useState('all')
-  const [result, setResult] = useState<'all' | 'pass' | 'fail'>('all')
-  const [query, setQuery] = useState('')
-  const [page, setPage] = useState(0)
-  const [sort, setSort] = useState<{ key: LotSortKey; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
-  const months = [...new Set(lots.map((lot) => lot.date.slice(0, 7)))].sort().reverse()
-  const rows = lots.filter((lot) =>
-    (month === 'all' || lot.date.startsWith(month))
-    && (result === 'all' || lot.result === result)
-    && (!query.trim() || [lot.vendor, lot.product, lot.defect, lot.note].some((value) => chosungSearch(value, query.trim()))))
-  const sorted = [...rows].sort((a, b) => compareLots(a, b, sort.key) * (sort.dir === 'asc' ? 1 : -1) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
-  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
-  const current = Math.min(page, pageCount - 1)
-  const shown = sorted.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE)
-  const toggleSort = (key: string) => {
-    if (!(LOT_SORT_KEYS as readonly string[]).includes(key)) return
-    const sortKey = key as LotSortKey
-    setSort((currentSort) => currentSort.key === sortKey
-      ? { key: sortKey, dir: currentSort.dir === 'asc' ? 'desc' : 'asc' }
-      : { key: sortKey, dir: sortKey === 'date' || sortKey === 'quantity' ? 'desc' : 'asc' })
-    setPage(0)
-  }
-  const pickMonth = (value: string | null) => {
-    if (!value) return
-    setMonth(value)
-    setPage(0)
-  }
-  const pickResult = (value: typeof result) => {
-    setResult(value)
-    setPage(0)
-  }
-  const monthLabel = month === 'all' ? '전체' : `${Number(month.slice(5))}월${closed.has(month) ? ' · 마감' : ''}`
-
-  return (
-    <Card
-      title={customer ? '고객부적합' : delivery ? '납품 내역' : certificates ? '출하검사 실적' : '검사 LOT'}
-      aside={<span className="text-xs text-muted-foreground">{rows.length.toLocaleString('ko-KR')}건</span>}
-    >
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Select value={month} onValueChange={pickMonth}>
-          <SelectTrigger aria-label="월" className="h-9 min-w-[6.5rem] bg-card">
-            <span>{monthLabel}</span>
-          </SelectTrigger>
-          <SelectContent align="start">
-            <SelectGroup>
-              <SelectItem value="all">전체</SelectItem>
-              {months.map((key) => (
-                <SelectItem key={key} value={key}>{Number(key.slice(5))}월{closed.has(key) ? ' · 마감' : ''}</SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        {!customer && <div role="group" aria-label="판정" className="grid h-9 grid-cols-3 gap-0.5 rounded-lg border bg-muted/40 p-0.5">
-          {([['all', '전체'], ['pass', delivery ? '준수' : '합격'], ['fail', delivery ? '지연' : '불합격']] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={result === value}
-              onClick={() => pickResult(value)}
-              className={cn(
-                'rounded-md px-2.5 text-[13px] font-semibold transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/40',
-                result === value ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-background hover:text-foreground',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>}
-        <label className="relative ml-auto w-full sm:w-72">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(event) => { setQuery(event.target.value); setPage(0) }}
-            placeholder={customer ? '업체, 부적합 내용 검색' : delivery ? '업체, 품목, 지연 사유 검색' : '업체명, 품목, 불량 내용 검색'}
-            className={cn(FIELD, 'w-full pl-9')}
-          />
-        </label>
-      </div>
-      {rows.length === 0 ? (
-        <Empty text={customer ? '조건에 맞는 고객부적합이 없습니다.' : delivery ? '조건에 맞는 납품이 없습니다.' : certificates ? '조건에 맞는 출하검사 실적이 없습니다.' : '조건에 맞는 검사가 없습니다.'} />
-      ) : (
-        <div>
-          <Pager page={current} pageCount={pageCount} total={rows.length} onPage={setPage} edge="top" />
-          <div className="overflow-x-auto">
-          <Table
-            heads={customer ? ['발생일', '업체', '부적합내용', '조치'] : delivery ? ['납품일', '약속납기', '업체명', '품목', '수량', '준수', '지연 사유', ''] : ['검사일', '업체명', '품목', '층', '수량', '판정', '불량 내용', '']}
-            align={customer ? ['left', 'left', 'left', 'left'] : delivery ? ['left', 'left', 'left', 'left', 'right', 'left', 'left', 'right'] : ['left', 'left', 'left', 'left', 'right', 'left', 'left', 'right']}
-            sort={{ active: sort.key, dir: sort.dir, keys: customer ? ['date', 'vendor', 'defect', null] : delivery ? ['date', 'vendor', 'product', 'quantity', 'result', null] : LOT_SORT_KEYS, onSort: toggleSort }}
-          >
-            {shown.map((lot) => {
-              const locked = closed.has(lot.date.slice(0, 7))
-              return (
-                <tr key={lot.id} className="border-b last:border-0">
-                  <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{dot(lot.date)}</td>
-                  {customer ? (
-                    <>
-                      <td className="py-2 pr-3 font-medium">{lot.vendor}</td>
-                      <td className="max-w-[24rem] truncate py-2 pr-3 text-muted-foreground">{lot.defect || '—'}</td>
-                      <td className="py-2 pr-3">{lot.scar === 'closed' ? '완료' : lot.scar === 'action' ? '진행' : '미진행'}</td>
-                    </>
-                  ) : delivery ? (
-                    <>
-                      <td className={cn('whitespace-nowrap py-2 pr-3 tabular-nums', lot.result === 'fail' && 'font-medium text-rose-600')}>{lot.scarDue ? dot(lot.scarDue) : '—'}</td>
-                      <td className="py-2 pr-3 font-medium">{lot.vendor}</td>
-                      <td className="py-2 pr-3">{lot.product || '—'}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{lot.quantity ? `${lot.quantity.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} ${lot.unit ?? ''}`.trim() : '—'}</td>
-                      <td className="py-2 pr-3"><ResultBadge result={lot.result} passLabel="준수" failLabel="지연" /></td>
-                      <td className="max-w-[16rem] truncate py-2 pr-3 text-muted-foreground">{lot.result === 'fail' ? (lot.defect || lot.note || '—') : '—'}</td>
-                      <td className="whitespace-nowrap py-2 text-right">
-                        {locked ? (
-                          <Lock className="ml-auto h-3.5 w-3.5 text-muted-foreground" aria-label="마감됨" />
-                        ) : canManage ? (
-                          <span className="inline-flex gap-1">
-                            <Button variant="ghost" size="icon-sm" aria-label="수정" onClick={() => onEdit(lot)}><Pencil /></Button>
-                            <Button variant="ghost" size="icon-sm" aria-label="삭제" onClick={() => onRemove(lot)}><Trash2 /></Button>
-                          </span>
-                        ) : null}
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="py-2 pr-3 font-medium">{lot.vendor}</td>
-                      <td className="py-2 pr-3">{lot.product || '—'}</td>
-                      <td className="py-2 pr-3">{lot.floor}층</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{lot.quantity ? `${lot.quantity.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} ${lot.unit ?? ''}`.trim() : '—'}</td>
-                      <td className="py-2 pr-3"><ResultBadge result={lot.result} /></td>
-                      <td className="max-w-[16rem] truncate py-2 pr-3 text-muted-foreground">{lot.defect || lot.note || '—'}</td>
-                      <td className="whitespace-nowrap py-2 text-right">
-                        {locked ? (
-                          <Lock className="ml-auto h-3.5 w-3.5 text-muted-foreground" aria-label="마감됨" />
-                        ) : canManage ? (
-                          <span className="inline-flex gap-1">
-                            <Button variant="ghost" size="icon-sm" aria-label="수정" onClick={() => onEdit(lot)}><Pencil /></Button>
-                            <Button variant="ghost" size="icon-sm" aria-label="삭제" onClick={() => onRemove(lot)}><Trash2 /></Button>
-                          </span>
-                        ) : null}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              )
-            })}
-          </Table>
-          </div>
-          <Pager page={current} pageCount={pageCount} total={rows.length} onPage={setPage} edge="bottom" />
-        </div>
-      )}
-    </Card>
-  )
-}
-
-function deliveryOrderRef(id: string, index: number) {
-  const tail = id.replace(/^sample-delivery-/, '').replace(/\D/g, '').slice(-4).padStart(4, '0')
-  return `SO-${String(index + 1).padStart(4, '0')}${tail ? `-${tail}` : ''}`
-}
-
-function daysBetweenIso(from: string, to: string) {
-  if (!from || !to) return null
-  const start = new Date(`${from}T12:00:00`).getTime()
-  const end = new Date(`${to}T12:00:00`).getTime()
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
-  return Math.round((end - start) / 86_400_000)
-}
-
-function DeliveryOrdersTab({ lots, canManage, onEdit }: { lots: InspectionLot[]; canManage: boolean; onEdit: (lot: InspectionLot) => void }) {
-  const [query, setQuery] = useState('')
-  const [status, setStatus] = useState<'all' | 'pass' | 'fail'>('all')
-  const rows = lots.filter((lot) =>
-    (status === 'all' || lot.result === status)
-    && (!query.trim() || [lot.vendor, lot.product, lot.defect, lot.note].some((value) => chosungSearch(value, query.trim()))))
-  const sorted = [...rows].sort((a, b) => (b.scarDue || b.date).localeCompare(a.scarDue || a.date) || b.date.localeCompare(a.date))
-  const onTime = rows.filter((lot) => lot.result === 'pass').length
-  const late = rows.filter((lot) => lot.result === 'fail').length
-
-  return (
-    <div className="space-y-4">
-      <section className="grid min-w-0 rounded-2xl border bg-card shadow-sm sm:grid-cols-3">
-        <Metric label="수주·발주 건" value={String(rows.length)} unit="건" sub="등록된 납품 기준" />
-        <Metric label="납기 준수" value={String(onTime)} unit="건" sub="약속 납기 이내 납품" tone={onTime ? 'green' : undefined} />
-        <Metric label="납기 지연" value={String(late)} unit="건" sub="약속 납기 초과" tone={late ? 'rose' : undefined} />
-      </section>
-      <Card
-        title="수주·발주관리"
-        aside={<span className="max-w-xs text-right text-xs leading-5 text-muted-foreground">납품 등록 시 업체·품목·약속납기를 함께 기록합니다.</span>}
-      >
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div role="group" aria-label="납기상태" className="grid h-9 grid-cols-3 gap-0.5 rounded-lg border bg-muted/40 p-0.5">
-            {([['all', '전체'], ['pass', '준수'], ['fail', '지연']] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={status === value}
-                onClick={() => setStatus(value)}
-                className={cn(
-                  'rounded-md px-2.5 text-[13px] font-semibold transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/40',
-                  status === value ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-background hover:text-foreground',
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <label className="relative ml-auto w-full sm:w-72">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="업체, 품목, 관리번호 검색"
-              className={cn(FIELD, 'w-full pl-9')}
-            />
-          </label>
-        </div>
-        {sorted.length === 0 ? (
-          <Empty text="등록된 수주·발주가 없습니다. 납품 등록으로 추가할 수 있습니다." />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table heads={['관리번호', '업체', '품목', '수량', '약속납기', '납품일', '납기상태', '']} align={['left', 'left', 'left', 'right', 'left', 'left', 'left', 'right']}>
-              {sorted.map((lot, index) => (
-                <tr key={lot.id} className="border-b last:border-0">
-                  <td className="whitespace-nowrap py-2 pr-3 font-mono text-xs text-muted-foreground">{deliveryOrderRef(lot.id, index)}</td>
-                  <td className="py-2 pr-3 font-medium">{lot.vendor}</td>
-                  <td className="py-2 pr-3">{lot.product || '—'}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">{lot.quantity ? lot.quantity.toLocaleString('ko-KR') : '—'}</td>
-                  <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{lot.scarDue ? dot(lot.scarDue) : '—'}</td>
-                  <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{dot(lot.date)}</td>
-                  <td className="py-2 pr-3"><ResultBadge result={lot.result} passLabel="준수" failLabel="지연" /></td>
-                  <td className="py-2 text-right">
-                    {canManage && (
-                      <Button variant="ghost" size="icon-sm" aria-label="수정" onClick={() => onEdit(lot)}><Pencil /></Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </Table>
-          </div>
-        )}
-      </Card>
-    </div>
-  )
-}
-
-function DeliveryScheduleTab({ lots, year }: { lots: InspectionLot[]; year: number }) {
-  const months = [...new Set(lots.map((lot) => (lot.scarDue || lot.date).slice(0, 7)))].filter((key) => key.startsWith(`${year}-`)).sort()
-  const [month, setMonth] = useState<string>(() => months.at(-1) ?? 'all')
-  const rows = lots
-    .filter((lot) => lot.scarDue && (month === 'all' || lot.scarDue.startsWith(month)))
-    .sort((a, b) => a.scarDue.localeCompare(b.scarDue) || a.date.localeCompare(b.date))
-  const overdue = rows.filter((lot) => lot.result === 'fail').length
-
-  return (
-    <div className="space-y-4">
-      <section className="grid min-w-0 rounded-2xl border bg-card shadow-sm sm:grid-cols-3">
-        <Metric label="약속 납기" value={String(rows.length)} unit="건" sub={`${year}년 일정`} />
-        <Metric label="지연 납품" value={String(overdue)} unit="건" sub="실제 납품이 약속 초과" tone={overdue ? 'rose' : undefined} />
-        <Metric label="일정 대비" value={rows.length ? `${Math.round(((rows.length - overdue) / rows.length) * 100)}` : '—'} unit={rows.length ? '%' : ''} sub="준수 비율(일정 기준)" />
-      </section>
-      <Card title="납기일정" aside={<span className="text-xs text-muted-foreground">약속납기 순</span>}>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Select value={month} onValueChange={(value) => value && setMonth(value)}>
-            <SelectTrigger aria-label="월" className="h-9 min-w-[6.5rem] bg-card">
-              <span>{month === 'all' ? '전체' : `${Number(month.slice(5))}월`}</span>
-            </SelectTrigger>
-            <SelectContent align="start">
-              <SelectGroup>
-                <SelectItem value="all">전체</SelectItem>
-                {months.map((key) => (
-                  <SelectItem key={key} value={key}>{Number(key.slice(5))}월</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-        {rows.length === 0 ? (
-          <Empty text={`${year}년 약속 납기 일정이 없습니다.`} />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table heads={['약속납기', 'D-day', '업체', '품목', '실제납품', '상태']} align={['left', 'right', 'left', 'left', 'left', 'left']}>
-              {rows.map((lot) => {
-                const slip = daysBetweenIso(lot.scarDue, lot.date)
-                const dLabel = slip == null ? '—' : slip === 0 ? 'D-day' : slip > 0 ? `D+${slip}` : `D${slip}`
-                return (
-                  <tr key={lot.id} className="border-b last:border-0">
-                    <td className="whitespace-nowrap py-2 pr-3 tabular-nums font-medium">{dot(lot.scarDue)}</td>
-                    <td className={cn('py-2 pr-3 text-right tabular-nums text-sm font-semibold', slip != null && slip > 0 && 'text-rose-600', slip != null && slip <= 0 && 'text-emerald-600')}>{dLabel}</td>
-                    <td className="py-2 pr-3 font-medium">{lot.vendor}</td>
-                    <td className="py-2 pr-3">{lot.product || '—'}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{dot(lot.date)}</td>
-                    <td className="py-2 pr-3"><ResultBadge result={lot.result} passLabel="준수" failLabel="지연" /></td>
-                  </tr>
-                )
-              })}
-            </Table>
-          </div>
-        )}
-      </Card>
-    </div>
-  )
-}
-
-function Pager({ page, pageCount, total, onPage, edge }: { page: number; pageCount: number; total: number; onPage: (page: number) => void; edge: 'top' | 'bottom' }) {
-  if (pageCount <= 1) return null
-  const start = page * PAGE_SIZE + 1
-  const end = Math.min(total, (page + 1) * PAGE_SIZE)
-  const marks = new Set([0, pageCount - 1, page - 1, page, page + 1].filter((item) => item >= 0 && item < pageCount))
-  const pages = [...marks].sort((a, b) => a - b)
-  return (
-    <div className={cn('flex flex-wrap items-center justify-between gap-2', edge === 'top' ? 'mb-3' : 'mt-3 border-t pt-3')}>
-      <p className="text-xs tabular-nums text-muted-foreground">{start.toLocaleString('ko-KR')}–{end.toLocaleString('ko-KR')} / {total.toLocaleString('ko-KR')}건</p>
-      <div className="flex items-center gap-1">
-        <Button type="button" variant="outline" size="sm" disabled={page === 0} onClick={() => onPage(page - 1)}>
-          <ChevronLeft /> 이전
-        </Button>
-        {pages.map((item, index) => (
-          <span key={item} className="flex items-center gap-1">
-            {index > 0 && item - pages[index - 1] > 1 && <span className="px-1 text-xs text-muted-foreground">…</span>}
-            <button
-              type="button"
-              aria-current={item === page ? 'page' : undefined}
-              onClick={() => onPage(item)}
-              className={cn(
-                'h-7 min-w-7 rounded-lg px-2 text-[13px] font-semibold tabular-nums',
-                item === page ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
-              )}
-            >
-              {item + 1}
-            </button>
-          </span>
-        ))}
-        <Button type="button" variant="outline" size="sm" disabled={page >= pageCount - 1} onClick={() => onPage(page + 1)}>
-          다음 <ChevronRight />
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-const SCAR_SORT_KEYS = ['date', 'vendor', 'product', 'defect', 'scar', 'due', null] as const
-type ScarSortKey = Exclude<(typeof SCAR_SORT_KEYS)[number], null>
-const SCAR_RANK: Record<ScarStatus, number> = { none: 0, issued: 1, action: 2, closed: 3 }
-
-function compareScar(a: InspectionLot, b: InspectionLot, key: ScarSortKey) {
-  if (key === 'date') return a.date.localeCompare(b.date)
-  if (key === 'vendor') return a.vendor.localeCompare(b.vendor, 'ko')
-  if (key === 'product') return a.product.localeCompare(b.product, 'ko')
-  if (key === 'defect') return a.defect.localeCompare(b.defect, 'ko')
-  if (key === 'scar') return SCAR_RANK[a.scar] - SCAR_RANK[b.scar]
-  if (!a.scarDue && b.scarDue) return 1
-  if (a.scarDue && !b.scarDue) return -1
-  return a.scarDue.localeCompare(b.scarDue)
-}
-
-function ScarTab({ lots, canManage, customer = false, delivery = false, onChange, onRemove }: {
-  lots: InspectionLot[]
-  canManage: boolean
-  customer?: boolean
-  delivery?: boolean
-  onChange: (lot: InspectionLot, patch: Partial<Pick<InspectionLot, 'scar' | 'scarDue' | 'defect' | 'note'>>) => void
-  onRemove: (lot: InspectionLot) => void
-}) {
-  const [sort, setSort] = useState<{ key: ScarSortKey; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const counts = (['none', 'issued', 'action', 'closed'] as ScarStatus[]).map((status) => [status, lots.filter((lot) => lot.scar === status).length] as const)
-  const today = todayIso()
-  const sorted = [...lots].sort((a, b) => compareScar(a, b, sort.key) * (sort.dir === 'asc' ? 1 : -1) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
-  const toggleSort = (key: string) => {
-    if (!(SCAR_SORT_KEYS as readonly string[]).includes(key)) return
-    const sortKey = key as ScarSortKey
-    setSort((current) => current.key === sortKey
-      ? { key: sortKey, dir: current.dir === 'asc' ? 'desc' : 'asc' }
-      : { key: sortKey, dir: sortKey === 'date' ? 'desc' : 'asc' })
-  }
-  if (delivery) {
-    const actionCounts = (['none', 'issued', 'action', 'closed'] as ScarStatus[]).map((status) => [status, lots.filter((lot) => lot.scar === status).length] as const)
-    return (
-      <div className="space-y-4">
-        <section className="grid min-w-0 rounded-2xl border bg-card shadow-sm sm:grid-cols-4">
-          {actionCounts.map(([status, count]) => (
-            <Metric key={status} label={DELIVERY_ACTION_LABEL[status]} value={String(count)} unit="건" tone={status === 'none' && count ? 'rose' : status === 'closed' && count ? 'green' : undefined} />
-          ))}
-        </section>
-        <Card title="지연사유 · 조치" aside={<span className="text-xs text-muted-foreground">{lots.length.toLocaleString('ko-KR')}건</span>}>
-          {lots.length === 0 ? (
-            <Empty text="지연된 납품이 없습니다." />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table
-                heads={['납품일', '약속납기', '업체', '품목', '지연 사유', '조치', '']}
-                align={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
-                sort={{ active: sort.key, dir: sort.dir, keys: ['date', 'due', 'vendor', 'product', 'defect', 'scar', null], onSort: toggleSort }}
-              >
-                {sorted.map((lot) => {
-                  const editing = canManage && editingId === lot.id
-                  return (
-                    <tr key={lot.id} className="border-b last:border-0">
-                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{dot(lot.date)}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums font-medium text-rose-600">{lot.scarDue ? dot(lot.scarDue) : '—'}</td>
-                      <td className="py-2 pr-3 font-medium">{lot.vendor}</td>
-                      <td className="py-2 pr-3">{lot.product || '—'}</td>
-                      <td className="max-w-[14rem] py-2 pr-3">
-                        {editing ? (
-                          <input
-                            aria-label="지연 사유"
-                            value={lot.defect}
-                            onChange={(event) => onChange(lot, { defect: event.target.value })}
-                            className={cn(FIELD, 'h-8 w-full min-w-[10rem] text-[13px]')}
-                          />
-                        ) : (
-                          <span className="block truncate text-muted-foreground">{lot.defect || lot.note || '—'}</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3">
-                        {editing ? (
-                          <Select value={lot.scar} onValueChange={(value) => value && onChange(lot, { scar: value as ScarStatus })}>
-                            <SelectTrigger aria-label="조치 상태" className="h-8 min-w-[6.5rem] bg-card">
-                              <span>{DELIVERY_ACTION_LABEL[lot.scar]}</span>
-                            </SelectTrigger>
-                            <SelectContent align="start">
-                              <SelectGroup>
-                                {(Object.keys(DELIVERY_ACTION_LABEL) as ScarStatus[]).map((status) => (
-                                  <SelectItem key={status} value={status}>{DELIVERY_ACTION_LABEL[status]}</SelectItem>
-                                ))}
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <span className="text-[13px]">{DELIVERY_ACTION_LABEL[lot.scar]}</span>
-                        )}
-                      </td>
-                      <td className="py-2 text-right">
-                        {canManage && (
-                          <span className="inline-flex gap-1">
-                            <Button variant="ghost" size="icon-sm" aria-label="수정" aria-pressed={editing} onClick={() => setEditingId(editing ? null : lot.id)}><Pencil /></Button>
-                            <Button variant="ghost" size="icon-sm" aria-label="삭제" onClick={() => onRemove(lot)}><Trash2 /></Button>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </Table>
-            </div>
-          )}
-        </Card>
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-4">
-      <section className="grid min-w-0 rounded-2xl border bg-card shadow-sm sm:grid-cols-4">
-        {counts.map(([status, count]) => (
-          <Metric key={status} label={`SCAR ${SCAR_LABEL[status]}`} value={String(count)} unit="건" tone={status === 'none' && count ? 'rose' : undefined} />
-        ))}
-      </section>
-      <Card title={customer ? '고객 부적합 · 조치' : '불합격 LOT · 시정조치(SCAR)'} aside={customer ? <span className="text-xs text-muted-foreground">조치는 부적합관리에서 바뀝니다</span> : undefined}>
-        {lots.length === 0 ? (
-          <Empty text={customer ? '등록된 고객부적합이 없습니다.' : '불합격 LOT가 없습니다.'} />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table
-              heads={['검사일', '업체명', '품목', '불량 내용', 'SCAR 상태', '조치 기한', '']}
-              align={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
-              sort={{ active: sort.key, dir: sort.dir, keys: SCAR_SORT_KEYS, onSort: toggleSort }}
-            >
-              {sorted.map((lot) => {
-                const late = lot.scarDue && lot.scar !== 'closed' && lot.scarDue < today
-                const editing = canManage && editingId === lot.id
-                return (
-                  <tr key={lot.id} className="border-b last:border-0">
-                    <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{dot(lot.date)}</td>
-                    <td className="py-2 pr-3 font-medium">{lot.vendor}</td>
-                    <td className="py-2 pr-3">{lot.product || '—'}</td>
-                    <td className="max-w-[14rem] truncate py-2 pr-3">{lot.defect || '—'}</td>
-                    <td className="py-2 pr-3">
-                      {editing ? (
-                        <Select value={lot.scar} onValueChange={(value) => value && onChange(lot, { scar: value as ScarStatus })}>
-                          <SelectTrigger aria-label="SCAR 상태" className="h-8 min-w-[6.5rem] bg-card">
-                            <span>{SCAR_LABEL[lot.scar]}</span>
-                          </SelectTrigger>
-                          <SelectContent align="start">
-                            <SelectGroup>
-                              {(Object.keys(SCAR_LABEL) as ScarStatus[]).map((status) => (
-                                <SelectItem key={status} value={status}>{SCAR_LABEL[status]}</SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <span className="text-[13px]">{SCAR_LABEL[lot.scar]}</span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">
-                      {editing ? (
-                        <input
-                          type="date"
-                          aria-label="조치 기한"
-                          value={lot.scarDue}
-                          onChange={(event) => onChange(lot, { scarDue: event.target.value })}
-                          className={cn(FIELD, 'h-8 w-[9.5rem] text-[13px]', late && 'border-rose-300 text-rose-600')}
-                        />
-                      ) : (
-                        <span className={cn('text-[13px] tabular-nums', late && 'font-medium text-rose-600')}>{lot.scarDue ? dot(lot.scarDue) : '—'}</span>
-                      )}
-                    </td>
-                    <td className="py-2 text-right">
-                      {canManage && (
-                        <span className="inline-flex gap-1">
-                          <Button variant="ghost" size="icon-sm" aria-label="수정" aria-pressed={editing} onClick={() => setEditingId(editing ? null : lot.id)}><Pencil /></Button>
-                          <Button variant="ghost" size="icon-sm" aria-label="삭제" onClick={() => onRemove(lot)}><Trash2 /></Button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </Table>
-          </div>
-        )}
-      </Card>
-    </div>
-  )
-}
-
-function VendorTab({ rows, target, certificates = false, customer = false, delivery = false }: { rows: PeriodStat[]; target: number; certificates?: boolean; customer?: boolean; delivery?: boolean }) {
-  const max = Math.max(target * 2, ...rows.map((row) => row.rate), 1)
-  const higherGoal = customer || delivery
-  return (
-    <Card title={customer ? '업체별 회신율' : delivery ? '업체별 납기준수율' : '업체별 불량률'} aside={<span className="text-xs text-muted-foreground">{higherGoal ? `목표 ${target}% 이상` : `목표 ${target}% 이하`}</span>}>
-      {rows.length === 0 ? (
-        <Empty text={customer ? '접수된 업체가 없습니다.' : delivery ? '납품 기록이 있는 업체가 없습니다.' : certificates ? '출하검사 실적이 있는 업체가 없습니다.' : '검사한 업체가 없습니다.'} />
-      ) : (
-        <Table heads={customer ? ['업체명', '접수', '조치완료', '회신율', '판정'] : delivery ? ['업체명', '납품', '지연', '준수율', '판정'] : ['업체명', certificates ? '출하검사 실적' : '검사 LOT', certificates ? '불량 건수' : '불량 LOT', '불량률', '판정']} align={['left', 'right', 'right', 'left', 'right']}>
-          {rows.map((row) => (
-            <tr key={row.key} className="border-b last:border-0">
-              <td className="py-2.5 pr-3 font-medium">{row.label}</td>
-              <td className="py-2.5 pr-3 text-right tabular-nums">{row.inspected}</td>
-              <td className="py-2.5 pr-3 text-right tabular-nums">{row.defect}</td>
-              <td className="w-[40%] py-2.5 pr-3">
-                <div className="relative flex items-center gap-3">
-                  <span className="relative h-2 flex-1 rounded-full bg-muted">
-                    <span className={cn('absolute inset-y-0 left-0 rounded-full', row.ok === false ? 'bg-rose-500' : 'bg-blue-500')} style={{ width: `${(row.rate / max) * 100}%` }} />
-                    <span className="absolute -top-1 h-4 w-px bg-rose-400" style={{ left: `${(target / max) * 100}%` }} />
-                  </span>
-                  <span className="w-14 text-right text-xs tabular-nums">{pct(row.rate)}</span>
-                </div>
-              </td>
-              <td className="py-2.5 text-right"><Verdict ok={row.ok} /></td>
-            </tr>
-          ))}
-        </Table>
-      )}
-    </Card>
   )
 }
 
@@ -1839,10 +1345,6 @@ function quantityOutcome(lots: InspectionLot[]) {
   return { produced, defect, rate }
 }
 
-function formatQty(value: number) {
-  return value.toLocaleString('ko-KR', { maximumFractionDigits: 1 })
-}
-
 function rateAxisMax(peak: number) {
   const padded = Math.max(peak * 1.15 + 0.3, peak + 0.8)
   if (padded <= 6) return Math.max(4, Math.ceil(padded))
@@ -2139,12 +1641,8 @@ function KpiRateBarChart({ months, target, customer = false, process = false, de
   )
 }
 
-function formatShipQuantity(value: number) {
-  return value.toLocaleString('ko-KR', { maximumFractionDigits: 1 })
-}
-
-function formatOutgoingRate(rate: number, defect?: number, base?: number) {
-  if (defect != null && base != null && base > 0) return formatKpiRateFromParts(defect, base)
+function formatOutgoingRate(rate: number) {
+  if (rate === 0) return '0%'
   return formatKpiRate(rate)
 }
 
@@ -2157,9 +1655,9 @@ function OutgoingRateBarLabel(
   if (x == null || y == null || width == null || row?.rate == null) return null
   const cx = Number(x) + Number(width) / 2
   const barH = Number(height ?? 0)
-  const lift = barH < 16 ? 28 : 14
-  const cy = Number(y) - lift
-  const label = formatOutgoingRate(row.rate, row.defect, row.rateBase)
+  const lift = barH < 20 ? 34 : 16
+  const cy = Math.max(12, Number(y) - lift)
+  const label = formatOutgoingRate(row.rate)
   const failed = row.ok === false
   const stroke = failed ? '#fb7185' : '#4ade80'
   const fill = failed ? '#be123c' : '#15803d'
@@ -2218,26 +1716,26 @@ function OutgoingMonthTip({
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground">불량률</p>
             <p className={cn('text-xl font-bold tabular-nums leading-tight', failed ? 'text-rose-600' : 'text-emerald-600')}>
-              {formatOutgoingRate(row.rate, row.defect, row.rateBase)}
+              {formatOutgoingRate(row.rate)}
             </p>
-            <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">목표 {target}% 이하 · {gapText(row.rate, target)}</p>
+            <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">목표 {target}% 이하 · {defectGapText(row.rate, target)}</p>
           </div>
         )}
         <dl className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 border-t border-border/50 pt-2">
           <dt className="text-muted-foreground">출하</dt>
-          <dd className="text-right font-semibold tabular-nums">{formatQty(row.rateBase)}</dd>
+          <dd className="text-right font-semibold tabular-nums">{formatNumber1(row.rateBase)}</dd>
           <dt className="text-muted-foreground">불량</dt>
-          <dd className={cn('text-right font-semibold tabular-nums', row.defect > 0 && 'text-rose-600')}>{formatQty(row.defect)}</dd>
+          <dd className={cn('text-right font-semibold tabular-nums', row.defect > 0 && 'text-rose-600')}>{formatNumber1(row.defect)}</dd>
           {showKg && row.Kg != null && (row.Kg ?? 0) > 0 && (
             <>
               <dt className="text-blue-600 dark:text-blue-400">Kg</dt>
-              <dd className="text-right font-semibold tabular-nums text-blue-700 dark:text-blue-300">{formatShipQuantity(row.Kg)}</dd>
+              <dd className="text-right font-semibold tabular-nums text-blue-700 dark:text-blue-300">{formatNumber1(row.Kg)}</dd>
             </>
           )}
           {showEa && row.EA != null && (row.EA ?? 0) > 0 && (
             <>
               <dt className="text-violet-600 dark:text-violet-400">EA</dt>
-              <dd className="text-right font-semibold tabular-nums text-violet-700 dark:text-violet-300">{formatShipQuantity(row.EA)}</dd>
+              <dd className="text-right font-semibold tabular-nums text-violet-700 dark:text-violet-300">{formatNumber1(row.EA)}</dd>
             </>
           )}
         </dl>
@@ -2259,22 +1757,29 @@ function OutgoingKpiVisual({ year, months, shipped, target, className }: {
     Kg: number | null
     EA: number | null
     rate: number | null
+    barRate: number | null
     ok: boolean | null
     inspected: number
     defect: number
     rateBase: number
   }
   const shipChart = useMemo((): OutgoingChartRow[] => months.map((month) => {
-    const upcoming = kpiMonthNotYetArrived(year, month.key)
+    const upcoming =
+      kpiMonthNotYetArrived(year, month.key) &&
+      (month.rateBase ?? 0) === 0 &&
+      month.defect === 0 &&
+      month.inspected === 0
     const bucket = shipped.byMonth.get(month.key)
     const rateBase = month.rateBase ?? 0
     const hasShip = !upcoming && ((bucket?.Kg ?? 0) > 0 || (bucket?.EA ?? 0) > 0)
+    const hasRate = !upcoming && (hasShip || month.defect > 0 || rateBase > 0)
     return {
       key: month.key,
       label: month.label.replace('월', ''),
       Kg: upcoming ? null : (bucket?.Kg ?? 0),
       EA: upcoming ? null : (bucket?.EA ?? 0),
-      rate: hasShip || (!upcoming && month.defect > 0) ? month.rate : null,
+      rate: hasRate ? month.rate : null,
+      barRate: null,
       ok: upcoming ? null : month.ok,
       inspected: month.inspected,
       defect: month.defect,
@@ -2285,8 +1790,21 @@ function OutgoingKpiVisual({ year, months, shipped, target, className }: {
   const showEa = shipChart.some((row) => (row.EA ?? 0) > 0)
   const rateMax = useMemo(() => {
     const rates = shipChart.map((row) => row.rate).filter((value): value is number => value != null)
-    return Math.max(target, ...rates, 1) * 1.08
+    const peak = Math.max(target, ...rates, 0)
+    if (peak <= 0.05) return Math.max(peak * 1.45, 0.008, target > 0 ? target * 1.2 : 0.008)
+    return Math.max(peak * 1.08, 1)
   }, [shipChart, target])
+  const shipChartWithBars = useMemo(
+    () =>
+      shipChart.map((row) => {
+        if (row.rate == null) return row
+        // 목표(예: 5%) 축에서는 0.002%처럼 아주 작은 값은 픽셀이 안 나온다.
+        const floor = rateMax * 0.07
+        const barRate = row.rate === 0 ? floor * 0.65 : row.rate < floor ? floor : row.rate
+        return { ...row, barRate }
+      }),
+    [rateMax, shipChart],
+  )
   const axisTick = (value: number) => {
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
     if (value >= 10_000) return `${Math.round(value / 1_000)}k`
@@ -2310,7 +1828,7 @@ function OutgoingKpiVisual({ year, months, shipped, target, className }: {
             'absolute inset-0 max-w-none !h-full !min-h-[18rem] print:!min-h-0',
           )}
         >
-          <ComposedChart data={shipChart} margin={{ top: 36, right: showEa ? 8 : 8, left: 4, bottom: 4 }} barCategoryGap="18%" barGap={2}>
+          <ComposedChart data={shipChartWithBars} margin={{ top: 44, right: showEa ? 8 : 8, left: 4, bottom: 4 }} barCategoryGap="18%" barGap={2}>
             <CartesianGrid vertical={false} strokeDasharray="3 3" />
             <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} height={18} />
             <YAxis yAxisId="rate" hide domain={[0, rateMax]} />
@@ -2361,16 +1879,16 @@ function OutgoingKpiVisual({ year, months, shipped, target, className }: {
             {showEa && (
               <Bar yAxisId={showKg ? 'ea' : 'kg'} dataKey="EA" name="출하 EA" fill="#8b5cf6" maxBarSize={showKg ? 10 : 18} radius={[3, 3, 0, 0]} isAnimationActive={false} />
             )}
-            <Bar yAxisId="rate" dataKey="rate" name="불량률" maxBarSize={14} radius={[4, 4, 0, 0]} isAnimationActive={false}>
-              {shipChart.map((row) => (
+            <Bar yAxisId="rate" dataKey="barRate" name="불량률" maxBarSize={14} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+              {shipChartWithBars.map((row) => (
                 <Cell
                   key={row.key}
                   fill={row.rate == null ? 'transparent' : row.ok === false ? '#e11d48' : '#16a34a'}
                 />
               ))}
               <LabelList
-                dataKey="rate"
-                content={(props) => OutgoingRateBarLabel(props, shipChart)}
+                dataKey="barRate"
+                content={(props) => OutgoingRateBarLabel(props, shipChartWithBars)}
               />
             </Bar>
           </ComposedChart>
@@ -2427,9 +1945,14 @@ function RateBars({ months, target, min, max, ticks }: { months: PeriodStat[]; t
   )
 }
 
-function gapTextValue(rate: number, target: number) {
-  const gap = Math.round((rate - target) * 1000) / 1000
+/** 불량률 등 목표 이하가 좋을 때: 목표 − 실적 (%p). 양수면 목표 대비 여유 */
+function defectGapText(rate: number, target: number) {
+  const gap = Math.round((target - rate) * 1000) / 1000
   return formatKpiRateGap(gap)
+}
+
+function gapTextValue(rate: number, target: number) {
+  return defectGapText(rate, target)
 }
 
 function DefectGap({ rate, target }: { rate: number; target: number }) {
@@ -2437,7 +1960,7 @@ function DefectGap({ rate, target }: { rate: number; target: number }) {
   return <span className={cn('font-semibold', ok ? 'text-emerald-600' : 'text-rose-600')}>{gapTextValue(rate, target)}</span>
 }
 
-function StandardCloseReport({ year, data, closed, current, canManage, saving, onToggle, monthlyOnly = false }: {
+function StandardCloseReport({ year, data, monthlyOnly = false }: {
   year: number
   data: StandardCloseReportData
   closed: Set<string>
@@ -2450,7 +1973,6 @@ function StandardCloseReport({ year, data, closed, current, canManage, saving, o
   const { variant, certificates, months, total, quarters, halves, judged, achieved, zeroMonths, actionTotal, noNcMonths, shipped, processRateHigh, processRateLow } = data
   const higherBetter = variant === 'customer'
   const rateAxis = useMemo(() => rateChartAxis(months, higherBetter), [months, higherBetter])
-  const numCell = 'px-2 py-2 text-right tabular-nums'
   const labels = variant === 'customer'
     ? {
       chart: '월별 회신율 추이',
@@ -2487,7 +2009,7 @@ function StandardCloseReport({ year, data, closed, current, canManage, saving, o
       }
 
   const formatCount = (value: number) => {
-    if (variant === 'process') return formatQty(value)
+    if (variant === 'process') return formatNumber1(value)
     if (variant === 'customer') return `${value.toLocaleString('ko-KR')}건`
     if (certificates) return value.toLocaleString('ko-KR')
     return `${value.toLocaleString('ko-KR')} LOT`
@@ -2516,16 +2038,12 @@ function StandardCloseReport({ year, data, closed, current, canManage, saving, o
   }
   const shipUnitCell = (monthKey: string, unit: QuantityUnit, active: boolean) => {
     if (!shipped || !active) return '—'
-    return formatShipQuantity(shipped.byMonth.get(monthKey)?.[unit] ?? 0)
+    return formatNumber1(shipped.byMonth.get(monthKey)?.[unit] ?? 0)
   }
   const shipUnitTotalCell = (unit: QuantityUnit) => {
     if (!shipped) return '—'
-    return formatShipQuantity(shipped.total[unit] ?? 0)
+    return formatNumber1(shipped.total[unit] ?? 0)
   }
-
-  const compareCell = (rate: number, target: number) => (
-    higherBetter ? <ReplyGap rate={rate} target={target} /> : <DefectGap rate={rate} target={target} />
-  )
 
   const monthlyTable = (
       <article className="kpi-close-card kpi-close-report-card min-w-0 overflow-hidden rounded-2xl border bg-card shadow-sm print:overflow-visible print:shadow-none">
@@ -2534,73 +2052,65 @@ function StandardCloseReport({ year, data, closed, current, canManage, saving, o
           <p className="mt-0.5 text-[11px] text-muted-foreground print:hidden">{year}년 · {labels.colA} · {labels.colB} · {labels.rate}</p>
         </div>
         <div className="overflow-x-auto">
-          <table className="kpi-close-report w-full min-w-[42rem] table-fixed text-[13px]">
+          <table className="kpi-close-report w-full table-fixed text-[11px]">
+            <colgroup>
+              <col className="w-[4.75rem]" />
+            </colgroup>
             <thead>
-              <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
-                <th className="py-2 pl-4 pr-2 text-left font-medium">월</th>
-                <th className="px-2 py-2 text-right font-medium">목표</th>
-                {outgoingSplitShip
-                  ? outgoingShipUnits.map((unit) => (
-                    <th key={unit} className="px-2 py-2 text-right font-medium">{`출하 ${unit}`}</th>
-                  ))
-                  : <th className="px-2 py-2 text-right font-medium">{labels.colA}</th>}
-                <th className="px-2 py-2 text-right font-medium">{labels.colB}</th>
-                <th className="px-2 py-2 text-right font-medium">{labels.rate}</th>
-                <th className="px-2 py-2 text-right font-medium">목표대비</th>
-                <th className="px-2 py-2 text-right font-medium">판정</th>
-                <th className="px-2 py-2 text-right font-medium print:hidden">상태</th>
-                <th className="no-print py-2 pl-2 pr-4 text-right font-medium">마감</th>
+              <tr className="border-b bg-muted/40 text-[11px] text-muted-foreground">
+                <th className="py-2 pl-3 pr-2 text-left font-medium">구분</th>
+                {months.map((month) => (
+                  <th key={month.key} className="px-0.5 py-2 text-right font-medium">{month.label}</th>
+                ))}
+                <th className="py-2 pl-1 pr-2 text-right font-medium">합계</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
-              {months.map((month) => {
-                const isClosed = closed.has(month.key)
-                const future = month.key > current
-                const now = month.key === current
-                return (
-                  <tr key={month.key} className={cn('border-b', now && 'bg-primary/5', isClosed && 'bg-muted/30')}>
-                    <td className="py-2 pl-4 pr-2 font-semibold">
-                      {month.label}
-                      {now && <span className="ml-1 rounded bg-primary/10 px-1 py-px text-[10px] font-semibold text-primary print:hidden">이번</span>}
-                    </td>
-                    <td className={numCell}>{month.target}%</td>
-                    {outgoingSplitShip
-                      ? outgoingShipUnits.map((unit) => (
-                        <td key={unit} className={numCell}>{shipUnitCell(month.key, unit, !future)}</td>
-                      ))
-                      : <td className={numCell}>{hasRow(month) ? colAText(month) : '—'}</td>}
-                    <td className={cn(numCell, month.defect > 0 && 'font-semibold text-rose-600')}>{hasRow(month) ? formatCount(month.defect) : '—'}</td>
-                    <td className={cn(numCell, 'font-semibold', month.ok === false && 'text-rose-600', month.ok && 'text-emerald-600')}>{hasRow(month) ? pct(month.rate) : '—'}</td>
-                    <td className={numCell}>{hasRow(month) ? compareCell(month.rate, month.target) : '—'}</td>
-                    <td className={numCell}><Verdict ok={month.ok} compact /></td>
-                    <td className={cn(numCell, 'text-xs font-semibold print:hidden')}>
-                      {future ? '예정' : isClosed ? '마감' : '진행'}
-                    </td>
-                    <td className="no-print py-2 pl-2 pr-4 text-right">
-                      {canManage && !future && (
-                        <Button type="button" variant={isClosed ? 'outline' : 'secondary'} size="sm" disabled={saving} onClick={() => onToggle(month.key)}>
-                          {isClosed ? <><LockOpen /> 해제</> : <><Lock /> 마감</>}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-              <tr className="bg-muted/60 font-semibold">
-                <td className="py-2.5 pl-4 pr-2">누계</td>
-                <td className={numCell}>{total.target}%</td>
-                {outgoingSplitShip
-                  ? outgoingShipUnits.map((unit) => (
-                    <td key={unit} className={numCell}>{shipUnitTotalCell(unit)}</td>
-                  ))
-                  : <td className={numCell}>{hasRow(total) ? colAText(total) : '—'}</td>}
-                <td className={cn(numCell, total.defect > 0 && 'text-rose-600')}>{hasRow(total) ? formatCount(total.defect) : '—'}</td>
-                <td className={cn(numCell, total.ok === false && 'text-rose-600', total.ok && 'text-emerald-600')}>{hasRow(total) ? pct(total.rate) : '—'}</td>
-                <td className={numCell}>{hasRow(total) ? compareCell(total.rate, total.target) : '—'}</td>
-                <td className={numCell}><Verdict ok={total.ok} compact /></td>
-                <td className={cn(numCell, 'print:hidden')}>—</td>
-                <td className="no-print" />
-              </tr>
+              {variant === 'customer' ? (
+                <>
+                  <SummaryRow label="목표" months={months} cell={(month) => `${month.target}%`} total={`${total.target}%`} emphasis />
+                  <SummaryRow label="접수" months={months} cell={(month) => (month.inspected ? formatCount(month.inspected) : '—')} total={total.inspected ? formatCount(total.inspected) : '—'} />
+                  <SummaryRow label="조치" months={months} cell={(month) => (month.inspected ? formatCount(month.defect) : '—')} total={total.inspected ? formatCount(total.defect) : '—'} />
+                  <SummaryRow label="회신율" months={months} cell={(month) => (month.inspected ? pct(month.rate) : '—')} total={total.inspected ? pct(total.rate) : '—'} />
+                  <SummaryRow label="목표대비" months={months} cell={(month) => (month.inspected ? <ReplyGap rate={month.rate} target={month.target} /> : '—')} total={total.inspected ? <ReplyGap rate={total.rate} target={total.target} /> : '—'} compare totalOk={total.ok} />
+                  <SummaryRow label="판정" months={months} cell={(month) => <Verdict ok={month.ok} compact />} total={`${achieved}/${judged}`} />
+                </>
+              ) : certificates ? (
+                <>
+                  <SummaryRow label="목표" months={months} cell={(month) => `${month.target}%`} total={`${total.target}%`} emphasis />
+                  {outgoingShipUnits.map((unit) => (
+                    <SummaryRow
+                      key={unit}
+                      label={`출하(${unit})`}
+                      months={months}
+                      cell={(month) => shipUnitCell(month.key, unit, hasRow(month))}
+                      total={shipUnitTotalCell(unit)}
+                    />
+                  ))}
+                  <SummaryRow label="불량" months={months} cell={(month) => (hasRow(month) ? formatCount(month.defect) : '—')} total={hasRow(total) ? formatCount(total.defect) : '—'} />
+                  <SummaryRow label="불량률" months={months} cell={(month) => (hasRow(month) ? pct(month.rate) : '—')} total={hasRow(total) ? pct(total.rate) : '—'} danger />
+                  <SummaryRow label="목표대비" months={months} cell={(month) => (hasRow(month) ? <DefectGap rate={month.rate} target={month.target} /> : '—')} total={hasRow(total) ? <DefectGap rate={total.rate} target={total.target} /> : '—'} compare totalOk={total.ok} />
+                  <SummaryRow label="판정" months={months} cell={(month) => (hasRow(month) ? <Verdict ok={month.ok} compact passLabel="합격" failLabel="불합격" /> : '—')} total={`${achieved}/${judged}`} />
+                </>
+              ) : variant === 'process' ? (
+                <>
+                  <SummaryRow label="목표" months={months} cell={(month) => `${month.target}%`} total={`${total.target}%`} emphasis />
+                  <SummaryRow label="생산량" months={months} cell={(month) => (hasRow(month) ? colAText(month) : '—')} total={hasRow(total) ? colAText(total) : '—'} />
+                  <SummaryRow label="불량수량" months={months} cell={(month) => (hasRow(month) ? formatCount(month.defect) : '—')} total={hasRow(total) ? formatCount(total.defect) : '—'} />
+                  <SummaryRow label="불량률" months={months} cell={(month) => (hasRow(month) ? pct(month.rate) : '—')} total={hasRow(total) ? pct(total.rate) : '—'} danger />
+                  <SummaryRow label="목표대비" months={months} cell={(month) => (hasRow(month) ? <DefectGap rate={month.rate} target={month.target} /> : '—')} total={hasRow(total) ? <DefectGap rate={total.rate} target={total.target} /> : '—'} compare totalOk={total.ok} />
+                  <SummaryRow label="판정" months={months} cell={(month) => (hasRow(month) ? <Verdict ok={month.ok} compact /> : '—')} total={`${achieved}/${judged}`} />
+                </>
+              ) : (
+                <>
+                  <SummaryRow label="목표" months={months} cell={(month) => `${month.target}%`} total={`${total.target}%`} emphasis />
+                  <SummaryRow label="검사" months={months} cell={(month) => (hasRow(month) ? formatCount(month.inspected) : '—')} total={hasRow(total) ? formatCount(total.inspected) : '—'} />
+                  <SummaryRow label="불량" months={months} cell={(month) => (hasRow(month) ? formatCount(month.defect) : '—')} total={hasRow(total) ? formatCount(total.defect) : '—'} />
+                  <SummaryRow label="불량률" months={months} cell={(month) => (hasRow(month) ? pct(month.rate) : '—')} total={hasRow(total) ? pct(total.rate) : '—'} danger />
+                  <SummaryRow label="목표대비" months={months} cell={(month) => (hasRow(month) ? <DefectGap rate={month.rate} target={month.target} /> : '—')} total={hasRow(total) ? <DefectGap rate={total.rate} target={total.target} /> : '—'} compare totalOk={total.ok} />
+                  <SummaryRow label="판정" months={months} cell={(month) => (hasRow(month) ? <Verdict ok={month.ok} compact /> : '—')} total={`${achieved}/${judged}`} />
+                </>
+              )}
             </tbody>
           </table>
         </div>
@@ -2625,8 +2135,8 @@ function StandardCloseReport({ year, data, closed, current, canManage, saving, o
           </>
         ) : variant === 'process' ? (
           <>
-            <CloseStat label="총 생산량(검사수량)" value={total.inspected ? formatQty(total.inspected) : '—'} unit="" />
-            <CloseStat label="총 불량수량" value={total.defect ? formatQty(total.defect) : '0'} unit="" tone={total.defect > 0 ? 'rose' : undefined} />
+            <CloseStat label="총 생산량(검사수량)" value={total.inspected ? formatNumber1(total.inspected) : '—'} unit="" />
+            <CloseStat label="총 불량수량" value={total.defect ? formatNumber1(total.defect) : '0'} unit="" tone={total.defect > 0 ? 'rose' : undefined} />
             <CloseStat label="누계 공정 불량률" value={total.inspected ? total.rate.toFixed(3) : '—'} unit={total.inspected ? '%' : ''} tone={total.ok === false ? 'rose' : total.ok ? 'green' : undefined} />
             <CloseStatRange
               label="최고/최저 불량률"
@@ -2686,7 +2196,7 @@ function StandardCloseReport({ year, data, closed, current, canManage, saving, o
   )
 }
 
-function DeliveryCloseReport({ year, months, ordersByMonth, total, quarters, halves, closed, current, canManage, saving, onToggle, monthlyOnly = false }: {
+function DeliveryCloseReport({ year, months, ordersByMonth, total, quarters, halves, monthlyOnly = false }: {
   year: number
   months: PeriodStat[]
   ordersByMonth: Record<string, number>
@@ -2710,7 +2220,8 @@ function DeliveryCloseReport({ year, months, ordersByMonth, total, quarters, hal
     months.slice(half * 6, half * 6 + 6).reduce((sum, month) => sum + (ordersByMonth[month.key] ?? 0), 0),
   )
 
-  const numCell = 'px-2 py-2 text-right tabular-nums'
+  const deliveryJudged = months.filter((month) => month.ok != null).length
+  const deliveryAchieved = months.filter((month) => month.ok).length
 
   const monthlyTable = (
       <article className="kpi-close-card kpi-close-report-card min-w-0 overflow-hidden rounded-2xl border bg-card shadow-sm print:overflow-visible print:shadow-none">
@@ -2719,65 +2230,35 @@ function DeliveryCloseReport({ year, months, ordersByMonth, total, quarters, hal
           <p className="mt-0.5 text-[11px] text-muted-foreground print:hidden">{year}년 · 발주·납품·지연·준수율</p>
         </div>
         <div className="overflow-x-auto">
-          <table className="kpi-close-report w-full min-w-[46rem] table-fixed text-[13px]">
+          <table className="kpi-close-report w-full table-fixed text-[11px]">
+            <colgroup>
+              <col className="w-[4.75rem]" />
+            </colgroup>
             <thead>
-              <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
-                <th className="py-2 pl-4 pr-2 text-left font-medium">월</th>
-                <th className="px-2 py-2 text-right font-medium">목표</th>
-                <th className="px-2 py-2 text-right font-medium">발주</th>
-                <th className="px-2 py-2 text-right font-medium">납품</th>
-                <th className="px-2 py-2 text-right font-medium">지연</th>
-                <th className="px-2 py-2 text-right font-medium">준수율</th>
-                <th className="px-2 py-2 text-right font-medium">목표대비</th>
-                <th className="px-2 py-2 text-right font-medium">판정</th>
-                <th className="px-2 py-2 text-right font-medium print:hidden">상태</th>
-                <th className="no-print py-2 pl-2 pr-4 text-right font-medium">마감</th>
+              <tr className="border-b bg-muted/40 text-[11px] text-muted-foreground">
+                <th className="py-2 pl-3 pr-2 text-left font-medium">구분</th>
+                {months.map((month) => (
+                  <th key={month.key} className="px-0.5 py-2 text-right font-medium">{month.label}</th>
+                ))}
+                <th className="py-2 pl-1 pr-2 text-right font-medium">합계</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
-              {months.map((month) => {
-                const orders = ordersByMonth[month.key] ?? 0
-                const isClosed = closed.has(month.key)
-                const future = month.key > current
-                const now = month.key === current
-                return (
-                  <tr key={month.key} className={cn('border-b', now && 'bg-primary/5', isClosed && 'bg-muted/30')}>
-                    <td className="py-2 pl-4 pr-2 font-semibold">
-                      {month.label}
-                      {now && <span className="ml-1 rounded bg-primary/10 px-1 py-px text-[10px] font-semibold text-primary print:hidden">이번</span>}
-                    </td>
-                    <td className={numCell}>{month.target}%</td>
-                    <td className={numCell}>{orders ? `${orders.toLocaleString('ko-KR')}건` : '—'}</td>
-                    <td className={numCell}>{month.inspected ? `${month.inspected.toLocaleString('ko-KR')}건` : '—'}</td>
-                    <td className={cn(numCell, month.defect > 0 && 'font-semibold text-rose-600')}>{month.inspected ? `${month.defect.toLocaleString('ko-KR')}건` : '—'}</td>
-                    <td className={cn(numCell, 'font-semibold', month.ok === false && 'text-rose-600', month.ok && 'text-emerald-600')}>{month.inspected ? pct(month.rate) : '—'}</td>
-                    <td className={numCell}>{month.inspected ? <ReplyGap rate={month.rate} target={month.target} /> : '—'}</td>
-                    <td className={numCell}><Verdict ok={month.ok} compact /></td>
-                    <td className={cn(numCell, 'text-xs font-semibold print:hidden')}>
-                      {future ? '예정' : isClosed ? '마감' : '진행'}
-                    </td>
-                    <td className="no-print py-2 pl-2 pr-4 text-right">
-                      {canManage && !future && (
-                        <Button type="button" variant={isClosed ? 'outline' : 'secondary'} size="sm" disabled={saving} onClick={() => onToggle(month.key)}>
-                          {isClosed ? <><LockOpen /> 해제</> : <><Lock /> 마감</>}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-              <tr className="bg-muted/60 font-semibold">
-                <td className="py-2.5 pl-4 pr-2">누계</td>
-                <td className={numCell}>{total.target}%</td>
-                <td className={numCell}>{orderTotal ? `${orderTotal.toLocaleString('ko-KR')}건` : '—'}</td>
-                <td className={numCell}>{total.inspected ? `${total.inspected.toLocaleString('ko-KR')}건` : '—'}</td>
-                <td className={cn(numCell, total.defect > 0 && 'text-rose-600')}>{total.inspected ? `${total.defect.toLocaleString('ko-KR')}건` : '—'}</td>
-                <td className={cn(numCell, total.ok === false && 'text-rose-600', total.ok && 'text-emerald-600')}>{total.inspected ? pct(total.rate) : '—'}</td>
-                <td className={numCell}>{total.inspected ? <ReplyGap rate={total.rate} target={total.target} /> : '—'}</td>
-                <td className={numCell}><Verdict ok={total.ok} compact /></td>
-                <td className={cn(numCell, 'print:hidden')}>—</td>
-                <td className="no-print" />
-              </tr>
+              <SummaryRow label="목표" months={months} cell={(month) => `${month.target}%`} total={`${total.target}%`} emphasis />
+              <SummaryRow
+                label="발주"
+                months={months}
+                cell={(month) => {
+                  const orders = ordersByMonth[month.key] ?? 0
+                  return orders ? `${orders.toLocaleString('ko-KR')}건` : '—'
+                }}
+                total={orderTotal ? `${orderTotal.toLocaleString('ko-KR')}건` : '—'}
+              />
+              <SummaryRow label="납품" months={months} cell={(month) => (month.inspected ? `${month.inspected.toLocaleString('ko-KR')}건` : '—')} total={total.inspected ? `${total.inspected.toLocaleString('ko-KR')}건` : '—'} />
+              <SummaryRow label="지연" months={months} cell={(month) => (month.inspected ? `${month.defect.toLocaleString('ko-KR')}건` : '—')} total={total.inspected ? `${total.defect.toLocaleString('ko-KR')}건` : '—'} />
+              <SummaryRow label="준수율" months={months} cell={(month) => (month.inspected ? pct(month.rate) : '—')} total={total.inspected ? pct(total.rate) : '—'} />
+              <SummaryRow label="목표대비" months={months} cell={(month) => (month.inspected ? <ReplyGap rate={month.rate} target={month.target} /> : '—')} total={total.inspected ? <ReplyGap rate={total.rate} target={total.target} /> : '—'} compare totalOk={total.ok} />
+              <SummaryRow label="판정" months={months} cell={(month) => <Verdict ok={month.ok} compact />} total={`${deliveryAchieved}/${deliveryJudged}`} />
             </tbody>
           </table>
         </div>
@@ -2894,209 +2375,6 @@ function CloseStat({ label, value, unit, tone, compact = false }: { label: strin
         {unit ? <span className="ml-1 text-xs font-semibold text-muted-foreground">{unit}</span> : null}
       </div>
     </div>
-  )
-}
-
-function LotDialog({ open, onOpenChange, lot, companies, productsByCompany, closed, saving, registerLabel, description, quantityLabel, delivery = false, onSubmit }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  lot: InspectionLot | null
-  companies: string[]
-  productsByCompany: Record<string, string[]>
-  closed: Set<string>
-  saving: boolean
-  registerLabel: string
-  description: string
-  quantityLabel: string
-  delivery?: boolean
-  onSubmit: (lot: InspectionLot) => void
-}) {
-  const [form, setForm] = useState<InspectionLot>(() => lot ?? {
-    id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `lot-${Date.now()}`,
-    date: todayIso(),
-    vendor: '',
-    product: '',
-    floor: '1',
-    quantity: 0,
-    result: 'pass',
-    defect: '',
-    scar: 'none',
-    scarDue: '',
-    note: '',
-  })
-  const set = <K extends keyof InspectionLot>(key: K, value: InspectionLot[K]) => setForm((current) => ({ ...current, [key]: value }))
-  const setDeliveryDate = (date: string) => setForm((current) => {
-    const result = deliveryResult(date, current.scarDue)
-    return { ...current, date, result, scar: 'none' }
-  })
-  const setPromisedDate = (scarDue: string) => setForm((current) => {
-    const result = deliveryResult(current.date, scarDue)
-    return { ...current, scarDue, result, scar: 'none' }
-  })
-  const locked = closed.has(form.date.slice(0, 7))
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    const companyProducts = productsByCompany[form.vendor] ?? []
-    if (!form.date || !form.vendor.trim()) return toast.error(delivery ? '납품일과 업체명을 선택해 주세요.' : '검사일과 업체명을 선택해 주세요.')
-    if (delivery && !form.scarDue) return toast.error('약속 납기를 입력해 주세요.')
-    if (!companies.includes(form.vendor)) return toast.error('등록된 업체 목록에서 선택해 주세요.')
-    if (companyProducts.length === 0) return toast.error('이 업체에 저장된 품목이 없습니다.')
-    if (!companyProducts.includes(form.product)) return toast.error('이 업체가 생산하는 품목을 선택해 주세요.')
-    if (locked) return toast.error('마감된 달입니다. 월별 마감에서 해제한 뒤 등록해 주세요.')
-    const result = delivery ? deliveryResult(form.date, form.scarDue) : form.result
-    if (result === 'fail' && !form.defect.trim()) return toast.error(delivery ? '지연이면 지연 사유를 입력해 주세요.' : '불합격이면 불량 내용을 입력해 주세요.')
-    onSubmit({
-      ...form,
-      vendor: form.vendor.trim(),
-      product: form.product.trim(),
-      result,
-      scar: delivery && result === 'pass' ? 'none' : form.scar,
-    })
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <form onSubmit={submit} className="grid gap-4">
-          <DialogHeader>
-            <DialogTitle>{lot ? (delivery ? '납품 수정' : '검사 수정') : registerLabel}</DialogTitle>
-            <DialogDescription>{description}</DialogDescription>
-          </DialogHeader>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label={delivery ? '실제 납품일' : '검사일'} required>
-              <Input type="date" value={form.date} onChange={(event) => (delivery ? setDeliveryDate(event.target.value) : set('date', event.target.value))} aria-invalid={locked} />
-            </Field>
-            {delivery ? (
-              <Field label="약속 납기" required>
-                <Input type="date" value={form.scarDue} onChange={(event) => setPromisedDate(event.target.value)} />
-              </Field>
-            ) : (
-              <Field label="층" asGroup>
-                <div className="grid h-8 grid-cols-3 gap-0.5 rounded-lg border bg-muted/40 p-0.5">
-                  {FLOORS.map((floor) => {
-                    const selected = form.floor === floor
-                    return (
-                      <button
-                        key={floor}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() => set('floor', floor)}
-                        className={cn(
-                          'rounded-md text-[13px] font-semibold transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/40',
-                          selected ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-background hover:text-foreground',
-                        )}
-                      >
-                        {floor}층
-                      </button>
-                    )
-                  })}
-                </div>
-              </Field>
-            )}
-            <Field label="업체명" required>
-              <SearchableCombobox
-                configName="companies"
-                options={companies}
-                listAll
-                creatable={false}
-                clearable={false}
-                value={form.vendor}
-                onChange={(value) => {
-                  const allowed = productsByCompany[value] ?? []
-                  setForm((current) => ({ ...current, vendor: value, product: allowed.includes(current.product) ? current.product : '' }))
-                }}
-                placeholder="업체명"
-              />
-            </Field>
-            <Field label="품목" required>
-              <SearchableCombobox
-                configName="products"
-                options={productsByCompany[form.vendor] ?? []}
-                listAll
-                creatable={false}
-                clearable={false}
-                disabled={!form.vendor}
-                value={form.product}
-                onChange={(value) => set('product', value)}
-                placeholder={form.vendor ? ((productsByCompany[form.vendor] ?? []).length ? '품목 선택' : '저장된 품목 없음') : '품목 선택'}
-              />
-            </Field>
-            <Field label={quantityLabel}>
-              <Input inputMode="numeric" value={form.quantity ? String(form.quantity) : ''} onChange={(event) => set('quantity', Math.max(0, Math.floor(Number(event.target.value.replace(/\D/g, '')) || 0)))} placeholder="0" />
-            </Field>
-            {delivery ? (
-              <Field label="준수 여부" asGroup className="col-span-2">
-                <p className="flex h-8 items-center rounded-lg border bg-muted/30 px-3 text-[13px] font-semibold">
-                  <ResultBadge result={form.result} passLabel="준수" failLabel="지연" />
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">납품일이 약속 납기를 넘기면 지연으로 집계됩니다.</span>
-                </p>
-              </Field>
-            ) : (
-              <Field label="판정" asGroup>
-                <div className="grid h-8 grid-cols-2 gap-1 rounded-lg border p-0.5">
-                  {(['pass', 'fail'] as const).map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => set('result', value)}
-                      className={cn(
-                        'rounded-md text-[13px] font-semibold',
-                        form.result === value ? (value === 'pass' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white') : 'text-muted-foreground hover:bg-muted',
-                      )}
-                    >
-                      {value === 'pass' ? '합격' : '불합격'}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            )}
-          </div>
-
-          {form.result === 'fail' && (
-            <div className="grid grid-cols-2 gap-3 rounded-xl border border-rose-100 bg-rose-50/50 p-3 dark:border-rose-500/20 dark:bg-rose-500/5">
-              <Field label={delivery ? '지연 사유' : '불량 내용'} required className="col-span-2">
-                <Input value={form.defect} onChange={(event) => set('defect', event.target.value)} placeholder={delivery ? '예: 원자재 지연, 물량 변경' : '예: 치수 이탈, 외관 흠집'} />
-              </Field>
-              {!delivery && (
-                <>
-                  <Field label="SCAR 상태">
-                    <select value={form.scar} onChange={(event) => set('scar', event.target.value as ScarStatus)} className={cn(FIELD, 'h-8 w-full')}>
-                      {(Object.keys(SCAR_LABEL) as ScarStatus[]).map((status) => <option key={status} value={status}>{SCAR_LABEL[status]}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="조치 기한">
-                    <Input type="date" value={form.scarDue} onChange={(event) => set('scarDue', event.target.value)} />
-                  </Field>
-                </>
-              )}
-            </div>
-          )}
-
-          <Field label="비고">
-            <Input value={form.note} onChange={(event) => set('note', event.target.value)} placeholder="선택 입력" />
-          </Field>
-
-          {locked && <p className="text-xs font-medium text-rose-600">{Number(form.date.slice(5, 7))}월은 마감되었습니다.</p>}
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-            <Button type="submit" disabled={saving || locked}>{saving ? '저장 중…' : '저장'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function Field({ label, required, asGroup, className, children }: { label: string; required?: boolean; asGroup?: boolean; className?: string; children: ReactNode }) {
-  const Wrapper = asGroup ? 'div' : 'label'
-  return (
-    <Wrapper className={cn('grid gap-1.5', className)} {...(asGroup ? { role: 'group', 'aria-label': label } : {})}>
-      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{label}{required && <span className="ml-0.5 text-rose-500">*</span>}</span>
-      {children}
-    </Wrapper>
   )
 }
 
@@ -3279,7 +2557,7 @@ function PeriodRing({ rate, rateText, target, ok, scale, higherBetter, size }: {
 
 function periodCountText(heads: string[], line: PeriodLine, full = false) {
   return line.counts
-    .map((value, index) => (value == null ? null : `${heads[index]} ${full ? formatQty(value) : compactQty.format(value)}`))
+    .map((value, index) => (value == null ? null : `${heads[index]} ${full ? formatNumber1(value) : compactQty.format(value)}`))
     .filter(Boolean)
     .join(' · ')
 }
@@ -3345,7 +2623,7 @@ function KpiPeriodPanel({ title, aside, heads, quarters, halves, total, higherBe
                     <div key={countHeads[index]} className="flex items-baseline justify-between gap-2">
                       <dt className="text-muted-foreground">{countHeads[index]}</dt>
                       <dd
-                        title={value == null ? undefined : formatQty(value)}
+                        title={value == null ? undefined : formatNumber1(value)}
                         className={cn('truncate font-semibold tabular-nums text-slate-800 dark:text-slate-100', index === dangerIndex && (value ?? 0) > 0 && 'text-rose-600 dark:text-rose-400')}
                       >
                         {value == null ? '—' : compactQty.format(value)}
@@ -3400,56 +2678,6 @@ function deliveryLine(row: PeriodStat, orders: number): PeriodLine {
   }
 }
 
-function Metric({ label, value, unit, sub, tone }: { label: string; value: string; unit?: string; sub?: string; tone?: 'rose' | 'green' }) {
-  return (
-    <div className="border-b px-5 py-4 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0">
-      <p className="text-[13px] font-medium text-muted-foreground">{label}</p>
-      <p className={cn('mt-1.5 text-[28px] font-bold leading-none tabular-nums text-slate-900 dark:text-white', tone === 'rose' && 'text-rose-600 dark:text-rose-400', tone === 'green' && 'text-emerald-600 dark:text-emerald-400')}>
-        {value}
-        {unit && <span className="ml-1 text-sm font-semibold text-muted-foreground">{unit}</span>}
-      </p>
-      {sub && <p className="mt-1.5 text-xs text-muted-foreground">{sub}</p>}
-    </div>
-  )
-}
-
-function Table({ heads, align, children, sort }: {
-  heads: string[]
-  align: ('left' | 'right')[]
-  children: ReactNode
-  sort?: { active: string; dir: 'asc' | 'desc'; keys: readonly (string | null)[]; onSort: (key: string) => void }
-}) {
-  return (
-    <table className="w-full text-[13px]">
-      <thead>
-        <tr className="border-b text-xs text-muted-foreground">
-          {heads.map((head, index) => {
-            const key = sort?.keys[index]
-            return (
-              <th key={`${head}-${index}`} className={cn('py-2 pr-3 font-medium last:pr-0', align[index] === 'right' ? 'text-right' : 'text-left')}>
-                {key ? (
-                  <button
-                    type="button"
-                    onClick={() => sort.onSort(key)}
-                    aria-label={`${head} 정렬`}
-                    className={cn('inline-flex items-center gap-1 hover:text-foreground', align[index] === 'right' && 'flex-row-reverse')}
-                  >
-                    {head}
-                    {sort.active === key
-                      ? (sort.dir === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)
-                      : <ArrowUpDown className="size-3 opacity-50" />}
-                  </button>
-                ) : head}
-              </th>
-            )
-          })}
-        </tr>
-      </thead>
-      <tbody>{children}</tbody>
-    </table>
-  )
-}
-
 function SummaryUnit({ value, unit }: { value: number | string; unit: '건' | '%' }) {
   return (
     <span className="inline-flex items-baseline justify-end gap-0.5 tabular-nums">
@@ -3468,7 +2696,7 @@ function SummaryRow<T extends PeriodStat>({ label, months, cell, total, danger, 
           'px-1 py-2 text-right align-top',
           emphasis && 'text-sky-950 dark:text-sky-100',
           danger && month.ok === false && 'font-semibold text-rose-600',
-          compare && month.inspected > 0 && (month.ok ? 'font-semibold text-emerald-600' : 'font-semibold text-rose-600'),
+          compare && month.ok != null && (month.ok ? 'font-semibold text-emerald-600' : 'font-semibold text-rose-600'),
         )}>{cell(month, index)}</td>
       ))}
       <td className={cn(
@@ -3502,7 +2730,7 @@ function gapText(rate: number, target: number) {
 function outgoingRateHint(month: PeriodStat) {
   if (!(month.rateBase ?? 0)) return undefined
   const unit = month.rateBaseUnit ?? ''
-  return `작업일보·성적서 ${unit} 기준 · 표의 불량/검사 합계 ÷ 출하 ${month.rateBase!.toLocaleString('ko-KR')}${unit ? ` ${unit}` : ''} (불량률은 작업일보 단위와 맞는 출하로 계산)`
+  return `불량 ${month.defect.toLocaleString('ko-KR')} ÷ 출하 ${month.rateBase!.toLocaleString('ko-KR')}${unit ? ` ${unit}` : ''} · 같은 단위 불량이 없으면 그달 작업일보 불량 합계를 출하량으로 나눔`
 }
 
 function replyOf(closed: number, received: number) {
@@ -3532,22 +2760,6 @@ function Verdict({ ok, compact, passLabel = '달성', failLabel = '미달', clas
       {ok ? passLabel : failLabel}
     </span>
   )
-}
-
-function ResultBadge({ result, passLabel = '합격', failLabel = '불합격' }: { result: InspectionLot['result']; passLabel?: string; failLabel?: string }) {
-  return (
-    <span className={cn(
-      'inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-semibold',
-      result === 'pass' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-    )}>
-      {result === 'pass' ? passLabel : failLabel}
-    </span>
-  )
-}
-
-function deliveryResult(actual: string, promised: string): LotResult {
-  if (!actual || !promised) return 'pass'
-  return actual <= promised ? 'pass' : 'fail'
 }
 
 function Legend({ items }: { items: [string, string][] }) {

@@ -34,10 +34,6 @@ export function parseOccurrenceDate(value: unknown, fallbackIso?: string): strin
   return todayOccurrenceDate()
 }
 
-export function formatOccurrenceDateLabel(value: string): string {
-  return value.replace(/-/g, '.')
-}
-
 export interface CustomerNonconformity {
   id: string
   /** 발생일 YYYY-MM-DD */

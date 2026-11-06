@@ -1,28 +1,19 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Download, Edit, Trash2, FileText, Maximize2, UserRound, CalendarDays } from 'lucide-react'
+import { Download, Edit, Trash2, FileText, Maximize2, UserRound, CalendarDays } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { DocumentMetadata } from '@/lib/types'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { notifyDataChanged } from '@/lib/data-events'
-import { getSession, buildAuthHeaders } from '@/lib/auth-client'
+import { getAuthHeaders } from '@/lib/auth-client'
+import { formatBytes } from '@/lib/format'
 import { useAuth } from '@/components/auth/auth-context'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog' 
+import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { EditDocumentDialog } from '@/components/explorer/edit-document-dialog'
 import { PdfViewerModal } from '@/components/explorer/pdf-viewer-modal'
 import { documentDownloadName, documentFileKind } from '@/lib/file-types'
@@ -81,12 +72,6 @@ function MetaRow({ label, value }: { label: string; value?: string | number | nu
   )
 }
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
 const getDownloadName = documentDownloadName
 
 export function FilePreviewDrawer({ document, open, onClose, onDelete, onUpdate }: FilePreviewDrawerProps) {
@@ -101,10 +86,9 @@ export function FilePreviewDrawer({ document, open, onClose, onDelete, onUpdate 
     if (!document) return
     setDeleting(true)
     try {
-      const session = getSession()
       const res = await fetch(`/api/documents/${document.id}`, {
         method: 'DELETE',
-        headers: session ? buildAuthHeaders(session) : {},
+        headers: getAuthHeaders(),
       })
       if (!res.ok) throw new Error()
       toast.success('문서가 삭제되었습니다.')
@@ -315,27 +299,10 @@ export function FilePreviewDrawer({ document, open, onClose, onDelete, onUpdate 
       />
 
       {/* Delete confirmation */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>문서 삭제</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong>{document.filename}</strong> 을(를) 삭제하시겠습니까?
-              <br />이 작업은 되돌릴 수 없습니다.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleting}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {deleting ? '삭제 중...' : '삭제'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title="문서 삭제" onConfirm={handleDelete} pending={deleting}>
+        <strong>{document.filename}</strong> 을(를) 삭제하시겠습니까?
+        <br />이 작업은 되돌릴 수 없습니다.
+      </ConfirmDeleteDialog>
 
       {/* Edit dialog */}
       {editOpen && (

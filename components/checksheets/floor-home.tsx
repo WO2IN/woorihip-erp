@@ -11,7 +11,7 @@ import {
   WrenchIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PageHeader } from '@/components/shared/page-header'
+import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import type { TodayStatus } from '@/lib/today-check'
 import { TodayStatusBadge } from '@/components/shared/today-status-badge'
 
@@ -82,7 +82,7 @@ export function FloorHome({
 
   if (!selectedFloor) {
     return (
-      <main className="mx-auto flex min-h-[calc(100dvh-3.5rem)] max-w-[1100px] flex-col justify-center gap-8 px-4 py-8 sm:px-6">
+      <main className={cn(PAGE_SHELL, 'min-h-[calc(100dvh-3.5rem)] justify-center gap-8')}>
         <div className="text-center">
           <p className="text-sm font-medium text-muted-foreground">
             {year}년 {month}월 일상점검
@@ -135,9 +135,9 @@ export function FloorHome({
   }
 
   return (
-    <main className="flex w-full flex-col gap-6 px-6 py-6">
+    <main className={PAGE_SHELL}>
       <PageHeader
-        tone="violet"
+        tone="amber"
         icon={WrenchIcon}
         eyebrow="DAILY CHECK · 일일 점검"
         title={`${active?.label ?? `${selectedFloor}층`} 점검`}

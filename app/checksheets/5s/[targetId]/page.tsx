@@ -19,6 +19,8 @@ import { currentYearMonth } from '@/lib/date-utils'
 import { notFound } from 'next/navigation'
 import { canManageChecksheets, canUseFloor, currentActor } from '@/lib/check-access'
 import { SheetHeaderEditor } from '@/components/shared/sheet-header-editor'
+import { PAGE_SHELL } from '@/components/shared/page-header'
+import { cn } from '@/lib/utils'
 
 export default async function FiveSPage({
   params,
@@ -61,7 +63,7 @@ export default async function FiveSPage({
   return (
     <div className="checksheet-page min-h-dvh bg-background">
       <SiteHeader />
-      <main className="print-page checksheet-print-page flex w-full flex-col gap-4 px-6 py-6">
+      <main className={cn(PAGE_SHELL, 'print-page checksheet-print-page print:max-w-none print:gap-1 print:p-0')}>
         <div className="no-print flex flex-wrap items-center justify-between gap-3">
           <YearMonthPicker year={year} month={month} />
           <div className="flex items-center gap-2">

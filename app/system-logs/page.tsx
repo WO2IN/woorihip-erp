@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, AlertCircle, CheckCircle2, Clock3, RefreshCw, Search, ShieldAlert, Trash2 } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-context'
-import { getSession, buildAuthHeaders } from '@/lib/auth-client'
+import { getAuthHeaders, getJsonAuthHeaders } from '@/lib/auth-client'
 import { describeAuditDetail } from '@/lib/audit-detail'
+import { getAuditTargetLabel } from '@/lib/audit-target-labels'
 import { AuditLogEntry } from '@/lib/storage'
-import { BAND_BUTTON, PageHeader } from '@/components/shared/page-header'
+import { BAND_BUTTON, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('ko-KR', {
@@ -27,22 +28,6 @@ function getActionLabel(action: string) {
   return labels[action.trim().toUpperCase()] ?? action
 }
 
-function getTargetLabel(target: string) {
-  const labels: Record<string, string> = {
-    document: '문서',
-    config: '기초정보',
-    user: '사용자',
-    organization: '조직도',
-    'process-template': '공정 점검표',
-    'process-check': '공정 점검 기록',
-    inventory: '입고',
-    'floor3-work-log': '작업일보',
-    'process-nonconformity': '공정 부적합',
-    'customer-nonconformity': '고객 부적합',
-  }
-  return labels[target] ?? target
-}
-
 function LogDetail({ log }: { log: AuditLogEntry }) {
   const detail = describeAuditDetail(log)
   return (
@@ -56,10 +41,9 @@ function LogDetail({ log }: { log: AuditLogEntry }) {
 }
 
 async function deleteLog(id: string) {
-  const session = getSession()
   const response = await fetch('/api/audit-logs', {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json', ...(session ? buildAuthHeaders(session) : {}) },
+    headers: getJsonAuthHeaders(),
     body: JSON.stringify({ id }),
   })
   if (!response.ok) {
@@ -116,10 +100,9 @@ export default function SystemLogsPage() {
     setLoading(true)
     setError('')
     try {
-      const session = getSession()
       const response = await fetch('/api/audit-logs?limit=500', {
         cache: 'no-store',
-        headers: session ? buildAuthHeaders(session) : {},
+        headers: getAuthHeaders(),
       })
       if (!response.ok) throw new Error('로그를 불러오지 못했습니다.')
       const result = await response.json()
@@ -140,7 +123,7 @@ export default function SystemLogsPage() {
     if (!normalized) return logs
     return logs.filter(log => {
       const detail = describeAuditDetail(log)
-      return [log.action, getActionLabel(log.action), log.target, getTargetLabel(log.target), log.detail, detail.title, ...detail.lines, log.userName, log.userId]
+      return [log.action, getActionLabel(log.action), log.target, getAuditTargetLabel(log.target), log.detail, detail.title, ...detail.lines, log.userName, log.userId]
         .filter(Boolean)
         .some(value => value!.toLowerCase().includes(normalized))
     })
@@ -161,10 +144,10 @@ export default function SystemLogsPage() {
   }
 
   return (
-    <div className="min-h-full bg-muted/20 p-4 md:p-6 lg:p-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className="min-h-full bg-muted/20">
+      <div className={PAGE_SHELL}>
         <PageHeader
-          tone="slate"
+          tone="steel"
           icon={Activity}
           eyebrow="SYSTEM · 시스템관리"
           title="시스템 로그"
@@ -187,7 +170,7 @@ export default function SystemLogsPage() {
             <div><h2 className="text-sm font-semibold tracking-wide uppercase">활동 기록</h2><p className="mt-1 text-xs text-muted-foreground">최대 500개의 최근 기록을 표시합니다.</p></div>
             <div className="relative w-full sm:w-72"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="사용자, 작업, 대상 검색" className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring" /></div>
           </div>
-          {error ? <div className="flex items-center gap-2 p-6 text-sm text-destructive"><AlertCircle className="h-4 w-4" /> {error}</div> : loading ? <div className="p-10 text-center text-sm text-muted-foreground">로그를 불러오는 중입니다.</div> : filteredLogs.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">조건에 맞는 기록이 없습니다.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-sm"><thead className="bg-muted/40 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-3 font-medium">일시</th><th className="px-4 py-3 font-medium">사용자</th><th className="px-4 py-3 font-medium">작업</th><th className="px-4 py-3 font-medium">대상</th><th className="px-4 py-3 font-medium">상세 내용</th><th className="px-4 py-3 text-right font-medium">관리</th></tr></thead><tbody className="divide-y">{filteredLogs.map(log => <tr key={log.id} className="transition-colors hover:bg-muted/20"><td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDate(log.createdAt)}</td><td className="px-4 py-3"><div className="font-medium">{log.userName}</div><div className="text-xs text-muted-foreground">{log.userId}</div></td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-medium ${getActionClass(log.action)}`}>{getActionLabel(log.action)}</span></td><td className="px-4 py-3 font-medium">{getTargetLabel(log.target)}</td><td className="px-4 py-3"><LogDetail log={log} /></td><td className="whitespace-nowrap px-4 py-3 text-right"><button type="button" onClick={() => handleDelete(log.id)} disabled={deletingId === log.id} className="inline-flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-red-200 px-2.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:hover:bg-red-950/40" aria-label="로그 삭제"><Trash2 className="h-3.5 w-3.5" /> 삭제</button></td></tr>)}</tbody></table></div>}
+          {error ? <div className="flex items-center gap-2 p-6 text-sm text-destructive"><AlertCircle className="h-4 w-4" /> {error}</div> : loading ? <div className="p-10 text-center text-sm text-muted-foreground">로그를 불러오는 중입니다.</div> : filteredLogs.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">조건에 맞는 기록이 없습니다.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-sm"><thead className="bg-muted/40 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-3 font-medium">일시</th><th className="px-4 py-3 font-medium">사용자</th><th className="px-4 py-3 font-medium">작업</th><th className="px-4 py-3 font-medium">대상</th><th className="px-4 py-3 font-medium">상세 내용</th><th className="px-4 py-3 text-right font-medium">관리</th></tr></thead><tbody className="divide-y">{filteredLogs.map(log => <tr key={log.id} className="transition-colors hover:bg-muted/20"><td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDate(log.createdAt)}</td><td className="px-4 py-3"><div className="font-medium">{log.userName}</div><div className="text-xs text-muted-foreground">{log.userId}</div></td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-medium ${getActionClass(log.action)}`}>{getActionLabel(log.action)}</span></td><td className="px-4 py-3 font-medium">{getAuditTargetLabel(log.target)}</td><td className="px-4 py-3"><LogDetail log={log} /></td><td className="whitespace-nowrap px-4 py-3 text-right"><button type="button" onClick={() => handleDelete(log.id)} disabled={deletingId === log.id} className="inline-flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-red-200 px-2.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:hover:bg-red-950/40" aria-label="로그 삭제"><Trash2 className="h-3.5 w-3.5" /> 삭제</button></td></tr>)}</tbody></table></div>}
         </section>
       </div>
     </div>

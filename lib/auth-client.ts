@@ -29,10 +29,19 @@ export function clearSession(): void {
   localStorage.removeItem(SESSION_KEY)
 }
 
-export function buildAuthHeaders(user: SessionUser): HeadersInit {
+export function buildAuthHeaders(user: SessionUser): Record<string, string> {
   return {
     'x-user-id': user.id,
     'x-user-name': encodeURIComponent(user.displayName),
     'x-user-role': user.role,
   }
+}
+
+/** 로그인 사용자가 없으면 빈 헤더 */
+export function getAuthHeaders(user: SessionUser | null = getSession()): Record<string, string> {
+  return user ? buildAuthHeaders(user) : {}
+}
+
+export function getJsonAuthHeaders(user: SessionUser | null = getSession()): Record<string, string> {
+  return { 'Content-Type': 'application/json', ...getAuthHeaders(user) }
 }

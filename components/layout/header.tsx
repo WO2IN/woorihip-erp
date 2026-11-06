@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sun, Moon, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'  
 import Image from "next/image"
 import { UserMenu } from '@/components/auth/user-menu'
 

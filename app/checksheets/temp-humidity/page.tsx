@@ -1,7 +1,7 @@
 import { WrenchIcon, ThermometerIcon } from 'lucide-react'
 import { getTempHumidityTargets, createTempHumidityTarget, deleteTempHumidityTarget } from '@/app/actions/temp-humidity'
 import { SiteHeader } from '@/components/layout/site-header'
-import { BAND_BUTTON_PRIMARY, PageHeader } from '@/components/shared/page-header'
+import { BAND_BUTTON_PRIMARY, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty'
 import { TargetCreateDialog } from '@/components/shared/target-create-dialog'
 import { TargetListRow } from '@/components/shared/target-list-row'
@@ -23,9 +23,9 @@ export default async function TempHumidityIndexPage({ searchParams }: { searchPa
   return (
     <div className="min-h-dvh bg-background">
       <SiteHeader />
-      <main className="flex w-full flex-col gap-4 px-6 py-6">
+      <main className={PAGE_SHELL}>
         <PageHeader
-          tone="violet"
+          tone="amber"
           icon={ThermometerIcon}
           eyebrow="DAILY CHECK · 일일 점검"
           title="온/습도 체크시트"

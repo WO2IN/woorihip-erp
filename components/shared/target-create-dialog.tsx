@@ -4,7 +4,6 @@ import { useState, useTransition } from 'react'
 import { PlusIcon } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -13,7 +12,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Field, FieldLabel, FieldError, FieldContent } from '@/components/ui/field'
+import { Field, FieldLabel, FieldContent } from '@/components/ui/field'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { FLOOR_OPTIONS } from '@/lib/floor'

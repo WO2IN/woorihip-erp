@@ -6,7 +6,8 @@ import { Building2, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { CustomerNonconformity, WorkflowStatus } from '@/lib/non-conformity'
 import { todayOccurrenceDate } from '@/lib/non-conformity'
 import { useAuth } from '@/components/auth/auth-context'
-import { buildAuthHeaders } from '@/lib/auth-client'
+import { getJsonAuthHeaders } from '@/lib/auth-client'
+import { formatDotDate } from '@/lib/date-utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -82,7 +83,7 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
     if (!user) return
     const res = await fetch(API, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(user) },
+      headers: getJsonAuthHeaders(user),
       body: JSON.stringify({ id, ...patch }),
     })
     if (!res.ok) {
@@ -97,7 +98,7 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
     if (!user) return
     const res = await fetch(API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(user) },
+      headers: getJsonAuthHeaders(user),
       body: JSON.stringify(form),
     })
     if (!res.ok) {
@@ -116,7 +117,7 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
     if (!user) return
     const res = await fetch(API, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(user) },
+      headers: getJsonAuthHeaders(user),
       body: JSON.stringify({ id }),
     })
     if (!res.ok) {
@@ -141,7 +142,7 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
     if (!user || !editId) return
     const res = await fetch(API, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(user) },
+      headers: getJsonAuthHeaders(user),
       body: JSON.stringify({ id: editId, ...editForm }),
     })
     if (!res.ok) {
@@ -302,7 +303,7 @@ export function CustomerNcView({ embedded = false }: { embedded?: boolean }) {
             {pendingDelete && (
               <dl className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
                 <dt className="text-muted-foreground">발생일</dt>
-                <dd className="min-w-0">{pendingDelete.occurrenceDate.replace(/-/g, '.')}</dd>
+                <dd className="min-w-0">{formatDotDate(pendingDelete.occurrenceDate, '')}</dd>
                 <dt className="text-muted-foreground">업체</dt>
                 <dd className="min-w-0 truncate">{pendingDelete.occurrenceCompany || '—'}</dd>
                 <dt className="text-muted-foreground">내용</dt>

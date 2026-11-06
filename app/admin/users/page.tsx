@@ -8,7 +8,7 @@ import {
   Clock, KeyRound, PenLine, Info, Check, RotateCw, ImageIcon, Crown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { BAND_BUTTON, PageHeader } from '@/components/shared/page-header'
+import { BAND_BUTTON, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -17,16 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
@@ -39,7 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
-import { getSession, buildAuthHeaders } from '@/lib/auth-client'
+import { getAuthHeaders } from '@/lib/auth-client'
 import { UserRole } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { formatLastSeenLabel, isUserOnline } from '@/lib/user-presence'
@@ -485,10 +476,7 @@ export default function AdminUsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const authHeaders = useCallback(() => {
-    const session = getSession()
-    return session ? buildAuthHeaders(session) : {}
-  }, [])
+  const authHeaders = useCallback(() => getAuthHeaders(), [])
 
   const loadUsers = useCallback(async () => {
     try {
@@ -755,7 +743,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className={cn(PAGE_SHELL, 'space-y-6')}>
       <PageHeader
         tone="slate"
         icon={UserRound}
@@ -1269,27 +1257,10 @@ export default function AdminUsersPage() {
       </Dialog>
 
       {/* Delete confirmation */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={v => !v && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>사용자 삭제</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong>{deleteTarget?.displayName}</strong> ({deleteTarget?.username}) 계정을 삭제하시겠습니까?
-              <br />이 작업은 되돌릴 수 없습니다.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleting}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {deleting ? '삭제 중...' : '삭제'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog open={!!deleteTarget} onOpenChange={v => !v && setDeleteTarget(null)} title="사용자 삭제" onConfirm={handleDelete} pending={deleting}>
+        <strong>{deleteTarget?.displayName}</strong> ({deleteTarget?.username}) 계정을 삭제하시겠습니까?
+        <br />이 작업은 되돌릴 수 없습니다.
+      </ConfirmDeleteDialog>
     </div>
   )
 }

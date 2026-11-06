@@ -11,9 +11,10 @@ import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { notifyDataChanged, useDataChanged } from '@/lib/data-events'
-import { normalizeLot, normalizeRegisteredLot, buildLotEnd, normalizeIssueDate } from '@/lib/lot'
+import { normalizeLot, normalizeRegisteredLot, normalizeIssueDate } from '@/lib/lot'
 import dynamic from 'next/dynamic'
-import { getSession, buildAuthHeaders } from '@/lib/auth-client'
+import { getAuthHeaders, getSession } from '@/lib/auth-client'
+import { formatBytes } from '@/lib/format'
 import {
   ACCEPT_ALL_FILES,
   ACCEPT_CERTIFICATE,
@@ -89,31 +90,6 @@ function plainQuantity(value: string) {
   return value.replace(/,/g, '')
 }
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
-function normalizeDate(date: string) {
-  if (!date) return ''
-
-  if (date.includes('-')) {
-    const [year, month, day] = date.split('-')
-    if (year && month && day) {
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-    }
-  }
-
-  if (date.includes('.')) {
-    const [y, m, d] = date.split('.')
-    const year = y.length === 2 ? `20${y}` : y
-    return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
-  }
-
-  return date
-}
-
 export function UploadForm() {
   const searchParams = useSearchParams()
   const linkedMovementId = searchParams.get('link') || ''
@@ -123,7 +99,6 @@ export function UploadForm() {
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [previewUrl, setPreviewUrl] = useState('')
   const [uploading, setUploading] = useState(false)
   const [success, setSuccess] = useState(false)
   // Required fields
@@ -171,7 +146,6 @@ export function UploadForm() {
 
   // Optional fields
   const [lotStart, setLotStart] = useState('')
-  const [lotEnd, setLotEnd] = useState('')
   const [lotStartNo, setLotStartNo] = useState('')
   const [lotEndNo, setLotEndNo] = useState('')
   const [product, setProduct] = useState('')
@@ -203,7 +177,6 @@ export function UploadForm() {
   const [recentSpecifications, setRecentSpecifications] = useState<string[]>([])
 
   const [recentCompanies, setRecentCompanies] = useState<string[]>([])
-  const [recentDocTypes, setRecentDocTypes] = useState<string[]>([])
 
   const loadConfig = useCallback(async () => {
     const [c, dt, m, s, p, scat] = await Promise.all([
@@ -221,67 +194,15 @@ export function UploadForm() {
     setSpecifications(s.data || [])
     setProducts(p.data || [])
     setShipmentCategories(scat.data?.length ? scat.data : ['판재', '커넥터', '랙'])
-  }, [])
-
-  const loadRecentValues = useCallback(async () => {
-    try {
-      const [
-        productsRes,
-        materialsRes,
-        specificationsRes,
-        companiesRes,
-        docTypesRes,
-      ] = await Promise.all([
-        fetch('/api/config?name=products', {
-          cache: 'no-store',
-        }).then(res => res.json()),
-
-        fetch('/api/config?name=materials', {
-          cache: 'no-store',
-        }).then(res => res.json()),
-
-        fetch('/api/config?name=specifications', {
-          cache: 'no-store',
-        }).then(res => res.json()),
-
-        fetch('/api/config?name=companies', {
-          cache: 'no-store',
-        }).then(res => res.json()),
-
-        fetch('/api/config?name=document-types', {
-          cache: 'no-store',
-        }).then(res => res.json()),
-      ])
-
-      setRecentProducts(
-        productsRes.data?.slice(0, 5) || []
-      )
-
-      setRecentMaterials(
-        materialsRes.data?.slice(0, 5) || []
-      )
-
-      setRecentSpecifications(
-        specificationsRes.data?.slice(0, 5) || []
-      )
-
-      setRecentCompanies(
-        companiesRes.data?.slice(0, 5) || []
-      )
-
-      setRecentDocTypes(
-        docTypesRes.data?.slice(0, 5) || []
-      )
-
-    } catch (error) {
-      console.error('최근 사용 항목 로드 실패:', error)
-    }
+    setRecentCompanies(c.data?.slice(0, 5) || [])
+    setRecentMaterials(m.data?.slice(0, 5) || [])
+    setRecentSpecifications(s.data?.slice(0, 5) || [])
+    setRecentProducts(p.data?.slice(0, 5) || [])
   }, [])
 
   useEffect(() => {
     loadConfig()
-    loadRecentValues()
-  }, [loadConfig, loadRecentValues])
+  }, [loadConfig])
 
   const applyOcrPlating = useCallback((cleared = false) => {
     const plating = ocrPlatingRef.current
@@ -385,10 +306,9 @@ export function UploadForm() {
     ;(async () => {
       const formData = new FormData()
       formData.append('file', target)
-      const session = getSession()
       const response = await fetch('/api/ocr/certificate', {
         method: 'POST',
-        headers: session ? buildAuthHeaders(session) : {},
+        headers: getAuthHeaders(),
         body: formData,
       })
       const body = await response.json().catch(() => ({}))
@@ -441,20 +361,6 @@ export function UploadForm() {
         setOcrStatus('idle')
       })
   }
-
-  useEffect(() => {
-    if (!file) {
-      setPreviewUrl('')
-      return
-    }
-
-    const url = URL.createObjectURL(file)
-    setPreviewUrl(url)
-
-    return () => {
-      URL.revokeObjectURL(url)
-    }
-  }, [file])
 
   useDataChanged((scope) => {
     if (scope === 'all' || scope === 'config') {
@@ -592,10 +498,9 @@ export function UploadForm() {
       if (linkedMovementId) formData.append('linkedMovementId', linkedMovementId)
       if (linkedMovement) formData.append('movementType', linkedMovement)
 
-      const session = getSession()
       const res = await fetch('/api/upload', {
         method: 'POST',
-        headers: session ? buildAuthHeaders(session) : {},
+        headers: getAuthHeaders(),
         body: formData,
       })
 
@@ -619,7 +524,6 @@ export function UploadForm() {
       notifyDataChanged('config')
 
       await loadConfig()
-      await loadRecentValues()
 
       setSuccess(true)
 
@@ -630,7 +534,6 @@ export function UploadForm() {
       setShipmentFloor(String(defaultFloor))
       setShipmentCategory(defaultFloor === 1 ? '판재' : defaultFloor === 2 ? '커넥터' : '랙')
       setLotStart('')
-      setLotEnd('')
       setLotStartNo('')
       setLotEndNo('')
       setProduct('')
@@ -657,7 +560,6 @@ export function UploadForm() {
     setCompany('')
     setDocumentType(CERTIFICATE_TYPE)
     setLotStart('')
-    setLotEnd('')
     setProduct('')
     setMaterial('')
     setSpecification('')

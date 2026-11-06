@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ArrowLeft, CalendarClock, Construction } from 'lucide-react'
-import { GROUP_TONE, PageHeader } from '@/components/shared/page-header'
+import { GROUP_TONE, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 
 interface ComingSoonProps {
   group: string
@@ -11,7 +11,7 @@ interface ComingSoonProps {
 
 export function ComingSoon({ group, title, description, plans }: ComingSoonProps) {
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className={PAGE_SHELL}>
       <PageHeader
         tone={GROUP_TONE[group] ?? 'blue'}
         icon={Construction}

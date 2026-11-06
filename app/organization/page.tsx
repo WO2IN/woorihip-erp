@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { Check, Crown, FolderTree, GripVertical, Layers, Network, Pencil, Plus, Trash2, UserRound, Users } from "lucide-react"
 import { useAuth } from "@/components/auth/auth-context"
-import { BAND_BUTTON, BAND_BUTTON_PRIMARY, PageHeader } from "@/components/shared/page-header"
-import { buildAuthHeaders } from "@/lib/auth-client"
+import { BAND_BUTTON, BAND_BUTTON_PRIMARY, PAGE_SHELL, PageHeader } from "@/components/shared/page-header"
+import { getJsonAuthHeaders } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
 
 type Person = { label: string; kind: "person" | "group" | "floor" }
@@ -54,7 +54,7 @@ export default function OrganizationPage() {
     try {
       const response = await fetch('/api/organization', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(user) },
+        headers: getJsonAuthHeaders(user),
         body: JSON.stringify({ executive, departments }),
       })
       if (!response.ok) throw new Error('저장하지 못했습니다.')
@@ -140,7 +140,7 @@ export default function OrganizationPage() {
   }
 
   return (
-    <div className="space-y-5 p-4 sm:p-6">
+    <div className={PAGE_SHELL}>
       <PageHeader
         tone="slate"
         icon={Network}

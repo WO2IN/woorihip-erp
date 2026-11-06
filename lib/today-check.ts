@@ -1,4 +1,4 @@
-import { isWeekend, scheduledDaysForCycle } from '@/lib/date-utils'
+import { scheduledDaysForCycle } from '@/lib/date-utils'
 
 export type TodayStatus = 'done' | 'missing' | 'off'
 
@@ -33,8 +33,4 @@ export function todayStatusLabel(status: TodayStatus, weekend: boolean): string 
 
 export function filledValue(value: string | null | undefined): boolean {
   return Boolean(value && value.trim())
-}
-
-export function isWeekendToday(year: number, month: number, day: number): boolean {
-  return isWeekend(year, month, day)
 }

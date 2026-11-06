@@ -3,11 +3,11 @@
 import { ShieldAlert } from 'lucide-react'
 import { CustomerNcView } from '@/components/quality/customer-nc-view'
 import { ProcessNcView } from '@/components/quality/process-nc-view'
-import { PageHeader } from '@/components/shared/page-header'
+import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 
 export function NonconformityView() {
   return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
+    <main className={PAGE_SHELL}>
       <PageHeader
         tone="green"
         icon={ShieldAlert}

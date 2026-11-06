@@ -16,19 +16,20 @@ import {
 } from 'lucide-react'
 import { MovementTrend } from '@/components/dashboard/movement-trend'
 import type { DashboardStats } from '@/lib/dashboard-stats'
+import { PAGE_INSET } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
 
 const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토']
 const num = (value: number) => value.toLocaleString('ko-KR')
 
 const BADGE = {
-  blue: 'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30',
-  violet: 'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30',
-  green: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
-  orange: 'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/30',
-  rose: 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
-  sky: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30',
-  slate: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-500/15 dark:text-slate-300 dark:ring-slate-500/30',
+  blue: 'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/50 dark:text-blue-200 dark:ring-blue-500/35',
+  violet: 'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950/50 dark:text-violet-200 dark:ring-violet-500/35',
+  green: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/45 dark:text-emerald-200 dark:ring-emerald-500/35',
+  orange: 'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-950/45 dark:text-orange-200 dark:ring-orange-500/35',
+  rose: 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/50 dark:text-rose-200 dark:ring-rose-500/40',
+  sky: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-950/45 dark:text-sky-200 dark:ring-sky-500/35',
+  slate: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800/80 dark:text-slate-200 dark:ring-slate-600/50',
 } as const
 type BadgeTone = keyof typeof BADGE
 
@@ -55,7 +56,7 @@ export function HomeBoard({ data, userName }: { data: DashboardStats; userName?:
   const span = data.process.span
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-5 p-4 sm:p-6">
+    <div className={cn(PAGE_INSET, 'space-y-5')}>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-300">WOORI-HIP · 통합 운영 현황</p>
@@ -152,8 +153,8 @@ export function HomeBoard({ data, userName }: { data: DashboardStats; userName?:
           <StockDonut total={data.process.stockItems} positive={positive} zero={zero} negative={negative} />
           {negative > 0 && (
             <div className="mt-auto pt-4">
-              <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
-                <Info className="mt-0.5 h-4 w-4 shrink-0 fill-blue-600 text-white dark:text-blue-950" />
+              <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3 dark:border-blue-500/25 dark:bg-blue-950/40">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
                 <div className="text-xs">
                   <p className="font-semibold text-slate-800 dark:text-slate-100">재고 부족 품목이 {num(negative)}종입니다.</p>
                   <p className="mt-0.5 text-muted-foreground">해당 품목을 우선적으로 확인해 주세요.</p>
@@ -186,7 +187,7 @@ const MODULE = {
   blue: { band: 'bg-[linear-gradient(120deg,#5b8def,#2f6bea)]', icon: 'text-blue-600', value: 'text-slate-900 dark:text-white' },
   violet: { band: 'bg-[linear-gradient(120deg,#9b8cf5,#7a68ee)]', icon: 'text-violet-600', value: 'text-slate-900 dark:text-white' },
   green: { band: 'bg-[linear-gradient(120deg,#3fb68f,#22957a)]', icon: 'text-emerald-600', value: 'text-slate-900 dark:text-white' },
-  orange: { band: 'bg-[linear-gradient(120deg,#fbab55,#f58a2c)]', icon: 'text-orange-500', value: 'text-orange-500' },
+  orange: { band: 'bg-[linear-gradient(120deg,#fbab55,#f58a2c)]', icon: 'text-orange-500', value: 'text-slate-900 dark:text-white' },
 } as const
 
 function ModuleCard({
@@ -231,7 +232,7 @@ function ModuleCard({
           </div>
           {chip && <span className={cn('shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1', BADGE[chip.tone])}>{chip.label}</span>}
           {side && (
-            <span className="shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 dark:bg-white/10 dark:text-slate-300">
+            <span className="shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800/90 dark:text-slate-300 dark:ring-slate-600/45">
               {side[0]} <span className="font-bold text-slate-900 dark:text-white">{side[1]}</span>
             </span>
           )}
@@ -269,11 +270,11 @@ function ModuleCard({
           </ul>
         )}
         </div>
-        <nav className="mt-auto flex items-center border-t pt-3 text-xs text-slate-600 dark:text-slate-300">
+        <nav className="mt-auto flex items-center border-t border-border pt-3 text-xs text-slate-600 dark:text-slate-400">
           {links.map(([label, link], index) => (
             <span key={label} className="flex flex-1 items-center">
               {index > 0 && <span className="h-3 w-px bg-border" />}
-              <Link href={link} className="flex-1 text-center hover:text-blue-600 hover:underline">{label}</Link>
+              <Link href={link} className="flex-1 text-center hover:text-blue-600 hover:underline dark:hover:text-blue-400">{label}</Link>
             </span>
           ))}
         </nav>
@@ -291,7 +292,7 @@ function Panel({ icon, title, href, linkLabel, children }: { icon: ReactNode; ti
           {title}
         </h2>
         {href && linkLabel && (
-          <Link href={href} className="flex items-center gap-0.5 text-xs font-semibold text-blue-600 hover:underline">
+          <Link href={href} className="flex items-center gap-0.5 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
             {linkLabel}<ChevronRight className="h-3.5 w-3.5" />
           </Link>
         )}
@@ -299,10 +300,6 @@ function Panel({ icon, title, href, linkLabel, children }: { icon: ReactNode; ti
       {children}
     </article>
   )
-}
-
-function Badge({ tone, children }: { tone: BadgeTone; children: ReactNode }) {
-  return <span className={cn('inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1', BADGE[tone])}>{children}</span>
 }
 
 function StockDonut({ total, positive, zero, negative }: { total: number; positive: number; zero: number; negative: number }) {
@@ -323,7 +320,7 @@ function StockDonut({ total, positive, zero, negative }: { total: number; positi
   return (
     <div className="flex items-center gap-5">
       <div className="relative h-40 w-40 shrink-0 rounded-full" style={{ background: `conic-gradient(${gradient})` }}>
-        <div className="absolute inset-[22px] flex flex-col items-center justify-center rounded-full bg-card text-center shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]">
+        <div className="absolute inset-[22px] flex flex-col items-center justify-center rounded-full bg-card text-center ring-1 ring-black/[0.04] dark:ring-white/10">
           <p className="text-[11px] text-muted-foreground">총 품목</p>
           <p className="text-xl font-bold tabular-nums">{num(total)}<span className="text-sm">종</span></p>
         </div>
@@ -359,10 +356,10 @@ function DefectStatus({ customer, process, open }: { customer: DashboardStats['q
         <div className={cn(
           'flex items-start gap-2.5 rounded-xl border px-3.5 py-3',
           open > 0
-            ? 'border-rose-100 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-500/10'
-            : 'border-emerald-100 bg-emerald-50/80 dark:border-emerald-500/20 dark:bg-emerald-500/10',
+            ? 'border-rose-100 bg-rose-50/80 dark:border-rose-500/30 dark:bg-rose-950/45'
+            : 'border-emerald-100 bg-emerald-50/80 dark:border-emerald-500/30 dark:bg-emerald-950/40',
         )}>
-          <AlertTriangle className={cn('mt-0.5 h-4 w-4 shrink-0', open > 0 ? 'text-rose-500' : 'text-emerald-600')} />
+          <AlertTriangle className={cn('mt-0.5 h-4 w-4 shrink-0', open > 0 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400')} />
           <div className="text-xs">
             <p className="font-semibold text-slate-800 dark:text-slate-100">
               {open > 0 ? `미결 부적합이 ${num(open)}건입니다.` : '미결 부적합이 없습니다.'}
@@ -381,7 +378,7 @@ function DefectBlock({ title, href, counts }: { title: string; href: string; cou
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-2 text-[13px]">
-        <Link href={href} className="font-semibold text-slate-800 hover:text-blue-600 hover:underline dark:text-slate-100">{title}</Link>
+        <Link href={href} className="font-semibold text-slate-800 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400">{title}</Link>
         <span className="text-xs text-muted-foreground">총 {num(total)}건</span>
       </div>
       <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">

@@ -12,6 +12,7 @@ import {
   type StampKey,
 } from '@/lib/change-request'
 import type { ChangeRequestFile } from '@/lib/change-request-files'
+import { formatDotDate } from '@/lib/date-utils'
 import { readUserSignature } from '@/lib/auth'
 import { signatureForBox } from '@/lib/signature'
 
@@ -44,10 +45,6 @@ function cellText(value: ExcelJS.CellValue) {
   if (typeof value === 'string') return value
   if (value && typeof value === 'object' && 'richText' in value) return value.richText.map((part) => part.text).join('')
   return ''
-}
-
-function dateText(value: string) {
-  return value ? value.replace(/-/g, '.') : ''
 }
 
 const bodyFont: Partial<ExcelJS.Font> = {
@@ -189,13 +186,19 @@ async function placeImages(
   })
 }
 
-const STAMP_BOXES: Record<StampKey, { tl: { col: number; row: number }; br: { col: number; row: number } }> = {
-  ourDraft: { tl: { col: 2, row: 3 }, br: { col: 4, row: 6 } },
-  ourReview: { tl: { col: 4, row: 3 }, br: { col: 6, row: 6 } },
-  ourDecision: { tl: { col: 6, row: 3 }, br: { col: 8, row: 6 } },
-  customerDraft: { tl: { col: 23, row: 3 }, br: { col: 25, row: 7 } },
-  customerReview: { tl: { col: 25, row: 3 }, br: { col: 27, row: 7 } },
-  customerDecision: { tl: { col: 27, row: 3 }, br: { col: 30, row: 7 } },
+/** templates/4m-change-request.xlsx — 서명 I4:J6·AB4:AD6, 이름 7행 */
+const STAMP_LAYOUT: Record<
+  StampKey,
+  { nameCell: string; sign: { tl: { col: number; row: number }; br: { col: number; row: number } } }
+> = {
+  ourDraft: { nameCell: 'C7', sign: { tl: { col: 2, row: 3 }, br: { col: 4, row: 6 } } },
+  ourReview: { nameCell: 'E7', sign: { tl: { col: 4, row: 3 }, br: { col: 6, row: 6 } } },
+  ourDecision: { nameCell: 'G7', sign: { tl: { col: 6, row: 3 }, br: { col: 8, row: 6 } } },
+  ourFinal: { nameCell: 'I7', sign: { tl: { col: 8, row: 3 }, br: { col: 10, row: 6 } } },
+  customerDraft: { nameCell: 'V7', sign: { tl: { col: 21, row: 3 }, br: { col: 23, row: 6 } } },
+  customerReview: { nameCell: 'X7', sign: { tl: { col: 23, row: 3 }, br: { col: 25, row: 6 } } },
+  customerDecision: { nameCell: 'Z7', sign: { tl: { col: 25, row: 3 }, br: { col: 27, row: 6 } } },
+  customerFinal: { nameCell: 'AB7', sign: { tl: { col: 27, row: 3 }, br: { col: 30, row: 6 } } },
 }
 
 function boxSize(form: ExcelJS.Worksheet, box: { tl: { col: number; row: number }; br: { col: number; row: number } }) {
@@ -221,23 +224,45 @@ export async function buildChangeRequestWorkbook(row: ChangeRequest, files: Chan
   if (!form) throw new Error('변경요청서 양식을 찾지 못했습니다.')
   const list = book.getWorksheet('Sheet1')
 
-  form.getCell('Z1').value = row.docNo
-  form.getCell('C4').value = row.ourDraft
-  form.getCell('E4').value = row.ourReview
-  form.getCell('G4').value = row.ourDecision
-  if (row.customerName) form.getCell('W3').value = row.customerName
-  form.getCell('X4').value = row.customerDraft
-  form.getCell('Z4').value = row.customerReview
-  form.getCell('AB4').value = row.customerDecision
-  const signerIds = [...new Set(Object.values(row.signs ?? {}).filter((id): id is string => Boolean(id)))]
+  writeBody(form.getCell('Z1'), row.docNo)
+  if (row.customerName) writeBody(form.getCell('U3'), row.customerName)
+
   const stampImages = new Map<string, Buffer>()
-  for (const id of signerIds) {
+  const loadSign = async (id: string) => {
+    if (stampImages.has(id)) return
     const image = await readUserSignature(id).catch(() => null)
     if (image) stampImages.set(id, image)
   }
-  for (const [key, box] of Object.entries(STAMP_BOXES) as [StampKey, (typeof STAMP_BOXES)[StampKey]][]) {
+
+  const signKeysForSide = (side: 'our' | 'customer'): StampKey[] => {
+    const jeongyeol = side === 'our' ? row.ourJeongyeol : row.customerJeongyeol
+    const prefix = side === 'our' ? 'our' : 'customer'
+    if (jeongyeol) return [`${prefix}Draft` as StampKey, `${prefix}Final` as StampKey]
+    return [`${prefix}Draft` as StampKey, `${prefix}Review` as StampKey, `${prefix}Decision` as StampKey]
+  }
+
+  const nameEntries: [StampKey, string][] = [
+    ['ourDraft', row.ourDraft],
+    ['ourReview', row.ourReview],
+    ['ourDecision', row.ourDecision],
+    ['ourFinal', row.ourFinal],
+    ['customerDraft', row.customerDraft],
+    ['customerReview', row.customerReview],
+    ['customerDecision', row.customerDecision],
+    ['customerFinal', row.customerFinal],
+  ]
+  for (const [key, value] of nameEntries) {
+    if (value) writeBody(form.getCell(STAMP_LAYOUT[key].nameCell), value)
+  }
+
+  for (const key of [...signKeysForSide('our'), ...signKeysForSide('customer')]) {
+    const id = row.signs?.[key]
+    if (id) await loadSign(id)
+  }
+
+  for (const key of [...signKeysForSide('our'), ...signKeysForSide('customer')]) {
     const image = stampImages.get(row.signs?.[key] || '')
-    if (image) await placeStamp(book, form, image, box)
+    if (image) await placeStamp(book, form, image, STAMP_LAYOUT[key].sign)
   }
   writeBody(form.getCell('F9'), row.title)
   form.getCell('F10').value = ` 업체명: ${row.company}     품질 담당: ${row.qualityOwner}      연락처: ${row.phone}`
@@ -248,7 +273,7 @@ export async function buildChangeRequestWorkbook(row: ChangeRequest, files: Chan
   form.getCell('F15').value = markBoxes(cellText(form.getCell('F15').value), CONTENT_OPTIONS, row.contents)
   form.getCell('F17').value = markSubmissions(cellText(form.getCell('F17').value), row)
   form.getCell('F18').value = row.product
-  form.getCell('T18').value = dateText(row.applyDate)
+  form.getCell('T18').value = formatDotDate(row.applyDate, '')
   form.getCell('F19').value = row.applyTarget
   form.getCell('T19').value = row.changeMethod
   form.getCell('F20').value = row.owner

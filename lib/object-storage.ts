@@ -127,7 +127,3 @@ export async function loadDocumentFile(relativePath: string) {
 export async function loadMediaFile(relativePath: string) {
   return getObjectBytes('media', relativePath)
 }
-
-export async function removeMediaFile(relativePath: string) {
-  await removeObject('media', relativePath)
-}

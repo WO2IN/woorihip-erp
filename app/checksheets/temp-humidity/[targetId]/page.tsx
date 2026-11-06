@@ -20,6 +20,8 @@ import { currentYearMonth } from '@/lib/date-utils'
 import { notFound } from 'next/navigation'
 import { canManageChecksheets, canUseFloor, currentActor } from '@/lib/check-access'
 import { SheetHeaderEditor } from '@/components/shared/sheet-header-editor'
+import { PAGE_SHELL } from '@/components/shared/page-header'
+import { cn } from '@/lib/utils'
 
 export default async function TempHumidityPage({
   params,
@@ -94,7 +96,7 @@ export default async function TempHumidityPage({
       <SiteHeader />
       <main
         id="temp-humidity-print-sheet"
-        className="print-page flex w-full flex-col gap-4 px-6 py-6 print:h-auto print:min-h-0 print:gap-1 print:px-0 print:py-0"
+        className={cn(PAGE_SHELL, 'print-page print:max-w-none print:h-auto print:min-h-0 print:gap-1 print:p-0')}
       >
         <div className="no-print flex flex-wrap items-center justify-between gap-3">
           <YearMonthPicker year={year} month={month} />

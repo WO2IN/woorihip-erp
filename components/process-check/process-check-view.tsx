@@ -23,12 +23,12 @@ import {
 import { toast } from 'sonner'
 import { canOperateFloor, homeFloor } from '@/lib/access'
 import { Button } from '@/components/ui/button'
-import { BAND_BUTTON, PageHeader } from '@/components/shared/page-header'
+import { BAND_BUTTON, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/components/auth/auth-context'
-import { buildAuthHeaders, getSession } from '@/lib/auth-client'
+import { getAuthHeaders, getJsonAuthHeaders } from '@/lib/auth-client'
 import { useDataChanged } from '@/lib/data-events'
 import { cn } from '@/lib/utils'
 import { ProcessTrend } from '@/components/process-check/process-trend'
@@ -115,14 +115,6 @@ function nowTime() {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-function authHeaders() {
-  const session = getSession()
-  return {
-    'Content-Type': 'application/json',
-    ...(session ? buildAuthHeaders(session) : {}),
-  }
-}
-
 function latestNumber(records: ProcessCheckRecord[], fieldId: string) {
   const sorted = [...records].sort((a, b) => `${b.writtenDate} ${b.writtenTime}`.localeCompare(`${a.writtenDate} ${a.writtenTime}`))
   for (const record of sorted) {
@@ -175,17 +167,16 @@ export function ProcessCheckView() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const session = getSession()
       const response = await fetch('/api/process-checks', {
         cache: 'no-store',
-        headers: session ? buildAuthHeaders(session) : {},
+        headers: getAuthHeaders(),
       })
       if (!response.ok) throw new Error('기록을 불러오지 못했습니다.')
       const result = await response.json()
       setRecords(result.data || [])
       const templatesResponse = await fetch('/api/process-templates', {
         cache: 'no-store',
-        headers: session ? buildAuthHeaders(session) : {},
+        headers: getAuthHeaders(),
       })
       if (templatesResponse.ok) {
         const templatesResult = await templatesResponse.json()
@@ -220,7 +211,7 @@ export function ProcessCheckView() {
     try {
       const response = await fetch('/api/process-templates', {
         method: 'DELETE',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({ id }),
       })
       const result = await response.json().catch(() => ({}))
@@ -243,7 +234,7 @@ export function ProcessCheckView() {
     try {
       const response = await fetch('/api/process-checks', {
         method: 'DELETE',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({ id }),
       })
       const result = await response.json().catch(() => ({}))
@@ -267,9 +258,9 @@ export function ProcessCheckView() {
   const today = nowDate()
 
   return (
-    <main className="flex w-full flex-col gap-5 px-4 py-6 md:px-6">
+    <main className={PAGE_SHELL}>
       <PageHeader
-        tone="violet"
+        tone="amber"
         icon={ClipboardCheck}
         eyebrow="DAILY CHECK · 일일 점검"
         title={screen === 'lines' || !line ? '공정 점검' : line.name}
@@ -1049,7 +1040,7 @@ function RecordForm({
     try {
       const response = await fetch('/api/process-checks', {
         method: editing ? 'PATCH' : 'POST',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({
           id: editing?.id,
           floor,
@@ -1293,10 +1284,6 @@ function specText(field: ProcessFieldSpec) {
   return `${formatSpecNumber(field.min)} ~ ${formatSpecNumber(field.max)}${field.unit ? ` ${field.unit}` : ''}`
 }
 
-function fieldTitle(field: ProcessFieldSpec) {
-  return field.label
-}
-
 type DraftItem = ProcessFieldSpec & { center: string; minus: string; plus: string; choiceOptions: string[] }
 
 function defaultChoiceOptions(item?: ProcessFieldSpec): string[] {
@@ -1478,7 +1465,7 @@ function TemplateEditor({
     try {
       const response = await fetch('/api/process-templates', {
         method: template ? 'PATCH' : 'POST',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({ id: template?.id, floor, name: name.trim(), sections: cleaned }),
       })
       const result = await response.json().catch(() => ({}))
@@ -1498,7 +1485,7 @@ function TemplateEditor({
     try {
       const response = await fetch('/api/process-templates', {
         method: 'DELETE',
-        headers: authHeaders(),
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({ id: template.id }),
       })
       const result = await response.json().catch(() => ({}))

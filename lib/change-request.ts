@@ -9,7 +9,16 @@ export const HANDLING_OPTIONS = ['재고 소진 후 적용', '전수교체', '�
 
 export type SubmissionKey = (typeof SUBMISSIONS)[number]
 export type SubmissionValue = '' | '유' | '무'
-export const STAMP_KEYS = ['ourDraft', 'ourReview', 'ourDecision', 'customerDraft', 'customerReview', 'customerDecision'] as const
+export const STAMP_KEYS = [
+  'ourDraft',
+  'ourReview',
+  'ourDecision',
+  'ourFinal',
+  'customerDraft',
+  'customerReview',
+  'customerDecision',
+  'customerFinal',
+] as const
 export type StampKey = (typeof STAMP_KEYS)[number]
 
 const TEXT_LIMITS = {
@@ -17,10 +26,12 @@ const TEXT_LIMITS = {
   ourDraft: 40,
   ourReview: 40,
   ourDecision: 40,
+  ourFinal: 40,
   customerName: 80,
   customerDraft: 40,
   customerReview: 40,
   customerDecision: 40,
+  customerFinal: 40,
   title: 120,
   company: 80,
   qualityOwner: 40,
@@ -43,10 +54,15 @@ export interface ChangeRequest {
   ourDraft: string
   ourReview: string
   ourDecision: string
+  ourFinal: string
   customerName: string
   customerDraft: string
   customerReview: string
   customerDecision: string
+  customerFinal: string
+  /** true면 입안·전결만 서명 (심의·결정은 이름만) */
+  ourJeongyeol: boolean
+  customerJeongyeol: boolean
   /** 결재칸에 넣은 계정 서명. 값은 사용자 id. */
   signs: Partial<Record<StampKey, string>>
   title: string
@@ -108,10 +124,14 @@ export function emptyChangeRequest(): ChangeRequest {
     ourDraft: '',
     ourReview: '',
     ourDecision: '',
+    ourFinal: '',
     customerName: '',
     customerDraft: '',
     customerReview: '',
     customerDecision: '',
+    customerFinal: '',
+    ourJeongyeol: false,
+    customerJeongyeol: false,
     signs: {},
     title: '',
     company: '우리하이피',
@@ -162,6 +182,8 @@ export function normalizeChangeRequest(value: unknown, previous?: ChangeRequest 
     for (const key of SUBMISSIONS) next.submissions[key] = source[key] === '유' || source[key] === '무' ? source[key] : ''
   }
   next.signs = stampSigns(row.signs)
+  next.ourJeongyeol = row.ourJeongyeol === true
+  next.customerJeongyeol = row.customerJeongyeol === true
   next.beforeFiles = fileNames(row.beforeFiles)
   next.afterFiles = fileNames(row.afterFiles)
   const now = new Date().toISOString()

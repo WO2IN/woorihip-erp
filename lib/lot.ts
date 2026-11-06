@@ -30,12 +30,6 @@ export function normalizeIssueDate(value?: string): string {
   return candidate
 }
 
-/** 표시용 발행일 입력값을 yyyyMMdd로 반환 */
-export function formatIssueDateInput(value?: string): string {
-  const normalized = normalizeIssueDate(value)
-  return normalized.replace(/-/g, '')
-}
-
 /** 탐색기·저장 경로용 연도. 발행일 우선, 실패 시 숫자 4자리 */
 export function yearFromIssueDate(value?: string): string {
   if (!value?.trim()) return ''

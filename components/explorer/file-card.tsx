@@ -21,24 +21,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { DocumentMetadata } from '@/lib/types'
 import { useAuth } from '@/components/auth/auth-context'
 import { documentDownloadName, documentFileKind, isCertificate } from '@/lib/file-types'
 import { notifyDataChanged } from '@/lib/data-events'
-import { getSession, buildAuthHeaders } from '@/lib/auth-client'
+import { getAuthHeaders } from '@/lib/auth-client'
 import { format } from 'date-fns'
-import { ko } from 'date-fns/locale'
-
 interface FileCardProps {
   document: DocumentMetadata
   onPreview: (doc: DocumentMetadata) => void
@@ -148,10 +137,9 @@ export function FileCard({
   const handleDelete = async () => {
     setDeleting(true)
     try {
-      const session = getSession()
       const res = await fetch(`/api/documents/${document.id}`, {
         method: 'DELETE',
-        headers: session ? buildAuthHeaders(session) : {},
+        headers: getAuthHeaders(),
       })
       if (!res.ok) throw new Error()
       toast.success('문서가 삭제되었습니다.')
@@ -537,26 +525,9 @@ function DeleteDialog({ open, onClose, onConfirm, deleting, filename }: {
   filename: string
 }) {
   return (
-    <AlertDialog open={open} onOpenChange={v => !v && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>문서 삭제</AlertDialogTitle>
-          <AlertDialogDescription>
-            <strong>{filename}</strong> 을(를) 삭제하시겠습니까?
-            이 작업은 되돌릴 수 없습니다.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>취소</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={deleting}
-            className="bg-destructive text-white hover:bg-destructive/90"
-          >
-            {deleting ? '삭제 중...' : '삭제'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDeleteDialog open={open} onOpenChange={v => !v && onClose()} title="문서 삭제" onConfirm={onConfirm} pending={deleting}>
+      <strong>{filename}</strong> 을(를) 삭제하시겠습니까?
+      이 작업은 되돌릴 수 없습니다.
+    </ConfirmDeleteDialog>
   )
 }

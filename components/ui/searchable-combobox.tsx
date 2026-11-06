@@ -1,14 +1,13 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Check, ChevronsUpDown, Plus, Search, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { chosungSearch } from '@/lib/korean'
 import { toast } from 'sonner'
 import { notifyDataChanged } from '@/lib/data-events'
-import { buildAuthHeaders, getSession } from '@/lib/auth-client'
+import { getJsonAuthHeaders } from '@/lib/auth-client'
 
 interface SearchableComboboxProps {
   configName: string
@@ -95,10 +94,7 @@ export function SearchableCombobox({
     try {
       const response = await fetch('/api/config', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...buildAuthHeaders(getSession()!),
-        },
+        headers: getJsonAuthHeaders(),
         body: JSON.stringify({ name: configName, value: trimmed }),
       })
       const data = await response.json()
