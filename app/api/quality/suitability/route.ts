@@ -26,6 +26,10 @@ function normalizeStore(value: unknown): SuitabilitySheetPersisted {
       raw.practicalGateByPerson && typeof raw.practicalGateByPerson === 'object'
         ? raw.practicalGateByPerson
         : undefined,
+    inspectorPracticalByPerson:
+      raw.inspectorPracticalByPerson && typeof raw.inspectorPracticalByPerson === 'object'
+        ? raw.inspectorPracticalByPerson
+        : undefined,
     pipelineActiveByPerson:
       raw.pipelineActiveByPerson && typeof raw.pipelineActiveByPerson === 'object'
         ? raw.pipelineActiveByPerson

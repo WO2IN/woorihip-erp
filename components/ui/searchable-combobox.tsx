@@ -28,6 +28,10 @@ interface SearchableComboboxProps {
   /** 목록에 없는 값을 새로 만들지 않는다 */
   creatable?: boolean
   disabled?: boolean
+  /** 등록·수정 폼용 — 조금 더 넉넉한 높이·그림자 */
+  appearance?: 'default' | 'form'
+  /** 목록 하단 안내. 없으면 "N개 항목" */
+  listCaption?: string
 }
 
 export function SearchableCombobox({
@@ -43,7 +47,10 @@ export function SearchableCombobox({
   clearable = true,
   creatable = true,
   disabled = false,
+  appearance = 'default',
+  listCaption,
 }: SearchableComboboxProps) {
+  const formStyle = appearance === 'form'
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(false)
@@ -145,15 +152,16 @@ export function SearchableCombobox({
       <PopoverTrigger
         disabled={disabled}
         className={cn(
-          "w-full h-9 rounded-lg border border-input bg-background px-3 flex items-center justify-between text-sm cursor-pointer hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-          className
+          'flex h-9 w-full cursor-pointer items-center justify-between rounded-lg border border-input bg-background px-3 text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60',
+          formStyle && 'h-10 border-slate-200 bg-white shadow-sm hover:border-slate-300 hover:bg-white data-[state=open]:border-primary/40 data-[state=open]:ring-[3px] data-[state=open]:ring-primary/15 dark:border-border dark:bg-background',
+          className,
         )}
       >
-        <span className={cn("truncate", !value && "text-muted-foreground")}>
+        <span className={cn('min-w-0 truncate', !value && 'text-muted-foreground', value && formStyle && 'font-medium text-slate-800 dark:text-foreground')}>
           {value || placeholder}
         </span>
 
-        <span className="flex items-center gap-1 ml-2 flex-shrink-0">
+        <span className="ml-2 flex shrink-0 items-center gap-1">
           {value && clearable && (
             <span
               role="button"
@@ -161,24 +169,30 @@ export function SearchableCombobox({
                 e.stopPropagation()
                 handleClear(e as unknown as React.MouseEvent)
               }}
-              className="rounded-full hover:bg-muted p-0.5 text-muted-foreground hover:text-foreground"
+              className={cn(
+                'rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground',
+                formStyle && 'hover:bg-slate-100',
+              )}
             >
-              <X className="w-3 h-3" />
+              <X className="h-3 w-3" />
             </span>
           )}
 
-          <ChevronsUpDown className="w-3.5 h-3.5 text-muted-foreground" />
+          <ChevronsUpDown className={cn('h-3.5 w-3.5 text-muted-foreground', formStyle && 'text-slate-400')} />
         </span>
       </PopoverTrigger>
 
       <PopoverContent
-        className="p-0 w-[var(--radix-popover-trigger-width)] min-w-[220px]"
+        className={cn(
+          'w-[var(--radix-popover-trigger-width)] min-w-[220px] p-0',
+          formStyle && 'overflow-hidden rounded-xl border-slate-200 shadow-lg dark:border-border',
+        )}
         align="start"
-        sideOffset={4}
+        sideOffset={formStyle ? 6 : 4}
       >
         {/* 검색 입력 */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
-          <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <div className={cn('flex items-center gap-2 border-b border-border px-3 py-2.5', formStyle && 'border-slate-100 bg-slate-50/80 dark:bg-muted/40')}>
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <input
             ref={inputRef}
             value={query}
@@ -195,9 +209,9 @@ export function SearchableCombobox({
         </div>
 
         {/* 목록 */}
-        <div ref={listRef} className="max-h-52 overflow-y-auto py-1">
+        <div ref={listRef} className={cn('max-h-52 overflow-y-auto py-1', formStyle && 'px-1 py-1.5')}>
           {filtered.length === 0 && !showCreateOption && (
-            <p className="text-sm text-muted-foreground text-center py-6">검색 결과 없음</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">검색 결과 없음</p>
           )}
 
           {filtered.map((opt, idx) => (
@@ -205,15 +219,18 @@ export function SearchableCombobox({
               key={opt}
               onClick={() => handleSelect(opt)}
               className={cn(
-                'w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-left',
+                'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                formStyle ? 'rounded-lg' : '',
                 highlightIndex === idx ? 'bg-accent' : 'hover:bg-accent/60',
-                value === opt && 'font-medium'
+                formStyle && highlightIndex === idx && 'bg-slate-100 dark:bg-muted',
+                formStyle && value === opt && 'bg-primary/5 text-primary',
+                value === opt && 'font-medium',
               )}
             >
               <Check
                 className={cn(
-                  'w-3.5 h-3.5 flex-shrink-0',
-                  value === opt ? 'opacity-100 text-primary' : 'opacity-0'
+                  'h-3.5 w-3.5 shrink-0',
+                  value === opt ? 'text-primary opacity-100' : 'opacity-0',
                 )}
               />
               <span className="truncate">{opt}</span>
@@ -239,8 +256,8 @@ export function SearchableCombobox({
         </div>
 
         {filtered.length > 0 && (
-          <div className="border-t border-border px-3 py-1.5">
-            <p className="text-xs text-muted-foreground">{filtered.length}개 항목</p>
+          <div className={cn('border-t border-border px-3 py-1.5', formStyle && 'border-slate-100 bg-slate-50/70 dark:bg-muted/30')}>
+            <p className="text-xs text-muted-foreground">{listCaption ?? `${filtered.length}개 항목`}</p>
           </div>
         )}
       </PopoverContent>

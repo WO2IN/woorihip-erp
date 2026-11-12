@@ -1,22 +1,24 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { PenLine, X } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { BadgeCheck, CalendarClock, CalendarX2, CircleCheck, ClipboardCheck, Gauge, PenLine, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { getJsonAuthHeaders } from '@/lib/auth-client'
 import type { QualificationLedgerRow } from '@/lib/qualification-ledger'
 import {
   extractOverlaysFromPeople,
   mergeLedgerRowsWithSuitabilityStore,
+  personFromQualificationLedgerRow,
   type SuitabilityDraftPerson,
   type SuitabilitySheetPersisted,
 } from '@/lib/suitability-ledger-bridge'
 import { JOB_TITLES_MENU } from '@/lib/user-job-titles'
+import { QualificationStatCard } from '@/components/quality/qualification-stat-card'
 import { cn } from '@/lib/utils'
 
 type Scores = {
@@ -404,18 +406,20 @@ export function SuitabilitySheet() {
     Record<string, Record<InspectorPracticalItemId, InspectorPracticalItemState>>
   >({})
   const [pipelineActiveByPerson, setPipelineActiveByPerson] = useState<Record<string, string>>({})
+  const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set())
+  const visiblePeople = useMemo(() => people.filter((item) => !cancelledIds.has(item.id)), [cancelledIds, people])
   const filteredPeople = useMemo(() => {
-    if (sheetTab === 'all') return people
-    return people.filter((item) => item.evalType === sheetTab)
-  }, [people, sheetTab])
+    if (sheetTab === 'all') return visiblePeople
+    return visiblePeople.filter((item) => item.evalType === sheetTab)
+  }, [sheetTab, visiblePeople])
 
   const tabCounts = useMemo(
     () => ({
-      all: people.length,
-      'internal-audit': people.filter((item) => item.evalType === 'internal-audit').length,
-      inspector: people.filter((item) => item.evalType === 'inspector').length,
+      all: visiblePeople.length,
+      'internal-audit': visiblePeople.filter((item) => item.evalType === 'internal-audit').length,
+      inspector: visiblePeople.filter((item) => item.evalType === 'inspector').length,
     }),
-    [people],
+    [visiblePeople],
   )
 
   useEffect(() => {
@@ -452,6 +456,8 @@ export function SuitabilitySheet() {
 
         const rows: QualificationLedgerRow[] = Array.isArray(ledgerJson.data) ? ledgerJson.data : []
         const store = (storeJson.data ?? null) as SuitabilitySheetPersisted | null
+        const hidden = new Set(rows.filter((row) => row.status === 'cancelled').map((row) => row.id))
+        setCancelledIds(hidden)
         ledgerIdsRef.current = new Set(rows.map((row) => row.id))
         const merged = mergeLedgerRowsWithSuitabilityStore(rows, store)
         setPeople(merged as Person[])
@@ -475,9 +481,8 @@ export function SuitabilitySheet() {
         }
 
         setHydrated(true)
-        if (merged.length > 0) {
-          setSelectedId((prev) => (merged.some((item) => item.id === prev) ? prev : merged[0]!.id))
-        }
+        const firstVisible = merged.find((item) => !hidden.has(item.id))
+        setSelectedId((prev) => (prev && merged.some((item) => item.id === prev) && !hidden.has(prev) ? prev : firstVisible?.id ?? ''))
       })
       .catch(() => toast.error('적격성평가서·대장 데이터를 불러오지 못했습니다.'))
       .finally(() => {
@@ -542,7 +547,7 @@ export function SuitabilitySheet() {
     return () => window.clearTimeout(timer)
   }, [hydrated, persistSuitability])
 
-  const person = people.find((item) => item.id === selectedId) ?? null
+  const person = visiblePeople.find((item) => item.id === selectedId) ?? null
   const total = totalOf(person?.scores ?? null)
   const passLine = passThreshold(formKind)
   const writtenOk = (total ?? 0) >= passLine
@@ -623,7 +628,7 @@ export function SuitabilitySheet() {
     setSheetTab(tab)
     if (tab === 'all') return
     setFormKind(tab)
-    const pool = people.filter((item) => item.evalType === tab)
+    const pool = visiblePeople.filter((item) => item.evalType === tab)
     if (pool.length && !pool.some((item) => item.id === selectedId)) {
       setSelectedId(pool[0].id)
     }
@@ -650,15 +655,15 @@ export function SuitabilitySheet() {
   }
 
   const summary = useMemo(() => {
-    const withSheet = people.filter((item) => totalOf(item.scores) != null)
+    const withSheet = visiblePeople.filter((item) => totalOf(item.scores) != null)
     const written = withSheet.length
     const passed = withSheet.filter((item) => (totalOf(item.scores) ?? 0) >= 60).length
     const failed = written - passed
     const totals = withSheet.map((item) => totalOf(item.scores)!)
     const average = totals.length ? Math.round(totals.reduce((sum, value) => sum + value, 0) / totals.length) : 0
-    const expiring2027 = people.filter((item) => item.competencyReeval.replace(/\D/g, '').startsWith('2027')).length
-    const missingExpiry = people.filter((item) => !item.competencyReeval.trim() && !item.expiryDate.trim())
-    const missingSheet = people.filter((item) => totalOf(item.scores) == null)
+    const expiring2027 = visiblePeople.filter((item) => item.competencyReeval.replace(/\D/g, '').startsWith('2027')).length
+    const missingExpiry = visiblePeople.filter((item) => !item.competencyReeval.trim() && !item.expiryDate.trim())
+    const missingSheet = visiblePeople.filter((item) => totalOf(item.scores) == null)
     return {
       written,
       passed,
@@ -670,7 +675,7 @@ export function SuitabilitySheet() {
       writtenNames: withSheet.map((item) => item.name).join(' · '),
       missingExpiryNames: missingExpiry.map((item) => item.name).join(' · '),
     }
-  }, [people])
+  }, [visiblePeople])
 
   const patchScores = (next: Scores) => {
     if (!person) return
@@ -762,240 +767,65 @@ export function SuitabilitySheet() {
     window.print()
   }, [person])
 
-  const subjectRows: [string, string][] = person
-    ? [
-    ['성명', person.name],
-    ['부서명', person.dept],
-    ['직책', person.title],
-    ['현 직무', person.duty],
-    ['자격 구분', person.qual],
-    ['심사 유형', person.auditType || '—'],
-    ['요청 부서', person.requestDept || '—'],
-    ['요청 일자', formatSheetDate(person.requested) || '미입력'],
-    ['자격 발급일', formatSheetDate(person.issued) || '—'],
-    ['자격 만료일', formatSheetDate(person.expiryDate) || '(미기재)'],
-    ['인증번호', person.certNo],
-    ['역량 재평가', formatSheetDate(person.competencyReeval) || '(미기재)'],
-  ]
-    : []
   const approvalBadge = sheetApprovalStatus(approvalSigns)
-  const educationLabel = formKind === 'inspector' ? '검사원 교육 이수' : '내부심사원 교육 이수'
-  const selectedLabel = (options: { label: string; point: number }[], point: number) =>
-    options.find((option) => option.point === point)?.label ?? '—'
 
   return (
     <div className="suitability-sheet-print flex flex-col gap-3">
       {person && (
-      <article className="suitability-one-page">
-        <header className="suitability-one-head">
-          <h2>적격성평가서 ({formMeta.label})</h2>
-          <table className="suitability-one-approval">
-            <tbody>
-              <tr>
-                <th rowSpan={3} className="suit-print-approval-label">
-                  결재
-                </th>
-                {APPROVAL_STEPS.map((label) => (
-                  <th key={label}>{label}</th>
-                ))}
-              </tr>
-              <tr>
-                {APPROVAL_STEPS.map((label) => (
-                  <td key={label} className="suit-print-approval-sign">
-                    {approvalSigns[label] ? (
-                      <img
-                        src={`/api/auth/signature?userId=${encodeURIComponent(approvalSigns[label])}`}
-                        alt={`${label} 서명`}
-                      />
-                    ) : null}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                {APPROVAL_STEPS.map((label) => (
-                  <td key={`${label}-name`}>{approvalNames[label]}</td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </header>
-        <h3>평가 대상자</h3>
-        <table className="suitability-one-subject">
-          <colgroup>
-            {Array.from({ length: 6 }, (_, index) => (
-              <col key={index} />
-            ))}
-          </colgroup>
-          <tbody>
-            {[0, 1].map((row) => {
-              const cells = subjectRows.slice(row * 6, row * 6 + 6)
-              return (
-                <Fragment key={row}>
-                  <tr>
-                    {cells.map(([label]) => (
-                      <th key={label} scope="col">{label}</th>
-                    ))}
-                  </tr>
-                  <tr>
-                    {cells.map(([label, value]) => (
-                      <td key={label}>{value}</td>
-                    ))}
-                  </tr>
-                </Fragment>
-              )
-            })}
-          </tbody>
-        </table>
-        {formKind === 'inspector' ? (
-          <>
-            <h3>실기 평가 · 4개 항목 모두 합격 필수</h3>
-            <table className="suitability-one-extra suitability-one-extra-practical">
-              <thead>
-                <tr>
-                  <th>항목</th>
-                  <th>내용</th>
-                  <th>측정</th>
-                  <th>기준</th>
-                  <th>판정</th>
-                </tr>
-              </thead>
-              <tbody>
-                {INSPECTOR_PRACTICAL_ITEMS.map((def) => {
-                  const row = inspectorPracticalItems[def.id]
-                  const measure =
-                    def.fields === 'score'
-                      ? row.score || '—'
-                      : def.fields === 'effectiveness'
-                        ? row.effectiveness ? `${row.effectiveness}%` : '—'
-                        : def.fields === 'thickness'
-                          ? `편차 ${row.deviation || '—'} · GRR ${row.grr || '—'}%`
-                          : row.errors ? `${row.errors}건` : '—'
-                  const verdict = row.verdict === 'pass' ? '합격' : row.verdict === 'fail' ? '불합격' : '미평가'
-                  return (
-                    <tr key={def.id}>
-                      <td>{def.no} {def.title}{def.core ? ' (핵심)' : ''}</td>
-                      <td>{def.subtitle}</td>
-                      <td>{measure}</td>
-                      <td>{def.basis.replace(/^기준:\s*/, '')}</td>
-                      <td>{verdict}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </>
-        ) : (
-          <>
-            <h3>자격부여 절차</h3>
-            <table className="suitability-one-extra suitability-one-extra-grant">
-              <thead>
-                <tr>
-                  <th>단계</th>
-                  <th>요건</th>
-                  <th>기록</th>
-                  <th>상태</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grantSteps.map((step) => (
-                  <tr key={step.title}>
-                    <td>{step.no} {step.title}</td>
-                    <td>{step.requirement}</td>
-                    <td>{step.record}</td>
-                    <td>{GRANT_STEP_STATUS[step.status].label}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-        <h3>적격성 평가 항목 및 점수</h3>
-        <table className="suitability-one-scores">
-          <colgroup>
-            <col className="group" />
-            <col />
-            <col />
-            <col className="score" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th className="suit-print-col-group">구분</th>
-              <th className="suit-print-col-item">평가 항목</th>
-              <th className="suit-print-col-select">선택</th>
-              <th className="suit-print-col-score">점수</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="suit-print-col-group">학력<br />25점</td>
-              <td className="suit-print-col-item">최종학력</td>
-              <td className="suit-print-col-select">{selectedLabel(ACADEMIC, person.scores?.academic ?? 0)}</td>
-              <td className="suit-print-col-score">{person.scores?.academic || '—'}</td>
-            </tr>
-            <tr>
-              <td className="suit-print-col-group">교육<br />20점</td>
-              <td className="suit-print-col-item">{educationLabel}</td>
-              <td className="suit-print-col-select">{selectedLabel(EDUCATION, person.scores?.education ?? 0)}</td>
-              <td className="suit-print-col-score">{person.scores?.education || '—'}</td>
-            </tr>
-            {skillRows.map((label, index) => (
-              <tr key={label}>
-                {index === 0 && (
-                  <td rowSpan={skillRows.length} className="suit-print-col-group">
-                    숙련도<br />20점
-                  </td>
-                )}
-                <td className="suit-print-col-item">{label}</td>
-                <td className="suit-print-col-select">{person.scores?.skills[index] ?? '—'}</td>
-                <td className="suit-print-col-score">{person.scores?.skills[index] || '—'}</td>
-              </tr>
-            ))}
-            <tr>
-              <td className="suit-print-col-group">경력<br />25점</td>
-              <td className="suit-print-col-item">근무기간</td>
-              <td className="suit-print-col-select">{selectedLabel(CAREER, person.scores?.career ?? 0)}</td>
-              <td className="suit-print-col-score">{person.scores?.career || '—'}</td>
-            </tr>
-            <tr>
-              <td className="suit-print-col-group">평가구분<br />10점</td>
-              <td className="suit-print-col-item">{evalExamItemLabel(person.evalType)}</td>
-              <td className="suit-print-col-select">
-                {person.scores?.evalExam != null && person.scores.evalExam > 0
-                  ? `${person.scores.evalExam}점 / ${EVAL_EXAM_MAX}문항`
-                  : '—'}
-              </td>
-              <td className="suit-print-col-score">{person.scores?.evalExam || '—'}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p className="suitability-one-total">합계 {total ?? '—'} / {SCORE_TOTAL_MAX}점 · 합격 기준 {passLine}점</p>
-      </article>
+        <SuitabilityPrintPage
+          person={person}
+          formKind={formKind}
+          approvalSigns={approvalSigns}
+          approvalNames={approvalNames}
+          inspectorPracticalItems={inspectorPracticalItems}
+          grantSteps={grantSteps}
+        />
       )}
-      <div className="no-print grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="no-print grid grid-cols-6 gap-2">
         <SummaryCard
+          icon={ClipboardCheck}
+          tone="bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
           label="적격성평가서"
           value={`${summary.written}건`}
           sub={summary.writtenNames || '작성 완료 없음'}
           subNames={summary.written > 0}
         />
         <SummaryCard
+          icon={CircleCheck}
+          tone="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
           label="적격판정"
           value={`${summary.passed}건`}
           sub={summary.failed > 0 ? `적격 ${summary.passed} · 미달 ${summary.failed}` : '60점 이상 적격'}
         />
         <SummaryCard
+          icon={Gauge}
+          tone="bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
           label="평균 점수"
           value={summary.written > 0 ? `${summary.average}점` : '—'}
           sub={summary.written > 0 ? `작성 ${summary.written}명 기준` : '평가서 작성 후 집계'}
         />
-        <SummaryCard label="2027년 만료" value={`${summary.expiring2027}건`} sub="갱신·만료 예정" />
         <SummaryCard
+          icon={CalendarClock}
+          tone="bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+          label="2027년 만료"
+          value={`${summary.expiring2027}건`}
+          sub="갱신·만료 예정"
+        />
+        <SummaryCard
+          icon={CalendarX2}
+          tone="bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300"
           label="만료일 미기재"
           value={`${summary.missingExpiry.length}명`}
           sub={summary.missingExpiryNames || '—'}
           subNames={summary.missingExpiry.length > 0}
         />
-        <SummaryCard label="합격 기준" value="60점" sub="점수 + 실기·절차 충족" />
+        <SummaryCard
+          icon={BadgeCheck}
+          tone="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+          label="합격 기준"
+          value="60점"
+          sub="점수 + 실기·절차 충족"
+        />
       </div>
 
       <div className="suitability-print-layout grid items-start gap-3 lg:grid-cols-[minmax(15rem,17.5rem)_minmax(0,1fr)_280px] lg:items-stretch">
@@ -1597,6 +1427,262 @@ const APPROVAL_STATUS_BADGE = {
     'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
 } as const
 
+type SuitabilityPrintPageProps = {
+  person: Person
+  formKind: EvalSheetKind
+  approvalSigns: Partial<Record<ApprovalStep, string>>
+  approvalNames: Partial<Record<ApprovalStep, string>>
+  inspectorPracticalItems: Record<InspectorPracticalItemId, InspectorPracticalItemState>
+  grantSteps: ReturnType<typeof mergeGrantSteps>
+}
+
+function SuitabilityPrintPage({
+  person,
+  formKind,
+  approvalSigns,
+  approvalNames,
+  inspectorPracticalItems,
+  grantSteps,
+}: SuitabilityPrintPageProps) {
+  const total = totalOf(person.scores)
+  const passLine = passThreshold(formKind)
+  const formMeta = EVAL_FORM_OPTIONS.find((item) => item.id === formKind) ?? EVAL_FORM_OPTIONS[0]
+  const skillRows = skillRowsFor(formKind)
+  const subjectRows: [string, string][] = [
+    ['성명', person.name],
+    ['부서명', person.dept],
+    ['직책', person.title],
+    ['현 직무', person.duty],
+    ['자격 구분', person.qual],
+    ['심사 유형', person.auditType || '—'],
+    ['요청 부서', person.requestDept || '—'],
+    ['요청 일자', formatSheetDate(person.requested) || '미입력'],
+    ['자격 발급일', formatSheetDate(person.issued) || '—'],
+    ['자격 만료일', formatSheetDate(person.expiryDate) || '(미기재)'],
+    ['인증번호', person.certNo],
+    ['역량 재평가', formatSheetDate(person.competencyReeval) || '(미기재)'],
+  ]
+  const educationLabel = formKind === 'inspector' ? '검사원 교육 이수' : '내부심사원 교육 이수'
+  const selectedLabel = (options: { label: string; point: number }[], point: number) =>
+    options.find((option) => option.point === point)?.label ?? '—'
+
+  return (
+    <article className="suitability-one-page">
+      <header className="suitability-one-head">
+        <h2>적격성평가서 ({formMeta.label})</h2>
+        <table className="suitability-one-approval">
+          <tbody>
+            <tr>
+              <th rowSpan={3} className="suit-print-approval-label">
+                결재
+              </th>
+              {APPROVAL_STEPS.map((label) => (
+                <th key={label}>{label}</th>
+              ))}
+            </tr>
+            <tr>
+              {APPROVAL_STEPS.map((label) => (
+                <td key={label} className="suit-print-approval-sign">
+                  {approvalSigns[label] ? (
+                    <img
+                      src={`/api/auth/signature?userId=${encodeURIComponent(approvalSigns[label])}`}
+                      alt={`${label} 서명`}
+                    />
+                  ) : null}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              {APPROVAL_STEPS.map((label) => (
+                <td key={`${label}-name`}>{approvalNames[label]}</td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </header>
+      <h3>평가 대상자</h3>
+      <table className="suitability-one-subject">
+        <colgroup>
+          {Array.from({ length: 6 }, (_, index) => (
+            <col key={index} />
+          ))}
+        </colgroup>
+        <tbody>
+          {[0, 1].map((row) => {
+            const cells = subjectRows.slice(row * 6, row * 6 + 6)
+            return (
+              <Fragment key={row}>
+                <tr>
+                  {cells.map(([label]) => (
+                    <th key={label} scope="col">{label}</th>
+                  ))}
+                </tr>
+                <tr>
+                  {cells.map(([label, value]) => (
+                    <td key={label}>{value}</td>
+                  ))}
+                </tr>
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+      {formKind === 'inspector' ? (
+        <>
+          <h3>실기 평가 · 4개 항목 모두 합격 필수</h3>
+          <table className="suitability-one-extra suitability-one-extra-practical">
+            <thead>
+              <tr>
+                <th>항목</th>
+                <th>내용</th>
+                <th>측정</th>
+                <th>기준</th>
+                <th>판정</th>
+              </tr>
+            </thead>
+            <tbody>
+              {INSPECTOR_PRACTICAL_ITEMS.map((def) => {
+                const row = inspectorPracticalItems[def.id]
+                const measure =
+                  def.fields === 'score'
+                    ? row.score || '—'
+                    : def.fields === 'effectiveness'
+                      ? row.effectiveness ? `${row.effectiveness}%` : '—'
+                      : def.fields === 'thickness'
+                        ? `편차 ${row.deviation || '—'} · GRR ${row.grr || '—'}%`
+                        : row.errors ? `${row.errors}건` : '—'
+                const verdict = row.verdict === 'pass' ? '합격' : row.verdict === 'fail' ? '불합격' : '미평가'
+                return (
+                  <tr key={def.id}>
+                    <td>{def.no} {def.title}{def.core ? ' (핵심)' : ''}</td>
+                    <td>{def.subtitle}</td>
+                    <td>{measure}</td>
+                    <td>{def.basis.replace(/^기준:\s*/, '')}</td>
+                    <td>{verdict}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </>
+      ) : (
+        <>
+          <h3>자격부여 절차</h3>
+          <table className="suitability-one-extra suitability-one-extra-grant">
+            <thead>
+              <tr>
+                <th>단계</th>
+                <th>요건</th>
+                <th>기록</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grantSteps.map((step) => (
+                <tr key={step.title}>
+                  <td>{step.no} {step.title}</td>
+                  <td>{step.requirement}</td>
+                  <td>{step.record}</td>
+                  <td>{GRANT_STEP_STATUS[step.status].label}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      <h3>적격성 평가 항목 및 점수</h3>
+      <table className="suitability-one-scores">
+        <colgroup>
+          <col className="group" />
+          <col />
+          <col />
+          <col className="score" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th className="suit-print-col-group">구분</th>
+            <th className="suit-print-col-item">평가 항목</th>
+            <th className="suit-print-col-select">선택</th>
+            <th className="suit-print-col-score">점수</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="suit-print-col-group">학력<br />25점</td>
+            <td className="suit-print-col-item">최종학력</td>
+            <td className="suit-print-col-select">{selectedLabel(ACADEMIC, person.scores?.academic ?? 0)}</td>
+            <td className="suit-print-col-score">{person.scores?.academic || '—'}</td>
+          </tr>
+          <tr>
+            <td className="suit-print-col-group">교육<br />20점</td>
+            <td className="suit-print-col-item">{educationLabel}</td>
+            <td className="suit-print-col-select">{selectedLabel(EDUCATION, person.scores?.education ?? 0)}</td>
+            <td className="suit-print-col-score">{person.scores?.education || '—'}</td>
+          </tr>
+          {skillRows.map((label, index) => (
+            <tr key={label}>
+              {index === 0 && (
+                <td rowSpan={skillRows.length} className="suit-print-col-group">
+                  숙련도<br />20점
+                </td>
+              )}
+              <td className="suit-print-col-item">{label}</td>
+              <td className="suit-print-col-select">{person.scores?.skills[index] ?? '—'}</td>
+              <td className="suit-print-col-score">{person.scores?.skills[index] || '—'}</td>
+            </tr>
+          ))}
+          <tr>
+            <td className="suit-print-col-group">경력<br />25점</td>
+            <td className="suit-print-col-item">근무기간</td>
+            <td className="suit-print-col-select">{selectedLabel(CAREER, person.scores?.career ?? 0)}</td>
+            <td className="suit-print-col-score">{person.scores?.career || '—'}</td>
+          </tr>
+          <tr>
+            <td className="suit-print-col-group">평가구분<br />10점</td>
+            <td className="suit-print-col-item">{evalExamItemLabel(person.evalType)}</td>
+            <td className="suit-print-col-select">
+              {person.scores?.evalExam != null && person.scores.evalExam > 0
+                ? `${person.scores.evalExam}점 / ${EVAL_EXAM_MAX}문항`
+                : '—'}
+            </td>
+            <td className="suit-print-col-score">{person.scores?.evalExam || '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="suitability-one-total">합계 {total ?? '—'} / {SCORE_TOTAL_MAX}점 · 합격 기준 {passLine}점</p>
+    </article>
+  )
+}
+
+/** 출력 탭에서 저장된 적격성평가서 데이터만으로 A4 한 장을 그린다. 결재 서명은 저장되지 않아 비워 둔다. */
+export function SuitabilityLedgerPrintPage({
+  row,
+  store,
+}: {
+  row: QualificationLedgerRow
+  store: SuitabilitySheetPersisted | null
+}) {
+  const person = personFromQualificationLedgerRow(row, store?.overlays?.[row.id]) as Person
+  const formKind = person.evalType
+  const total = totalOf(person.scores)
+  const statuses = (store?.grantStatusesByPerson?.[row.id] as GrantStepStatus[] | undefined) ?? DEFAULT_GRANT_STATUSES
+  const grantSteps = mergeGrantSteps(grantProcedureStepDefs(formKind, total), statuses, (total ?? 0) >= passThreshold(formKind))
+  const practical = {
+    ...emptyInspectorPracticalState(),
+    ...((store?.inspectorPracticalByPerson?.[row.id] ?? {}) as Partial<Record<InspectorPracticalItemId, InspectorPracticalItemState>>),
+  }
+  return (
+    <SuitabilityPrintPage
+      person={person}
+      formKind={formKind}
+      approvalSigns={{}}
+      approvalNames={{}}
+      inspectorPracticalItems={practical}
+      grantSteps={grantSteps}
+    />
+  )
+}
+
 function sheetApprovalStatus(signs: Partial<Record<ApprovalStep, string>>) {
   if (signs['승인']) return { label: '승인 완료', tone: 'emerald' as const }
   if (signs['검토']) return { label: '결재 진행', tone: 'blue' as const }
@@ -1620,59 +1706,40 @@ function SheetSectionHeading({ no, children, className }: { no: string; children
   )
 }
 
-const SUMMARY_CARD_NAME_VISIBLE = 3
+const SUMMARY_CARD_NAME_VISIBLE = 2
 
 function SummaryCardOthersBadge({ names, badgeClass }: { names: string[]; badgeClass: string }) {
-  const [open, setOpen] = useState(false)
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   if (names.length === 0) return null
   const label = names.join(' · ')
 
-  const show = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current)
-    setOpen(true)
-  }
-  const hideSoon = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current)
-    closeTimer.current = setTimeout(() => setOpen(false), 120)
-  }
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        type="button"
-        className={cn(
-          badgeClass,
-          'cursor-help border-dashed border-emerald-300/90 dark:border-emerald-500/50',
-        )}
+    <span className="group/more relative inline-flex shrink-0">
+      <span
+        className={cn(badgeClass, 'cursor-help border-dashed border-emerald-300/90 dark:border-emerald-500/50')}
         aria-label={`외 ${names.length}명: ${label}`}
-        onMouseEnter={show}
-        onMouseLeave={hideSoon}
-        onFocus={show}
-        onBlur={hideSoon}
       >
         외 {names.length}명
-      </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="start"
-        sideOffset={6}
-        className="w-max max-w-[min(18rem,calc(100vw-2rem))] p-2 text-[10px] font-semibold leading-snug"
-        onMouseEnter={show}
-        onMouseLeave={hideSoon}
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-0 z-30 mb-1 hidden w-max max-w-[14rem] rounded-md bg-popover px-2 py-1 text-[10px] font-semibold leading-snug text-popover-foreground shadow-md ring-1 ring-foreground/10 group-hover/more:block"
       >
         {label}
-      </PopoverContent>
-    </Popover>
+      </span>
+    </span>
   )
 }
 
 function SummaryCard({
+  icon,
+  tone,
   label,
   value,
   sub,
   subNames = false,
 }: {
+  icon: LucideIcon
+  tone: string
   label: string
   value: string
   sub: string
@@ -1686,24 +1753,18 @@ function SummaryCard({
     'inline-flex shrink-0 rounded-md border border-emerald-200/90 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-950 dark:border-emerald-500/35 dark:bg-emerald-950/50 dark:text-emerald-100'
 
   return (
-    <article className="relative flex min-h-[5.75rem] flex-col overflow-visible rounded-2xl border bg-card px-3 py-2.5 shadow-sm">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="text-lg font-extrabold tabular-nums text-slate-900 dark:text-slate-100">{value}</p>
+    <QualificationStatCard icon={icon} tone={tone} label={label} value={value} sub={subNames && head.length > 0 ? undefined : sub}>
       {subNames && head.length > 0 ? (
-        <div className="mt-auto min-w-0 overflow-visible border-t border-slate-200/90 pt-2 dark:border-border">
-          <p className="flex min-w-0 flex-wrap items-center gap-1 overflow-visible">
-            {head.map((name) => (
-              <span key={name} className={cn(nameBadgeClass, 'max-w-[4.5rem] truncate')} title={name}>
-                {name}
-              </span>
-            ))}
-            <SummaryCardOthersBadge names={tail} badgeClass={nameBadgeClass} />
-          </p>
-        </div>
-      ) : (
-        <p className="mt-auto text-[10px] text-slate-400">{sub}</p>
-      )}
-    </article>
+        <p className="flex min-w-0 flex-nowrap items-center gap-1">
+          {head.map((name) => (
+            <span key={name} className={cn(nameBadgeClass, 'min-w-0 truncate')} title={name}>
+              {name}
+            </span>
+          ))}
+          <SummaryCardOthersBadge names={tail} badgeClass={nameBadgeClass} />
+        </p>
+      ) : null}
+    </QualificationStatCard>
   )
 }
 

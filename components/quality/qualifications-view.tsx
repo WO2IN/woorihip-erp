@@ -4,19 +4,18 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AlarmClock,
+  ArrowUpDown,
   Award,
   BookOpen,
   Calendar,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
-  FileOutput,
   Filter,
   ImagePlus,
   List,
   Pencil,
   Plus,
-  Printer,
   RotateCcw,
   Search,
   Shield,
@@ -27,9 +26,13 @@ import { toast } from 'sonner'
 import { QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL } from '@/lib/qualification-id-photo-placeholder'
 import { useAuth } from '@/components/auth/auth-context'
 import { PAGE_SHELL_RELATIVE, PageHeader } from '@/components/shared/page-header'
+import { InspectorEvalDraft, InternalAuditorEvalDraft } from '@/components/quality/internal-auditor-eval-draft'
 import { RecognitionCertificateDraft } from '@/components/quality/recognition-certificate-draft'
+import { QualificationPrintHub } from '@/components/quality/qualification-print-hub'
+import { RenewalCancelView } from '@/components/quality/renewal-cancel-view'
 import { SuitabilitySheet } from '@/components/quality/suitability-sheet'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -151,16 +154,6 @@ const TAB_LABELS: Record<TabKey, string> = {
   print: '출력',
 }
 
-const TAB_HINTS: Record<TabKey, string> = {
-  ledger: '직원·공정별 자격·인증 보유 현황을 한눈에 조회·등록합니다.',
-  suitability: '적격성 평가서 작성·승인 이력을 관리합니다.',
-  recognition: '자격 인정서 발급·보관 및 유효기간을 관리합니다.',
-  'internal-audit': '내부심사원 자격 평가·교육 이수 기록을 관리합니다.',
-  inspector: '검사원 자격·실기 평가 결과를 관리합니다.',
-  renewal: '갱신·취소·만료 예정 알림과 처리 이력을 관리합니다.',
-  print: '대장·평가서·인정서 등 양식을 선택해 일괄 출력합니다.',
-}
-
 function isTabKey(value: string | null): value is TabKey {
   return value != null && (TAB_KEYS as readonly string[]).includes(value)
 }
@@ -179,8 +172,6 @@ export function QualificationsView() {
     setTabState(key)
     router.replace(`/quality/qualifications?tab=${key}`, { scroll: false })
   }
-
-  const activeHint = TAB_HINTS[tab]
 
   const tabButtons = useMemo(
     () => TAB_KEYS.map((key) => ({ key, label: TAB_LABELS[key] })),
@@ -224,49 +215,16 @@ export function QualificationsView() {
         <SuitabilitySheet />
       ) : tab === 'recognition' ? (
         <RecognitionCertificateDraft />
+      ) : tab === 'internal-audit' ? (
+        <InternalAuditorEvalDraft />
+      ) : tab === 'inspector' ? (
+        <InspectorEvalDraft />
+      ) : tab === 'renewal' ? (
+        <RenewalCancelView />
       ) : (
-        <section className="rounded-2xl border bg-card p-5 shadow-sm">
-          <header className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">{TAB_LABELS[tab]}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{activeHint}</p>
-            </div>
-            {tab === 'print' && (
-              <Button type="button" variant="secondary" size="sm" disabled className="shrink-0">
-                <Printer className="mr-1.5 h-4 w-4" />
-                출력 미리보기
-              </Button>
-            )}
-          </header>
-          <QualificationTabBody tab={tab} />
-        </section>
+        <QualificationPrintHub />
       )}
     </main>
-  )
-}
-
-function QualificationTabBody({ tab }: { tab: TabKey }) {
-  if (tab === 'print') {
-    return (
-      <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-muted-foreground/25 bg-muted/15 px-6 py-12 text-center">
-        <span className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
-          <FileOutput className="size-6 opacity-70" />
-        </span>
-        <p className="text-sm font-medium text-foreground/85">출력할 양식과 대상을 선택하는 화면입니다.</p>
-        <p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">
-          자격인증대장, 적격성평가서, 자격인정서, 평가 기록 등을 탭별로 PDF·인쇄할 수 있도록 준비 중입니다.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-muted-foreground/25 bg-muted/15 px-6 py-14 text-center">
-      <p className="text-sm font-medium text-foreground/85">{TAB_LABELS[tab]} — 등록된 데이터가 없습니다.</p>
-      <p className="mt-2 max-w-sm text-xs text-muted-foreground">
-        목록·등록·수정 기능은 이 탭에 순차적으로 연결됩니다.
-      </p>
-    </div>
   )
 }
 
@@ -1138,6 +1096,24 @@ function ledgerRenewalYearAnchor(baseYear: string) {
   return String(new Date().getFullYear())
 }
 
+const LEDGER_SORTS = [
+  { key: 'certNo', label: '인증번호' },
+  { key: 'qualification', label: '자격명' },
+  { key: 'name', label: '성명' },
+  { key: 'department', label: '소속' },
+  { key: 'joinDate', label: '입사일자' },
+] as const
+
+type LedgerSortKey = (typeof LEDGER_SORTS)[number]['key']
+
+function ledgerSortText(row: QualificationLedgerRow, key: LedgerSortKey) {
+  if (key === 'certNo') return row.certNo.trim()
+  if (key === 'qualification') return row.qualification.trim()
+  if (key === 'name') return row.name.trim()
+  if (key === 'department') return row.department.trim()
+  return row.joinDate.trim()
+}
+
 function QualificationLedgerList({
   loading,
   rows,
@@ -1160,6 +1136,27 @@ function QualificationLedgerList({
   const renewalYears = useMemo(() => ledgerRenewalYears(ledgerRenewalYearAnchor(baseYear)), [baseYear])
   const [renewalPastA, renewalPastB, renewalPlannedYear] = renewalYears
   const renewalPlannedLabel = `${renewalPlannedYear} 예정`
+  const [sort, setSort] = useState<{ key: LedgerSortKey; dir: 'asc' | 'desc' } | null>(null)
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows
+    const direction = sort.dir === 'asc' ? 1 : -1
+    return [...rows].sort((a, b) => {
+      const left = ledgerSortText(a, sort.key)
+      const right = ledgerSortText(b, sort.key)
+      if (!left && !right) return 0
+      if (!left) return 1
+      if (!right) return -1
+      return left.localeCompare(right, 'ko', { numeric: true, sensitivity: 'base' }) * direction
+    })
+  }, [rows, sort])
+  const sortLabel = LEDGER_SORTS.find((item) => item.key === sort?.key)?.label
+  const chooseSort = (key: LedgerSortKey) => {
+    setSort((current) => {
+      if (current?.key !== key) return { key, dir: 'asc' }
+      if (current.dir === 'asc') return { key, dir: 'desc' }
+      return null
+    })
+  }
 
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-border dark:bg-card" aria-label="자격인증 등록 목록">
@@ -1179,7 +1176,25 @@ function QualificationLedgerList({
             </button>
           </p>
         </div>
-        {registerAction}
+        <div className="flex shrink-0 items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-border dark:bg-card dark:text-slate-200 dark:hover:bg-muted"
+            >
+              <ArrowUpDown className="size-4" />
+              {sortLabel ? `${sortLabel} ${sort?.dir === 'asc' ? '↑' : '↓'}` : '정렬'}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              {LEDGER_SORTS.map((item) => (
+                <DropdownMenuItem key={item.key} onClick={() => chooseSort(item.key)}>
+                  <span className="flex-1">{item.label}</span>
+                  {sort?.key === item.key ? <span className="text-xs text-muted-foreground">{sort.dir === 'asc' ? '오름차순' : '내림차순'}</span> : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {registerAction}
+        </div>
       </header>
 
       {loading ? (
@@ -1256,7 +1271,7 @@ function QualificationLedgerList({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => {
+              {sortedRows.map((row, index) => {
                 const cancelDate = displayIsoDate(row.cancelDate)
                 const cancelReason = row.cancelReason.trim()
                 return (

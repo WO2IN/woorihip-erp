@@ -142,7 +142,7 @@ export function emptyChangeRequest(): ChangeRequest {
     targets: [],
     contents: [],
     submissions: emptySubmissions(),
-    product: '신흥 SEC 적용품',
+    product: '',
     applyDate: '',
     applyTarget: '',
     changeMethod: '',

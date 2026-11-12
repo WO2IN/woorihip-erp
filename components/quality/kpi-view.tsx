@@ -451,7 +451,8 @@ function Overview({
     const month = months.find((item) => item.key === key)
     if (!kpiMonthNotYetArrived(year, key)) return true
     if (!month) return false
-    return (month.rateBase ?? 0) > 0 || month.defect > 0 || month.inspected > 0
+    const rateBase = 'rateBase' in month && typeof month.rateBase === 'number' ? month.rateBase : 0
+    return rateBase > 0 || month.defect > 0 || month.inspected > 0
   }
   const achieveRate = judged ? Math.round((achieved / judged) * 100) : 0
   const received = customer ? summary.lots.filter((lot) => lot.result === 'fail') : []

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ClipboardList, Plus } from 'lucide-react'
+import { ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -228,81 +228,81 @@ export function Floor3WorkLogPanel({
         )}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-sm">
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
+        <table className="w-full min-w-[920px] text-sm">
+          <thead className="border-b bg-slate-50 text-left text-xs font-medium text-slate-500 dark:bg-muted dark:text-slate-400">
             <tr>
               {['날짜', ...(floor === 'all' ? ['층'] : []), '업체', '품목', '작업수량', '불량수', '검사시료', '총 작업수량', ...(editable ? [''] : [])].map((head) => (
-                <th key={head || 'actions'} className={`px-4 py-3 ${['작업수량', '불량수', '검사시료', '총 작업수량'].includes(head) ? 'text-right' : 'text-left'}`}>{head}</th>
+                <th key={head || 'actions'} className={cn('px-4 py-2.5 font-medium', ['작업수량', '불량수', '검사시료', '총 작업수량'].includes(head) && 'text-right')}>{head}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-slate-100 dark:divide-white/10">
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={editable ? (floor === 'all' ? 9 : 8) : (floor === 'all' ? 8 : 7)} className="px-4 py-16 text-center text-muted-foreground">
                   등록된 작업일보가 없습니다.
                 </td>
               </tr>
-            ) : rows.map((row) => (
-              <tr key={row.id}>
-                <td className="px-4 py-3">
-                  <div>{displayDate(row.workDate)}</div>
-                  {checksForWork(row, checks, templates).length > 0 && (
+            ) : rows.map((row) => {
+              const rate = formatDefectRate(row.defectQuantity, row.workQuantity)
+              const records = checksForWork(row, checks, templates)
+              return (
+              <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+                <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700 dark:text-slate-200">
+                  <span>{displayDate(row.workDate)}</span>
+                  {records.length > 0 && (
                     <button
                       type="button"
-                      className="mt-1 text-xs font-medium text-primary hover:underline"
-                      onClick={() => setCheckView({ row, records: checksForWork(row, checks, templates) })}
+                      className="ml-2 text-xs font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                      onClick={() => setCheckView({ row, records })}
                     >
-                      공정검사
+                      검사
                     </button>
                   )}
                 </td>
-                {floor === 'all' && <td className="px-4 py-3">{row.floor ?? 3}층</td>}
-                <td className="px-4 py-3 font-medium">{row.company}</td>
-                <td className="px-4 py-3">{row.product}</td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.workQuantity, row.unit)}</td>
-                <td className="px-4 py-3 text-right">
-                  <div className="font-semibold tabular-nums">{formatQuantity(row.defectQuantity)}</div>
-                  {formatDefectRate(row.defectQuantity, row.workQuantity) && (
-                    <div className="text-[11px] leading-4 text-muted-foreground">불량률 {formatDefectRate(row.defectQuantity, row.workQuantity)}</div>
-                  )}
+                {floor === 'all' && <td className="whitespace-nowrap px-4 py-3 text-slate-600 dark:text-slate-300">{row.floor ?? 3}층</td>}
+                <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900 dark:text-white">{row.company}</td>
+                <td className="px-4 py-3 text-slate-700 dark:text-slate-200" title={row.product}>{row.product}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-900 dark:text-white">{formatQuantity(row.workQuantity, row.unit)}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                  <span className={row.defectQuantity > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}>{formatQuantity(row.defectQuantity)}</span>
+                  {rate ? <span className="ml-1.5 text-xs text-slate-400">{rate}</span> : null}
                 </td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.sampleQuantity)}</td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.workQuantity, row.unit)}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{formatQuantity(row.sampleQuantity)}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-slate-900 dark:text-white">{formatQuantity(row.totalQuantity, row.unit)}</td>
                 {editable && (
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1">
-                      <Button type="button" size="sm" variant="outline" onClick={() => editRow(row)}>수정</Button>
-                      <Button type="button" size="sm" variant="outline" className="text-destructive" onClick={() => void remove(row)}>삭제</Button>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end gap-0.5">
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-slate-900" aria-label="수정" onClick={() => editRow(row)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-destructive" aria-label="삭제" onClick={() => void remove(row)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </td>
                 )}
               </tr>
-            ))}
+              )
+            })}
           </tbody>
           {rows.length > 0 && (
-            <tfoot className="border-t-2 border-slate-200 bg-slate-100/90 text-sm dark:border-border dark:bg-muted/60">
+            <tfoot className="border-t bg-slate-50 text-sm text-slate-600 dark:border-white/10 dark:bg-muted dark:text-slate-300">
               <tr>
-                <td
-                  className="px-4 py-3.5 text-left text-sm font-bold text-slate-800 dark:text-slate-100"
-                  colSpan={floor === 'all' ? 4 : 3}
-                >
-                  합계{' '}
-                  <span className="text-base font-extrabold tabular-nums text-slate-900 dark:text-white">{rows.length}</span>
-                  건
+                <td className="px-4 py-2.5" colSpan={floor === 'all' ? 4 : 3}>
+                  합계 <span className="tabular-nums text-slate-400">{rows.length}건</span>
                 </td>
-                <td className="px-4 py-3.5 text-right text-base font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+                <td className="px-4 py-2.5 text-right font-medium tabular-nums text-slate-900 dark:text-white">
                   {formatQuantity(totals.work)}
                 </td>
-                <td className="px-4 py-3.5 text-right text-base font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
-                  {formatQuantity(totals.defect)}
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  <span className={cn('font-medium', totals.defect > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400')}>{formatQuantity(totals.defect)}</span>
+                  {formatDefectRate(totals.defect, totals.work) ? <span className="ml-1.5 text-xs text-slate-400">{formatDefectRate(totals.defect, totals.work)}</span> : null}
                 </td>
-                <td className="px-4 py-3.5 text-right text-base font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+                <td className="px-4 py-2.5 text-right font-medium tabular-nums text-slate-700 dark:text-slate-200">
                   {formatQuantity(totals.sample)}
                 </td>
-                <td className="px-4 py-3.5 text-right text-base font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
-                  {formatQuantity(totals.work)}
-                </td>
+                <td />
                 {editable && <td />}
               </tr>
             </tfoot>

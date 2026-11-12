@@ -24,15 +24,18 @@ export function WorkflowStatusPicker({
   label,
   value,
   onChange,
+  inline = false,
 }: {
   label: string
   value: WorkflowStatus
   onChange: (next: WorkflowStatus) => void
+  /** 완료·진행중·미진행을 한 줄로 펼친다 */
+  inline?: boolean
 }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-medium text-foreground">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
+      <p className={cn('font-medium text-foreground', inline ? 'text-[13px]' : 'text-xs')}>{label}</p>
+      <div className={cn('flex gap-1.5', inline ? 'flex-nowrap' : 'flex-wrap')}>
         {WORKFLOW_STATUS_ORDER.map((item) => {
           const selected = value === item
           return (
@@ -41,7 +44,8 @@ export function WorkflowStatusPicker({
               type="button"
               onClick={() => onChange(item)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors',
+                'inline-flex items-center justify-center gap-1.5 rounded-md border py-1.5 transition-colors',
+                inline ? 'min-w-0 flex-1 whitespace-nowrap px-2 text-[13px]' : 'px-2.5 text-xs',
                 selected
                   ? 'border-primary bg-primary/10 font-medium'
                   : 'border-border bg-background hover:bg-muted/60'

@@ -271,7 +271,7 @@
     opacity: 1 !important;
   }
 
-  body.recognition-print .recognition-certificate-page {
+  :is(body.recognition-print, body.qual-hub-print) .recognition-certificate-page {
     box-sizing: border-box;
     width: 210mm;
     height: 297mm;
@@ -283,18 +283,18 @@
     print-color-adjust: exact;
   }
 
-  body.recognition-print .recognition-certificate-page + .recognition-certificate-page {
+  :is(body.recognition-print, body.qual-hub-print) .recognition-certificate-page + .recognition-certificate-page {
     break-before: page;
     page-break-before: always;
   }
 
-  body.recognition-print .recognition-certificate-page,
-  body.recognition-print .recognition-certificate-page * {
+  :is(body.recognition-print, body.qual-hub-print) .recognition-certificate-page,
+  :is(body.recognition-print, body.qual-hub-print) .recognition-certificate-page * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  body.recognition-print .recognition-certificate-page .shadow-sm {
+  :is(body.recognition-print, body.qual-hub-print) .recognition-certificate-page .shadow-sm {
     box-shadow: none !important;
   }
 }
@@ -337,7 +337,7 @@
     display: none !important;
   }
 
-  body.suitability-print .suitability-one-page {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-page {
     display: flex !important;
     flex-direction: column;
     box-sizing: border-box;
@@ -351,13 +351,13 @@
     page-break-after: avoid;
   }
 
-  body.suitability-print .suitability-one-head {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-head {
     position: relative;
     min-height: 18mm;
     margin: 0 0 2mm;
   }
 
-  body.suitability-print .suitability-one-head h2 {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-head h2 {
     margin: 1.5mm 62mm 0 8mm;
     text-align: center;
     font-size: 16pt;
@@ -365,7 +365,7 @@
     line-height: 1.2;
   }
 
-  body.suitability-print .suitability-one-approval {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-approval {
     position: absolute;
     top: 0;
     right: 0;
@@ -374,8 +374,8 @@
     table-layout: fixed;
   }
 
-  body.suitability-print .suitability-one-approval th,
-  body.suitability-print .suitability-one-approval td {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-approval th,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-approval td {
     border: 1px solid #334155;
     padding: 0.3mm 0.6mm;
     text-align: center;
@@ -386,7 +386,7 @@
     background: white;
   }
 
-  body.suitability-print .suitability-one-approval .suit-print-approval-label {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-approval .suit-print-approval-label {
     width: 7mm;
     background: #f1f5f9;
     font-weight: 800;
@@ -394,11 +394,11 @@
     writing-mode: vertical-rl;
   }
 
-  body.suitability-print .suitability-one-approval .suit-print-approval-sign {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-approval .suit-print-approval-sign {
     height: 10mm;
   }
 
-  body.suitability-print .suitability-one-approval img {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-approval img {
     display: block;
     max-height: 9mm;
     max-width: 92%;
@@ -406,40 +406,40 @@
     object-fit: contain;
   }
 
-  body.suitability-print .suitability-one-page h3 {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-page h3 {
     margin: 2.5mm 0 1mm;
     font-size: 10pt;
     font-weight: 800;
     line-height: 1.2;
   }
 
-  body.suitability-print .suitability-one-subject,
-  body.suitability-print .suitability-one-scores,
-  body.suitability-print .suitability-one-extra {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-subject,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra {
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
     flex: 0 0 auto;
   }
 
-  body.suitability-print .suitability-one-extra-grant tr {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra-grant tr {
     height: 10mm;
   }
 
-  body.suitability-print .suitability-one-extra-practical tr {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra-practical tr {
     height: 12mm;
   }
 
-  body.suitability-print .suitability-one-scores tr {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores tr {
     height: 12mm;
   }
 
-  body.suitability-print .suitability-one-subject th,
-  body.suitability-print .suitability-one-subject td,
-  body.suitability-print .suitability-one-scores th,
-  body.suitability-print .suitability-one-scores td,
-  body.suitability-print .suitability-one-extra th,
-  body.suitability-print .suitability-one-extra td {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-subject th,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-subject td,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores th,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores td,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra th,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra td {
     border: 1px solid #334155;
     padding: 1mm 1.2mm;
     vertical-align: middle;
@@ -448,78 +448,414 @@
     overflow-wrap: anywhere;
   }
 
-  body.suitability-print .suitability-one-subject th,
-  body.suitability-print .suitability-one-extra th,
-  body.suitability-print .suitability-one-scores th {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-subject th,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra th,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores th {
     background: #f1f5f9;
     font-size: 8.5pt;
     font-weight: 700;
   }
 
-  body.suitability-print .suitability-one-subject td {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-subject td {
     font-size: 9.5pt;
     font-weight: 700;
   }
 
-  body.suitability-print .suitability-one-extra td {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra td {
     padding: 0.8mm 1.2mm;
     font-size: 9pt;
   }
 
-  body.suitability-print .suitability-one-scores th,
-  body.suitability-print .suitability-one-scores td {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores th,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores td {
     padding: 1.2mm 1.2mm;
     font-size: 10pt;
   }
 
-  body.suitability-print .suitability-one-scores thead th {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores thead th {
     text-align: center;
   }
 
-  body.suitability-print .suitability-one-scores tbody .suit-print-col-group,
-  body.suitability-print .suitability-one-scores tbody .suit-print-col-select,
-  body.suitability-print .suitability-one-scores tbody .suit-print-col-score {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores tbody .suit-print-col-group,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores tbody .suit-print-col-select,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores tbody .suit-print-col-score {
     text-align: center;
   }
 
-  body.suitability-print .suitability-one-scores tbody .suit-print-col-item {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores tbody .suit-print-col-item {
     text-align: left;
   }
 
-  body.suitability-print .suitability-one-scores .suit-print-col-score {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores .suit-print-col-score {
     font-weight: 800;
   }
 
-  body.suitability-print .suitability-one-extra td:nth-child(2),
-  body.suitability-print .suitability-one-extra td:nth-child(3) {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra td:nth-child(2),
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra td:nth-child(3) {
     text-align: left;
   }
 
-  body.suitability-print .suitability-one-extra td:first-child,
-  body.suitability-print .suitability-one-extra td:last-child,
-  body.suitability-print .suitability-one-extra th {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra td:first-child,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra td:last-child,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra th {
     text-align: center;
   }
 
-  body.suitability-print .suitability-one-scores col.group {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores col.group {
     width: 22mm;
   }
 
-  body.suitability-print .suitability-one-scores col.score {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores col.score {
     width: 16mm;
   }
 
-  body.suitability-print .suitability-one-scores td:last-child,
-  body.suitability-print .suitability-one-scores th:last-child,
-  body.suitability-print .suitability-one-extra td:last-child {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores td:last-child,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-scores th:last-child,
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-extra td:last-child {
     font-weight: 800;
   }
 
-  body.suitability-print .suitability-one-total {
+  :is(body.suitability-print, body.qual-hub-print) .suitability-one-total {
     margin: 2mm 0 0;
     text-align: right;
     font-size: 10pt;
     font-weight: 800;
+  }
+}
+
+.exam-print-root,
+.qual-hub-print-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
+
+@media print {
+  html.qual-hub-print-html,
+  body.qual-hub-print {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  body.qual-hub-print {
+    margin: 0 !important;
+    page: recognition-certificate;
+  }
+
+  body.qual-hub-print .app-shell > aside,
+  body.qual-hub-print .app-shell-column > header,
+  body.qual-hub-print nav[aria-label='자격인증 관리 메뉴'] {
+    display: none !important;
+  }
+
+  body.qual-hub-print .app-shell,
+  body.qual-hub-print .app-shell-column,
+  body.qual-hub-print .app-shell-main,
+  body.qual-hub-print .app-shell-main > main {
+    display: block !important;
+    height: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  body.qual-hub-print .app-shell-main > main > :not(.qual-hub-print-root) {
+    display: none !important;
+  }
+
+  body.qual-hub-print .qual-hub-print-root {
+    position: static !important;
+    z-index: auto !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+    opacity: 1 !important;
+  }
+
+  body.qual-hub-print .qual-hub-page-cert.recognition-certificate-page {
+    height: 296mm;
+    max-height: 296mm;
+    overflow: hidden;
+    break-inside: avoid;
+    break-after: avoid;
+    page-break-inside: avoid;
+    page-break-after: avoid;
+  }
+
+  body.qual-hub-print .qual-hub-page-cert > div {
+    height: 100% !important;
+    max-height: 100% !important;
+    padding-bottom: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body.qual-hub-print .qual-hub-page-suit {
+    page: suitability-one;
+  }
+
+  body.qual-hub-print .qual-hub-page + .qual-hub-page {
+    break-before: page;
+    page-break-before: always;
+  }
+}
+
+@page exam-sheet {
+  size: A4 portrait;
+  margin: 0;
+}
+
+.exam-print-sheet {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  height: 290mm;
+  max-height: 290mm;
+  overflow: hidden;
+  break-after: avoid;
+  page-break-after: avoid;
+  padding: 8mm 10mm 10mm;
+  color: #111;
+  background: white;
+}
+
+.exam-print-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6mm;
+}
+
+.exam-print-approval {
+  width: 68mm;
+  flex: 0 0 68mm;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 8pt;
+  font-weight: 700;
+}
+
+.exam-print-approval col.exam-print-approval-label {
+  width: 8mm;
+}
+
+.exam-print-approval th,
+.exam-print-approval td {
+  box-sizing: border-box;
+  border: 1px solid #111;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+.exam-print-approval th:first-child {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.15em;
+}
+
+.exam-print-approval thead,
+.exam-print-approval tr:first-child th {
+  height: 6mm;
+}
+
+.exam-print-sign {
+  position: relative;
+  height: 16mm;
+  max-height: 16mm;
+  line-height: 0;
+}
+
+.exam-print-sign img {
+  position: absolute;
+  inset: 1mm 1.2mm;
+  width: calc(100% - 2.4mm);
+  height: calc(100% - 2mm);
+  object-fit: contain;
+}
+
+.exam-print-approval-name {
+  height: 6mm;
+  max-height: 6mm;
+  padding: 0 0.6mm;
+  font-size: 8pt;
+  line-height: 6mm;
+  white-space: nowrap;
+}
+
+.exam-print-meta {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 3mm;
+  border-top: 1px solid #111;
+  border-left: 1px solid #111;
+  font-size: 9pt;
+}
+
+.exam-print-meta > div {
+  display: flex;
+  min-width: 0;
+  border-right: 1px solid #111;
+  border-bottom: 1px solid #111;
+}
+
+.exam-print-meta dt {
+  flex: 0 0 auto;
+  background: #f1f5f9;
+  padding: 1mm 1.4mm;
+  font-weight: 800;
+}
+
+.exam-print-meta dd {
+  min-width: 0;
+  padding: 1mm 1.4mm;
+  font-weight: 700;
+}
+
+.exam-print-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 4mm;
+  margin: 2mm 0 1mm;
+  font-size: 8.5pt;
+}
+
+.exam-print-note span {
+  color: #444;
+}
+
+.exam-print-questions {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8mm;
+  width: 100%;
+  margin: 2mm 0 0;
+  font-size: 10.5pt;
+  line-height: 1.45;
+}
+
+.exam-print-questions ol {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex-direction: column;
+  justify-content: space-between;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exam-print-questions ol > li {
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.exam-print-questions ul {
+  margin: 0.4mm 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exam-print-questions .is-answer {
+  font-weight: 800;
+  background: #fde68a;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.exam-print-mark {
+  position: relative;
+  display: inline-block;
+  width: 1.35em;
+  line-height: 1.15em;
+  text-align: center;
+}
+
+.exam-print-check {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.9em;
+  height: 1.9em;
+  overflow: visible;
+  transform: translate(-50%, -54%);
+  pointer-events: none;
+}
+
+.exam-print-check path {
+  fill: none;
+  stroke: #e11d48;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+@media print {
+  body.exam-sheet-print {
+    margin: 0 !important;
+    background: white !important;
+    page: exam-sheet;
+  }
+
+  body.exam-sheet-print .app-shell > aside,
+  body.exam-sheet-print .app-shell-column > header,
+  body.exam-sheet-print nav[aria-label='자격인증 관리 메뉴'] {
+    display: none !important;
+  }
+
+  body.exam-sheet-print .app-shell,
+  body.exam-sheet-print .app-shell-column,
+  body.exam-sheet-print .app-shell-main,
+  body.exam-sheet-print .app-shell-main > main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.exam-sheet-print .app-shell-main > main > :not(:has(.exam-print-root)) {
+    display: none !important;
+  }
+
+  body.exam-sheet-print .mt-4 > :not(.exam-print-root) {
+    display: none !important;
+  }
+
+  body.exam-sheet-print .exam-print-root {
+    position: static !important;
+    z-index: auto !important;
+    width: 210mm !important;
+    height: 290mm !important;
+    max-height: 290mm !important;
+    overflow: hidden !important;
+    pointer-events: auto !important;
+    opacity: 1 !important;
+  }
+
+  body.qual-hub-print .qual-hub-page-exam {
+    height: 290mm;
+    max-height: 290mm;
+    overflow: hidden;
+    break-after: avoid;
+    page-break-after: avoid;
   }
 }
 
@@ -1197,10 +1533,6 @@ table:not(.border-collapse) thead th {
   margin: 4mm;
 }
 
-@page checksheet-print {
-  size: A4 landscape;
-  margin: 4mm;
-}
 
 /* 출력 시트가 화면에 떠 있을 때도 표가 남은 높이를 채운다 */
 body.kpi-close-print-delivery .app-shell-main {
@@ -1253,8 +1585,13 @@ body.kpi-close-print-delivery .kpi-close-report td {
   vertical-align: middle;
 }
 
+@page checksheet-print {
+  size: A4 landscape;
+  margin: 4mm;
+}
+
 @media print {
-  .kpi-close-print-source {
+.kpi-close-print-source {
     display: block !important;
   }
 
@@ -1811,5 +2148,137 @@ body.kpi-close-print-delivery .kpi-close-report td {
 @media (prefers-reduced-motion: reduce) {
   .login-wash {
     animation: none;
+  }
+}
+
+@page mtbf-mttr {
+  size: A4 landscape;
+  margin: 6mm;
+}
+
+@media print {
+  body.mtbf-mttr-print {
+    page: mtbf-mttr;
+  }
+
+  body.mtbf-mttr-print,
+  body.mtbf-mttr-print .app-shell,
+  body.mtbf-mttr-print .app-shell-column,
+  body.mtbf-mttr-print .app-shell-main {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body.mtbf-mttr-print [data-sonner-toaster],
+  body.mtbf-mttr-print nextjs-portal {
+    display: none !important;
+  }
+
+  .mtbf-mttr-print-root {
+    max-width: none !important;
+    width: auto !important;
+    gap: 6px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .mtbf-mttr-print-page {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    overflow: hidden !important;
+  }
+
+  .mtbf-mttr-print-header {
+    padding: 6px 10px !important;
+  }
+
+  .mtbf-mttr-print-header h1 {
+    font-size: 15px !important;
+  }
+
+  .mtbf-mttr-print-stats {
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+  }
+
+  .mtbf-mttr-print-stats > article {
+    padding: 4px 6px !important;
+  }
+
+  .mtbf-mttr-print-stats > article p:nth-child(2) {
+    font-size: 16px !important;
+  }
+
+  .mtbf-mttr-stat-hint,
+  .mtbf-mttr-print-mid header > p,
+  .mtbf-mttr-print-legend,
+  .mtbf-mttr-print-equipment footer,
+  .mtbf-mttr-print-sheet > header p,
+  .mtbf-mttr-print-sheet footer {
+    display: none !important;
+  }
+
+  .mtbf-mttr-print-mid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr) !important;
+    gap: 6px !important;
+    overflow: hidden !important;
+  }
+
+  .mtbf-mttr-print-mid > article {
+    padding: 6px !important;
+    overflow: hidden !important;
+  }
+
+  .mtbf-mttr-chart {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: hidden !important;
+  }
+
+  .mtbf-mttr-chart svg {
+    display: block !important;
+    overflow: hidden !important;
+  }
+
+  .mtbf-mttr-print-equipment,
+  .mtbf-mttr-print-equipment > div,
+  .mtbf-mttr-print-sheet,
+  .mtbf-mttr-print-sheet > div {
+    overflow: hidden !important;
+  }
+
+  .mtbf-mttr-print-equipment table,
+  .mtbf-mttr-print-sheet table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 8px !important;
+  }
+
+  .mtbf-mttr-print-equipment th,
+  .mtbf-mttr-print-equipment td,
+  .mtbf-mttr-print-sheet th,
+  .mtbf-mttr-print-sheet td {
+    padding: 1px 2px !important;
+  }
+
+  .mtbf-mttr-print-equipment thead th,
+  .mtbf-mttr-print-sheet thead th {
+    color: #fff !important;
+    background-color: #0f172a !important;
+  }
+
+  .mtbf-mttr-print-sheet thead th:last-child {
+    background-color: #1e293b !important;
   }
 }

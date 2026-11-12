@@ -9,7 +9,7 @@ import { currentActor } from '@/lib/check-access'
 import { currentYearMonth } from '@/lib/date-utils'
 import { recordFloor, recordLineId, type ProcessCheckRecord, type ProcessTemplate } from '@/lib/process-checklist'
 import { readHiddenProcessLines, readProcessChecks, readProcessTemplates } from '@/lib/storage'
-import { todayStatusLabel, type TodayStatus } from '@/lib/today-check'
+import { todayStatusLabel, uncheckedDaysLabel, type TodayStatus } from '@/lib/today-check'
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ floor?: string }> }) {
   const { floor: rawFloor } = await searchParams
@@ -108,6 +108,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         meta: `${target.department || ''}`.trim() || undefined,
         inspector: target.manager || undefined,
         href: `/checksheets/5s/${target.id}`,
+        gap: uncheckedDaysLabel(today.gaps.fiveS[target.id] ?? []),
         ...statusOf(today.fiveS[target.id]),
       })),
     },
@@ -124,6 +125,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         meta: equipment.department || undefined,
         inspector: equipment.inspectorName || undefined,
         href: `/checksheets/daily/${equipment.id}`,
+        gap: uncheckedDaysLabel(today.gaps.daily[equipment.id] ?? []),
         ...statusOf(today.daily[equipment.id]),
       })),
     },
@@ -140,6 +142,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         meta: target.department || undefined,
         inspector: target.manager || undefined,
         href: `/checksheets/temp-humidity/${target.id}`,
+        gap: uncheckedDaysLabel(today.gaps.temp[target.id] ?? []),
         ...statusOf(today.temp[target.id]),
       })),
     },

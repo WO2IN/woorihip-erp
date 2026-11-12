@@ -72,6 +72,44 @@ export function evalSheetKindFromQualification(qualification: string): EvalSheet
   return qualification === '내부품질감사' ? 'internal-audit' : 'inspector'
 }
 
+export function suitabilityScoreTotal(scores: SuitabilityScoresOverlay): number | null {
+  if (!scores) return null
+  return (
+    scores.academic +
+    scores.education +
+    scores.skills.reduce((sum, value) => sum + value, 0) +
+    scores.career +
+    (scores.evalExam ?? 0)
+  )
+}
+
+const INSPECTOR_PRACTICAL_IDS = ['standard', 'visual', 'thickness', 'recording'] as const
+
+/** 검사원 실기 ①~④를 갱신 요건 한 줄로 요약한다. */
+export function inspectorPracticalLine(items: Record<string, { verdict?: string }> | undefined) {
+  const verdicts = INSPECTOR_PRACTICAL_IDS.map((id) => items?.[id]?.verdict ?? 'unevaluated')
+  const passCount = verdicts.filter((value) => value === 'pass').length
+  if (verdicts.some((value) => value === 'fail')) return { actual: `실기 ${passCount}/4 · 불합격`, judge: '재평가 필요' }
+  if (verdicts.every((value) => value === 'pass')) return { actual: '실기 4/4 합격', judge: '충족' }
+  if (passCount === 0) return { actual: '미평가', judge: '미확인' }
+  return { actual: `실기 ${passCount}/4 합격`, judge: '미확인' }
+}
+
+export function practicalGateLine(gate: string | undefined) {
+  if (gate === 'pass') return { actual: '실기 합격', judge: '충족' }
+  if (gate === 'fail') return { actual: '실기 불합격', judge: '재평가 필요' }
+  return { actual: '미평가', judge: '미확인' }
+}
+
+/** 갱신·연동 화면용. 요청 일자 우선, 없으면 역량 재평가일. */
+export function suitabilityEvalDate(overlay?: SuitabilityPersonOverlay | null): string {
+  const requested = overlay?.requested?.trim() ?? ''
+  const reeval = overlay?.competencyReeval?.trim() ?? ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(requested)) return requested
+  if (/^\d{4}-\d{2}-\d{2}$/.test(reeval)) return reeval
+  return ''
+}
+
 function roleLabels(evalType: EvalSheetKind, qualification: string) {
   if (evalType === 'internal-audit') {
     return { role: '내부심사원', qual: '내부심사원' }

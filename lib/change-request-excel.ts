@@ -64,7 +64,7 @@ function writeBody(cell: ExcelJS.Cell, value: string, size = 11) {
 
 type EmbeddedImage = { buffer: Buffer; extension: 'jpeg' | 'png' | 'gif' }
 
-function imageKind(buffer: Buffer): EmbeddedImage['extension'] | 'other' | null {
+function imageKind(buffer: Buffer): EmbeddedImage['extension'] | null {
   if (buffer.length > 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'png'
   if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8) return 'jpeg'
   if (buffer.length > 6 && buffer.subarray(0, 3).toString('ascii') === 'GIF') return 'gif'
@@ -177,12 +177,12 @@ async function placeImages(
     }
     const x = column * (cellW + gap) + (cellW - width) / 2
     const y = gridRow * (cellH + gap)
-    const id = book.addImage({ buffer: image.buffer as ExcelJS.Buffer, extension: image.extension })
+    const id = book.addImage({ buffer: image.buffer as unknown as ExcelJS.Buffer, extension: image.extension })
     form.addImage(id, {
       tl: { col: shiftCol(form, box.col, x), row: shiftRow(form, box.row, y) },
       br: { col: shiftCol(form, box.col, x + width), row: shiftRow(form, box.row, y + height) },
       editAs: 'oneCell',
-    })
+    } as unknown as ExcelJS.ImageRange)
   })
 }
 
@@ -201,6 +201,22 @@ const STAMP_LAYOUT: Record<
   customerFinal: { nameCell: 'AB7', sign: { tl: { col: 27, row: 3 }, br: { col: 30, row: 6 } } },
 }
 
+async function slashImage(width: number, height: number) {
+  const w = Math.max(8, Math.round(width))
+  const h = Math.max(8, Math.round(height))
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><line x1="1.5" y1="${h - 1.5}" x2="${w - 1.5}" y2="1.5" stroke="#334155" stroke-width="2.25" stroke-linecap="square"/></svg>`
+  return sharp(Buffer.from(svg)).png().toBuffer()
+}
+
+async function placeSlash(book: ExcelJS.Workbook, form: ExcelJS.Worksheet, key: StampKey) {
+  const box = STAMP_LAYOUT[key].sign
+  const area = { tl: box.tl, br: { col: box.br.col, row: 7 } }
+  form.getCell(STAMP_LAYOUT[key].nameCell).value = null
+  const png = await slashImage(boxSize(form, area).width, boxSize(form, area).height)
+  const id = book.addImage({ buffer: png as unknown as ExcelJS.Buffer, extension: 'png' })
+  form.addImage(id, { tl: area.tl, br: area.br, editAs: 'oneCell' } as unknown as ExcelJS.ImageRange)
+}
+
 function boxSize(form: ExcelJS.Worksheet, box: { tl: { col: number; row: number }; br: { col: number; row: number } }) {
   let width = 0
   let height = 0
@@ -213,8 +229,8 @@ async function placeStamp(book: ExcelJS.Workbook, form: ExcelJS.Worksheet, buffe
   const size = boxSize(form, box)
   const fitted = await signatureForBox(buffer, size.width, size.height)
   if (!fitted) return
-  const id = book.addImage({ buffer: fitted as ExcelJS.Buffer, extension: 'png' })
-  form.addImage(id, { tl: box.tl, br: box.br, editAs: 'oneCell' })
+  const id = book.addImage({ buffer: fitted as unknown as ExcelJS.Buffer, extension: 'png' })
+  form.addImage(id, { tl: box.tl, br: box.br, editAs: 'oneCell' } as unknown as ExcelJS.ImageRange)
 }
 
 export async function buildChangeRequestWorkbook(row: ChangeRequest, files: ChangeRequestFile[] = []) {
@@ -241,6 +257,17 @@ export async function buildChangeRequestWorkbook(row: ChangeRequest, files: Chan
     return [`${prefix}Draft` as StampKey, `${prefix}Review` as StampKey, `${prefix}Decision` as StampKey]
   }
 
+  const slashed = new Set<StampKey>()
+  if (row.ourJeongyeol) {
+    slashed.add('ourReview')
+    slashed.add('ourDecision')
+  }
+  if (row.customerJeongyeol) {
+    slashed.add('customerReview')
+    slashed.add('customerDecision')
+  }
+  for (const key of slashed) await placeSlash(book, form, key)
+
   const nameEntries: [StampKey, string][] = [
     ['ourDraft', row.ourDraft],
     ['ourReview', row.ourReview],
@@ -252,6 +279,7 @@ export async function buildChangeRequestWorkbook(row: ChangeRequest, files: Chan
     ['customerFinal', row.customerFinal],
   ]
   for (const [key, value] of nameEntries) {
+    if (slashed.has(key)) continue
     if (value) writeBody(form.getCell(STAMP_LAYOUT[key].nameCell), value)
   }
 

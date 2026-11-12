@@ -20,6 +20,7 @@ type SummaryItem = {
   name: string
   meta?: string
   inspector?: string
+  gap?: string
   href: string
   status: TodayStatus
   statusLabel: string
@@ -245,6 +246,7 @@ export function FloorHome({
                               ) : null}
                             </span>
                           )}
+                          {item.gap ? <span className="mt-0.5 block truncate text-xs font-medium text-amber-700 dark:text-amber-300">{item.gap}</span> : null}
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
                           <TodayStatusBadge status={item.status} label={item.statusLabel} />

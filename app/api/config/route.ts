@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
 
   const data = await readConfig(name)
   const trimmed = value.trim()
+  const existed = data.some((item) => item.trim() === trimmed)
 
   // 기존 값 제거 후 맨 앞으로 이동
   const updated = [
@@ -82,7 +83,9 @@ export async function POST(req: NextRequest) {
   ]
 
   await writeConfig(name, updated)
-  await appendAuditLog({ action: 'CREATE', target: 'config', detail: `${name}: ${trimmed}`, userId: user.id, userName: user.displayName })
+  if (!existed && body.quiet !== true) {
+    await appendAuditLog({ action: 'CREATE', target: 'config', detail: `${name}: ${trimmed}`, userId: user.id, userName: user.displayName })
+  }
 
   return NextResponse.json({ data: updated })
 }

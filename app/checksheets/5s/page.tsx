@@ -8,7 +8,7 @@ import { TargetListRow } from '@/components/shared/target-list-row'
 import { TargetFloorSection } from '@/components/shared/target-floor-section'
 import { formatFloorLabel, groupByFloor, detectFloor } from '@/lib/floor'
 import { getTodayCheckStatuses } from '@/app/actions/today-status'
-import { compareTodayStatus, todayStatusLabel } from '@/lib/today-check'
+import { compareTodayStatus, todayStatusLabel, uncheckedDaysLabel } from '@/lib/today-check'
 import { canManageChecksheets, canUseFloor, currentActor } from '@/lib/check-access'
 
 export default async function FiveSIndexPage({ searchParams }: { searchParams: Promise<{ floor?: string }> }) {
@@ -67,7 +67,13 @@ export default async function FiveSIndexPage({ searchParams }: { searchParams: P
         ) : (
           <div className="space-y-5">
             {groupByFloor(targetList).filter(([floor]) => !selectedFloor || floor === selectedFloor).map(([floor, items]) => (
-              <TargetFloorSection key={floor} id={`five-s-floor-${floor}`} floor={floor} statuses={items.map((item) => today.fiveS[item.id] ?? 'off')}>
+              <TargetFloorSection
+                key={floor}
+                id={`five-s-floor-${floor}`}
+                floor={floor}
+                statuses={items.map((item) => today.fiveS[item.id] ?? 'off')}
+                overall={{ complete: items.filter((item) => (today.gaps.fiveS[item.id] ?? []).length === 0).length, total: items.length }}
+              >
                   {[...items]
                     .sort((a, b) => compareTodayStatus(today.fiveS[a.id] ?? 'off', today.fiveS[b.id] ?? 'off'))
                     .map((item) => {
@@ -87,6 +93,7 @@ export default async function FiveSIndexPage({ searchParams }: { searchParams: P
                           id={item.id}
                           status={status}
                           statusLabel={todayStatusLabel(status, today.weekend)}
+                          gap={uncheckedDaysLabel(today.gaps.fiveS[item.id] ?? [])}
                           canDelete={canManage && canUseFloor(actor, item.floor, item.name)}
                           kind="fiveS"
                         />

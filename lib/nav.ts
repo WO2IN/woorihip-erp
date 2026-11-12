@@ -46,16 +46,16 @@ export const NAV: NavSection[] = [
       { label: '부적합관리', href: '/quality/nonconformity' },
       { label: '변경점관리 (4M)', href: '/quality/change-points', testing: true },
       { label: '자격인증 관리', href: '/quality/qualifications', testing: true },
-      { label: 'IATF 16949', href: '/quality/iatf', soon: true },
+      { label: 'IATF 16949', href: '/quality/iatf', testing: true },
     ],
   },
   {
-    id: 'kpi', label: 'KPI 관리', icon: BarChart3, testing: true, children: [
-      { label: '수입검사 KPI', href: '/quality/kpi', testing: true },
-      { label: '공정불량률 KPI', href: '/quality/kpi/process', testing: true },
-      { label: '출하검사 KPI', href: '/quality/kpi/outgoing', testing: true },
-      { label: '고객부적합 KPI', href: '/quality/kpi/customer', testing: true },
-      { label: '납기준수 KPI', href: '/quality/kpi/delivery', testing: true },
+    id: 'kpi', label: 'KPI 관리', icon: BarChart3, children: [
+      { label: '수입검사 KPI', href: '/quality/kpi' },
+      { label: '공정불량률 KPI', href: '/quality/kpi/process' },
+      { label: '출하검사 KPI', href: '/quality/kpi/outgoing' },
+      { label: '고객부적합 KPI', href: '/quality/kpi/customer' },
+      { label: '납기준수 KPI', href: '/quality/kpi/delivery' },
     ],
   },
   {
@@ -65,6 +65,7 @@ export const NAV: NavSection[] = [
   },
   {
     id: 'equipment', label: '설비관리', icon: Wrench, children: [
+      { label: 'MTBF · MTTR 현황', href: '/equipment/mtbf-mttr', testing: true },
       { label: '계측기 이력관리', href: '/equipment/gauges', soon: true },
       { label: '소모품 (설비재고)', href: '/equipment/consumables', soon: true },
     ],

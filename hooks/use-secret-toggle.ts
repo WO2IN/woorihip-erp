@@ -16,8 +16,8 @@ export function useSecretToggle(code: string = SECRET_TOGGLE_CODE) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return
-      const target = event.target as HTMLElement | null
-      if (target?.matches(IGNORED_TARGETS)) return
+      if (event.target instanceof Element && event.target.matches(IGNORED_TARGETS)) return
+      if (!event.key) return
       buffer.current = `${buffer.current}${event.key.toLowerCase()}`.slice(-code.length)
       if (buffer.current === code) {
         setOpen((value) => !value)

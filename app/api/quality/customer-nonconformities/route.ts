@@ -28,6 +28,13 @@ function sortByOccurrenceDate(rows: CustomerNonconformity[]) {
   )
 }
 
+function parseDefectQty(value: unknown): number | null | 'invalid' {
+  if (value == null || value === '') return null
+  const qty = typeof value === 'number' ? value : Number(String(value).replace(/,/g, '').trim())
+  if (!Number.isFinite(qty) || qty < 0) return 'invalid'
+  return Math.round(qty * 1000) / 1000
+}
+
 function parseStatus(value: unknown, fallback: WorkflowStatus = 'not_started'): WorkflowStatus {
   return WORKFLOW_STATUS_ORDER.includes(value as WorkflowStatus)
     ? (value as WorkflowStatus)
@@ -52,10 +59,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '발생업체와 부적합내용은 필수입니다.' }, { status: 400 })
   }
   const now = new Date().toISOString()
+  const defectType = typeof body.defectType === 'string' ? body.defectType.trim() : ''
+  const partNo = typeof body.partNo === 'string' ? body.partNo.trim() : ''
+  const defectQty = parseDefectQty(body.defectQty)
+  if (defectQty === 'invalid') {
+    return NextResponse.json({ error: '불량 수량은 0 이상의 숫자로 입력하세요.' }, { status: 400 })
+  }
   const record: CustomerNonconformity = {
     id: uuidv4(),
     occurrenceDate: parseOccurrenceDate(body.occurrenceDate, now),
     occurrenceCompany,
+    defectType: defectType || undefined,
+    partNo: partNo || undefined,
+    defectQty,
     description,
     countermeasurePlan: parseStatus(body.countermeasurePlan),
     processingResult: parseStatus(body.processingResult),
@@ -89,6 +105,19 @@ export async function PATCH(req: NextRequest) {
   const updates: Partial<CustomerNonconformity> = { updatedAt: new Date().toISOString() }
   if (body.occurrenceDate !== undefined) updates.occurrenceDate = parseOccurrenceDate(body.occurrenceDate)
   if (typeof body.occurrenceCompany === 'string') updates.occurrenceCompany = body.occurrenceCompany.trim()
+  if (body.defectType !== undefined) {
+    updates.defectType = typeof body.defectType === 'string' ? body.defectType.trim() || undefined : undefined
+  }
+  if (body.partNo !== undefined) {
+    updates.partNo = typeof body.partNo === 'string' ? body.partNo.trim() || undefined : undefined
+  }
+  if (body.defectQty !== undefined) {
+    const defectQty = parseDefectQty(body.defectQty)
+    if (defectQty === 'invalid') {
+      return NextResponse.json({ error: '불량 수량은 0 이상의 숫자로 입력하세요.' }, { status: 400 })
+    }
+    updates.defectQty = defectQty
+  }
   if (typeof body.description === 'string') updates.description = body.description.trim()
   if (typeof body.remarks === 'string') updates.remarks = body.remarks.trim()
   if (body.countermeasurePlan !== undefined) updates.countermeasurePlan = parseStatus(body.countermeasurePlan)

@@ -8,7 +8,7 @@ import { TargetListRow } from '@/components/shared/target-list-row'
 import { TargetFloorSection } from '@/components/shared/target-floor-section'
 import { formatFloorLabel, groupByFloor, detectFloor } from '@/lib/floor'
 import { getTodayCheckStatuses } from '@/app/actions/today-status'
-import { compareTodayStatus, todayStatusLabel } from '@/lib/today-check'
+import { compareTodayStatus, todayStatusLabel, uncheckedDaysLabel } from '@/lib/today-check'
 import { canManageChecksheets, canUseFloor, currentActor } from '@/lib/check-access'
 
 export default async function DailyCheckIndexPage({ searchParams }: { searchParams: Promise<{ floor?: string }> }) {
@@ -71,7 +71,13 @@ export default async function DailyCheckIndexPage({ searchParams }: { searchPara
             {groupByFloor(equipmentList)
               .filter(([floor]) => !selectedFloor || floor === selectedFloor)
               .map(([floor, items]) => (
-                <TargetFloorSection key={floor} id={`daily-floor-${floor}`} floor={floor} statuses={items.map((item) => today.daily[item.id] ?? 'off')}>
+                <TargetFloorSection
+                  key={floor}
+                  id={`daily-floor-${floor}`}
+                  floor={floor}
+                  statuses={items.map((item) => today.daily[item.id] ?? 'off')}
+                  overall={{ complete: items.filter((item) => (today.gaps.daily[item.id] ?? []).length === 0).length, total: items.length }}
+                >
                     {[...items]
                       .sort((a, b) => compareTodayStatus(today.daily[a.id] ?? 'off', today.daily[b.id] ?? 'off'))
                       .map((item) => {
@@ -91,6 +97,7 @@ export default async function DailyCheckIndexPage({ searchParams }: { searchPara
                             id={item.id}
                             status={status}
                             statusLabel={todayStatusLabel(status, today.weekend)}
+                            gap={uncheckedDaysLabel(today.gaps.daily[item.id] ?? [])}
                             canDelete={canManage && canUseFloor(actor, item.floor, item.name)}
                             kind="daily"
                           />

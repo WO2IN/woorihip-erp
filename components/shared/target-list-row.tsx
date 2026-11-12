@@ -47,6 +47,7 @@ interface TargetListRowProps {
   id: number
   status?: TodayStatus
   statusLabel?: string
+  gap?: string
   canDelete?: boolean
   kind?: TargetKind
 }
@@ -63,6 +64,7 @@ export function TargetListRow({
   id,
   status,
   statusLabel,
+  gap,
   canDelete = false,
   kind = 'daily',
 }: TargetListRowProps) {
@@ -102,6 +104,7 @@ export function TargetListRow({
               {person ? `점검자 ${person}` : '점검자 미지정'}
             </span>
           </span>
+          {gap ? <span className="truncate text-xs font-medium text-amber-700 dark:text-amber-300">{gap}</span> : null}
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
           {status && statusLabel ? <TodayStatusBadge status={status} label={statusLabel} /> : null}

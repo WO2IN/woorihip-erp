@@ -17,7 +17,7 @@ export function isQualificationIdPhotoFileId(value: unknown): value is string {
 
 export function parseDataUrlPhoto(value: unknown): { buffer: Buffer; mime: string } | null {
   if (typeof value !== 'string' || !value.startsWith('data:image/')) return null
-  const match = value.match(/^data:([^;]+);base64,(.+)$/s)
+  const match = value.match(/^data:([^;]+);base64,([\s\S]+)$/)
   if (!match) return null
   const buffer = Buffer.from(match[2], 'base64')
   if (!buffer.length) return null

@@ -609,7 +609,6 @@ function LineBoard({
   )
   const [sectionId, setSectionId] = useState(() => chartSections[0]?.id ?? '')
   const [query, setQuery] = useState('')
-  const [onlyIssues, setOnlyIssues] = useState(false)
   const [shown, setShown] = useState(RECORD_PAGE)
   const [dateOrder, setDateOrder] = useState<'desc' | 'asc'>('desc')
   useEffect(() => {
@@ -632,8 +631,7 @@ function LineBoard({
   const latest = sorted[0]?.record
   const oldest = sorted.at(-1)?.record
   const keyword = query.trim().toLowerCase()
-  const filtered = sorted.filter(({ record, issues }) => {
-    if (onlyIssues && !issues.out && !issues.no) return false
+  const filtered = sorted.filter(({ record }) => {
     if (!keyword) return true
     return `${record.writtenDate} ${record.writtenTime} ${record.author}`.toLowerCase().includes(keyword)
   })
@@ -719,28 +717,14 @@ function LineBoard({
               {filtered.length === sorted.length ? `${sorted.length}건` : `${filtered.length} / ${sorted.length}건`}
             </span>
           </h2>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => { setOnlyIssues((value) => !value); setShown(RECORD_PAGE) }}
-              className={cn(
-                'h-9 shrink-0 rounded-lg border px-3 text-xs font-semibold transition-colors',
-                onlyIssues
-                  ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300'
-                  : 'bg-background text-muted-foreground hover:text-foreground',
-              )}
-            >
-              이상 있는 기록만
-            </button>
-            <div className="relative flex-1 sm:w-56 sm:flex-none">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => { setQuery(event.target.value); setShown(RECORD_PAGE) }}
-                placeholder="날짜·작성자 검색"
-                className="h-9 pl-8"
-              />
-            </div>
+          <div className="relative w-full sm:w-56">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => { setQuery(event.target.value); setShown(RECORD_PAGE) }}
+              placeholder="날짜·작성자 검색"
+              className="h-9 pl-8"
+            />
           </div>
         </div>
 

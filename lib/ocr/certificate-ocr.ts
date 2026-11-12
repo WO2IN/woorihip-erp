@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile)
 const TESSDATA_DIR = path.join(process.cwd(), 'tessdata')
 
 let workerPromise: Promise<Worker> | null = null
+let workerChain: Promise<unknown> = Promise.resolve()
 
 function getWorker() {
   workerPromise ??= (async () => {
@@ -21,6 +22,7 @@ function getWorker() {
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
       preserve_interword_spaces: '1',
+      user_defined_dpi: '200',
     })
     return worker
   })().catch(error => {
@@ -30,38 +32,44 @@ function getWorker() {
   return workerPromise
 }
 
-/** pdftoppm(poppler-utils)으로 첫 페이지를 300dpi PNG로 만든다. 브라우저 렌더링보다 OCR 결과가 훨씬 안정적이다. */
+function withWorker<T>(task: (worker: Worker) => Promise<T>) {
+  const run = workerChain.then(async () => task(await getWorker()))
+  workerChain = run.then(() => undefined, () => undefined)
+  return run
+}
+
+/** pdftoppm으로 첫 페이지를 200dpi PNG로 만든다. 속도 우선이다. */
 export async function renderPdfFirstPage(pdf: Buffer) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'woorihip-ocr-'))
   try {
     const input = path.join(dir, 'input.pdf')
     const output = path.join(dir, 'page')
     await writeFile(input, pdf)
-    await execFileAsync('pdftoppm', ['-r', '300', '-f', '1', '-l', '1', '-png', '-singlefile', input, output], { timeout: 30_000 })
+    await execFileAsync('pdftoppm', ['-r', '200', '-f', '1', '-l', '1', '-png', '-singlefile', input, output], { timeout: 20_000 })
     return await readFile(`${output}.png`)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
 }
 
-export type HeaderVariant = 'threshold170' | 'gray' | 'threshold200'
-
-export const HEADER_VARIANTS: HeaderVariant[] = ['threshold170', 'gray', 'threshold200']
-
-/** 성적서 상단(고객명·품명·LOT·발행일·재질·사양·수량 표)만 잘라 인식한다. */
-export async function recognizeCertificateHeader(page: Buffer, variant: HeaderVariant) {
+/** 성적서 상단만 한 번 읽는다. */
+export async function recognizeCertificateHeader(page: Buffer) {
   const source = sharp(page)
   const { width = 0, height = 0 } = await source.metadata()
   if (!width || !height) throw new Error('이미지를 읽을 수 없습니다.')
 
-  let pipeline = source
-    .extract({ left: 0, top: Math.round(height * 0.02), width, height: Math.round(height * 0.3) })
+  const top = Math.round(height * 0.02)
+  const cropHeight = Math.min(Math.round(height * 0.32), height - top)
+  const image = await source
+    .extract({ left: 0, top, width, height: cropHeight })
     .flatten({ background: '#ffffff' })
     .grayscale()
-  if (variant === 'threshold170') pipeline = pipeline.threshold(170)
-  if (variant === 'threshold200') pipeline = pipeline.threshold(200)
+    .withMetadata({ density: 200 })
+    .png()
+    .toBuffer()
 
-  const worker = await getWorker()
-  const { data } = await worker.recognize(await pipeline.png().toBuffer())
-  return data.text
+  return withWorker(async worker => {
+    const { data } = await worker.recognize(image)
+    return { text: data.text, confidence: data.confidence ?? 0 }
+  })
 }

@@ -1,5 +1,5 @@
-import { ChangeRequestView } from '@/components/development/change-request-view'
+import { ChangePointsShell } from '@/components/quality/change-points-shell'
 
 export default function Page() {
-  return <ChangeRequestView />
+  return <ChangePointsShell />
 }

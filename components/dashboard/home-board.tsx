@@ -349,8 +349,8 @@ function DefectStatus({ customer, process, open }: { customer: DashboardStats['q
   return (
     <div className="flex flex-1 flex-col">
       <div className="space-y-4">
-        <DefectBlock title="고객 부적합" href="/quality/nonconformity" counts={customer} />
-        <DefectBlock title="공정 부적합" href="/quality/nonconformity" counts={process} />
+        <DefectBlock title="고객 부적합" href="/quality/nonconformity?tab=customer" counts={customer} />
+        <DefectBlock title="공정 부적합" href="/quality/nonconformity?tab=process" counts={process} />
       </div>
       <div className="mt-auto pt-4">
         <div className={cn(

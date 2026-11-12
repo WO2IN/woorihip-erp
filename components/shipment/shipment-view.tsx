@@ -778,7 +778,7 @@ export function ShipmentView() {
         </div>
       </section>
 
-      {(user?.role === 'viewer' || (editFloor != null && user?.role !== 'viewer')) && (
+      {(user?.role === 'viewer' || editFloor != null) && (
         <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-100">
           {user?.role === 'viewer' && <p>뷰어 계정은 입출고를 조회만 할 수 있습니다.</p>}
           {editFloor != null && user?.role !== 'viewer' && (
@@ -1325,7 +1325,6 @@ export function ShipmentView() {
           checks={processChecks}
           templates={processTemplates}
           workLogs={workLogs}
-          editable={canEditMovement(selectedLot.floor)}
           onClose={closeLot}
           onPreview={setPreviewDoc}
         />

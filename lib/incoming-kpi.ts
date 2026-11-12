@@ -839,7 +839,7 @@ export function sampleState(today = new Date(), catalog?: { companies: string[];
     }
   }
   return {
-    target: kind === 'delivery' ? DEFAULT_ON_TIME_TARGET : DEFAULT_TARGET,
+    target: DEFAULT_TARGET,
     monthTargets: {},
     closed: Array.from({ length: Math.max(0, lastMonth - 1) }, (_, index) => monthKey(year, index + 1)),
     lots: lots.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)),

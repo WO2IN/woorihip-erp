@@ -39,6 +39,7 @@ const saveConfigValue = async (
       body: JSON.stringify({
         name,
         value,
+        quiet: true,
       }),
     })
 

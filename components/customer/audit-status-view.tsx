@@ -883,8 +883,11 @@ function GroupRows({ kind, caption, rows, editable, canManage, busy, onEdit, onD
           </tr>
         )
       })}
-      <tr className={cn('border-t font-semibold', tone.sub)}>
-        <td className="px-3 py-2" colSpan={4}>{kind} 소계</td>
+      <tr aria-hidden="true">
+        <td colSpan={canManage ? 14 : 13} className="h-2.5 border-0 bg-muted/70 p-0" />
+      </tr>
+      <tr className={cn('font-semibold [&>td]:border-t-2 [&>td]:border-slate-300 dark:[&>td]:border-slate-500', tone.sub)}>
+        <td className="px-3 py-2.5 text-left" colSpan={4}>{kind} 소계</td>
         <td className="px-2 py-2 tabular-nums">{findings}</td>
         <td className="px-2 py-2 tabular-nums">{done}</td>
         <td className="px-2 py-2 tabular-nums">{open}</td>

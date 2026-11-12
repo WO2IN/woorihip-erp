@@ -251,6 +251,13 @@ export function deriveQualificationStatus(
   return 'valid'
 }
 
+/** 시험·갱신 화면이 같은 자격 구분을 쓰도록 맞춘다. */
+export function qualificationExamKind(qualification: string): 'auditor' | 'inspector' | null {
+  if (qualification === '내부품질감사') return 'auditor'
+  if (qualification === '품질검사원' || qualification === '수입·신뢰성 검사' || qualification === '출하공정목시검사') return 'inspector'
+  return null
+}
+
 export function statusLabel(status: QualificationLedgerStatus) {
   switch (status) {
     case 'valid':

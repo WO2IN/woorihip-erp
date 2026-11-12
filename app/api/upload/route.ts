@@ -150,10 +150,11 @@ export async function POST(req: NextRequest) {
   }
 
   await appendMetadata(doc)
+  const registered = [doc.company, doc.product && doc.product !== '-' ? doc.product : '', doc.documentType].filter(Boolean).join(' · ')
   await appendAuditLog({
     action: 'UPLOAD',
     target: 'document',
-    detail: `${doc.originalName} (${doc.company}/${doc.documentType})`,
+    detail: `${registered || doc.originalName} 등록`,
     userId: requestUser.id,
     userName: requestUser.displayName,
   })

@@ -1,13 +1,16 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { CloudUpload, Frame, ImagePlus, Printer, Stamp, X, type LucideIcon } from 'lucide-react'
+import { CircleAlert, CloudUpload, FileText, Frame, ImagePlus, Printer, Stamp, X, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import { useAuth } from '@/components/auth/auth-context'
 import { Button } from '@/components/ui/button'
+import { getJsonAuthHeaders } from '@/lib/auth-client'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { QualificationLedgerRow } from '@/lib/qualification-ledger'
 import { QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL } from '@/lib/qualification-id-photo-placeholder'
+import { QualificationStatCard } from '@/components/quality/qualification-stat-card'
 import { cn } from '@/lib/utils'
 
 type CertDraft = {
@@ -39,7 +42,7 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10)
 }
 
-function draftFromRow(row: QualificationLedgerRow): CertDraft {
+export function draftFromRow(row: QualificationLedgerRow): CertDraft {
   return {
     name: row.name,
     certNo: row.certNo || '',
@@ -53,11 +56,11 @@ function draftFromRow(row: QualificationLedgerRow): CertDraft {
   }
 }
 
-function printable(row: QualificationLedgerRow) {
+export function printable(row: QualificationLedgerRow) {
   return row.status !== 'cancelled' && (row.suitabilityOnFile || row.recognitionOnFile)
 }
 
-type CertPhoto = { data: string; mime: string; name: string; fileId?: string }
+export type CertPhoto = { data: string; mime: string; name: string; fileId?: string }
 
 const FIELD_INPUT = 'h-9 bg-background'
 
@@ -68,12 +71,15 @@ const PRINT_OPTION_ITEMS = [
 ]
 
 export function RecognitionCertificateDraft() {
+  const { user } = useAuth()
   const [rows, setRows] = useState<QualificationLedgerRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState('')
   const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [drafts, setDrafts] = useState<Record<string, CertDraft>>({})
   const [photos, setPhotos] = useState<Record<string, CertPhoto>>({})
+  const [photoCleared, setPhotoCleared] = useState<Record<string, boolean>>({})
+  const [savingLedger, setSavingLedger] = useState(false)
   const [options, setOptions] = useState({
     border: true,
     seal: true,
@@ -93,6 +99,7 @@ export function RecognitionCertificateDraft() {
     reader.onload = () => {
       const data = typeof reader.result === 'string' ? reader.result : ''
       if (!data) return
+      setPhotoCleared((prev) => ({ ...prev, [selectedId]: false }))
       setPhotos((prev) => ({
         ...prev,
         [selectedId]: { data, mime: file.type || 'image/jpeg', name: file.name, fileId: undefined },
@@ -153,11 +160,11 @@ export function RecognitionCertificateDraft() {
   const draft = selected ? drafts[selected.id] ?? draftFromRow(selected) : null
   const form = draft ?? EMPTY_DRAFT
 
-  const readyCount = rows.filter(printable).length
-  const restrictedCount = rows.filter((row) => row.status === 'cancelled').length
-  const confirmCount = rows.filter((row) => row.status !== 'cancelled' && !printable(row)).length
-  const photoCount = rows.filter((row) => row.idPhotoFileId.trim()).length
-  const checkedCount = rows.filter((row) => checked[row.id]).length
+  const activeRows = useMemo(() => rows.filter((row) => row.status !== 'cancelled'), [rows])
+  const readyCount = activeRows.filter(printable).length
+  const confirmCount = activeRows.filter((row) => !printable(row)).length
+  const photoCount = activeRows.filter((row) => row.idPhotoFileId.trim()).length
+  const checkedCount = activeRows.filter((row) => checked[row.id]).length
 
   const selectPerson = (row: QualificationLedgerRow) => {
     setSelectedId(row.id)
@@ -172,8 +179,64 @@ export function RecognitionCertificateDraft() {
     }))
   }
 
-  const printTargets = rows.filter((row) => checked[row.id])
-  const outputRows = printTargets.length > 0 ? printTargets : selected ? [selected] : []
+  const printTargets = activeRows.filter((row) => checked[row.id])
+  const selectedActive = selected && selected.status !== 'cancelled' ? selected : null
+  const outputRows = printTargets.length > 0 ? printTargets : selectedActive ? [selectedActive] : []
+
+  const persistCertificates = async (targets: QualificationLedgerRow[]) => {
+    if (!targets.length) return false
+    if (user?.role !== 'admin') {
+      toast.error('관리자만 저장할 수 있습니다.')
+      return false
+    }
+    const targetIds = new Set(targets.map((row) => row.id))
+    const nextRows = rows.map((row) => {
+      if (!targetIds.has(row.id)) return row
+      const draft = drafts[row.id] ?? draftFromRow(row)
+      const photo = photos[row.id]
+      const pending = photo?.data.startsWith('data:') && !photo.fileId ? photo.data : ''
+      return {
+        ...row,
+        name: draft.name.trim() || row.name,
+        certNo: draft.certNo.trim(),
+        department: draft.department.trim(),
+        joinDate: draft.issued || row.joinDate,
+        expiryDate: draft.expiry,
+        plannedRenewalDate: draft.expiry || row.plannedRenewalDate,
+        qualification: draft.duty.trim() || row.qualification,
+        recognitionOnFile: true,
+        idPhotoFileId: photoCleared[row.id] && !pending ? '' : row.idPhotoFileId,
+        ...(pending ? { idPhotoPending: pending } : {}),
+      }
+    })
+    setSavingLedger(true)
+    try {
+      const response = await fetch('/api/quality/qualifications', {
+        method: 'PUT',
+        headers: getJsonAuthHeaders(user),
+        body: JSON.stringify({ rows: nextRows, detail: '자격인정서 저장' }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toast.error(typeof body.error === 'string' ? body.error : '저장하지 못했습니다.')
+        return false
+      }
+      const saved = Array.isArray(body.data) ? (body.data as QualificationLedgerRow[]) : nextRows
+      setRows(saved)
+      setPhotoCleared((prev) => {
+        const next = { ...prev }
+        for (const row of targets) delete next[row.id]
+        return next
+      })
+      toast.success('인정서 내용을 저장했습니다.')
+      return true
+    } catch {
+      toast.error('저장하지 못했습니다.')
+      return false
+    } finally {
+      setSavingLedger(false)
+    }
+  }
 
   const printCertificates = async () => {
     if (!outputRows.length) {
@@ -182,6 +245,8 @@ export function RecognitionCertificateDraft() {
     }
     const root = printRootRef.current
     if (!root) return
+    const saved = await persistCertificates(outputRows)
+    if (!saved) return
     setPrinting(true)
     const previousTitle = document.title
     const html = document.documentElement
@@ -213,26 +278,21 @@ export function RecognitionCertificateDraft() {
 
   const stats = useMemo(
     () => [
-      { label: '출력가능인정서', value: `${readyCount}건`, sub: '바로 출력 가능' },
-      { label: '출력 제한', value: `${restrictedCount}건`, sub: '취소된 자격' },
-      { label: '확인 후 출력', value: `${confirmCount}건`, sub: '평가·대장 확인 후' },
-      { label: '용지', value: 'A4 세로', sub: '210 × 297mm · 1인 1매' },
-      { label: '사진 등록', value: `${photoCount}/${rows.length || 0}명`, sub: '증명사진 등록' },
-      { label: '발행 명의', value: '대표이사', sub: DEFAULT_ISSUER },
+      { icon: Printer, tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300', label: '출력가능인정서', value: `${readyCount}건`, sub: '바로 출력 가능' },
+      { icon: CircleAlert, tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300', label: '확인 후 출력', value: `${confirmCount}건`, sub: '평가·대장 확인 후' },
+      { icon: FileText, tone: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300', label: '용지', value: 'A4 세로', sub: '210 × 297mm · 1인 1매' },
+      { icon: ImagePlus, tone: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300', label: '사진 등록', value: `${photoCount}/${activeRows.length || 0}명`, sub: '증명사진 등록' },
+      { icon: Stamp, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300', label: '발행 명의', value: '대표이사', sub: DEFAULT_ISSUER },
     ],
-    [confirmCount, photoCount, readyCount, restrictedCount, rows.length],
+    [activeRows.length, confirmCount, photoCount, readyCount],
   )
 
   return (
     <>
     <div className="mt-4 space-y-3">
-      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-5 gap-2">
         {stats.map((item) => (
-          <article key={item.label} className="rounded-2xl border bg-card px-3 py-2.5 shadow-sm">
-            <p className="text-[11px] text-muted-foreground">{item.label}</p>
-            <p className="text-lg font-extrabold tabular-nums text-slate-900 dark:text-slate-100">{item.value}</p>
-            <p className="truncate text-[11px] text-slate-500">{item.sub}</p>
-          </article>
+          <QualificationStatCard key={item.label} {...item} />
         ))}
       </div>
 
@@ -244,16 +304,16 @@ export function RecognitionCertificateDraft() {
               <p className="mt-0.5 text-[11px] text-muted-foreground">체크한 인원만 일괄 출력에 포함됩니다.</p>
             </div>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-600 dark:bg-muted dark:text-slate-300">
-              {rows.length}명
+              {activeRows.length}명
             </span>
           </div>
           <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
             {loading ? (
               <li className="px-3 py-10 text-center text-xs text-muted-foreground">불러오는 중…</li>
-            ) : rows.length === 0 ? (
+            ) : activeRows.length === 0 ? (
               <li className="px-3 py-10 text-center text-xs text-muted-foreground">자격인증대장에 등록된 인원이 없습니다.</li>
             ) : (
-              rows.map((row) => {
+              activeRows.map((row) => {
                 const ready = printable(row)
                 const active = selectedId === row.id
                 return (
@@ -330,16 +390,27 @@ export function RecognitionCertificateDraft() {
                 {draft ? `${draft.certNo || '번호 없음'} · ${draft.duty || '담당 업무 없음'}` : '왼쪽에서 출력 대상을 선택하세요.'}
               </p>
             </div>
+            <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9"
+              disabled={savingLedger || !selected}
+              onClick={() => { if (selected) void persistCertificates([selected]) }}
+            >
+              {savingLedger ? '저장 중…' : '저장'}
+            </Button>
             <Button
               type="button"
               size="default"
               className="h-9 shrink-0 gap-1.5 rounded-lg bg-emerald-700 px-4 text-white shadow-sm hover:bg-emerald-800"
-              disabled={printing || outputRows.length === 0}
+              disabled={printing || savingLedger || outputRows.length === 0}
               onClick={() => void printCertificates()}
             >
               <Printer className="size-4" />
               {printing ? '출력 중…' : outputRows.length > 1 ? `출력 ${outputRows.length}명` : '출력'}
             </Button>
+            </div>
           </div>
 
           <div className="mt-4 flex flex-col gap-3">
@@ -434,6 +505,7 @@ export function RecognitionCertificateDraft() {
                         className="h-7 shrink-0 gap-1 bg-background px-2 text-xs"
                         onClick={(event) => {
                           event.stopPropagation()
+                          setPhotoCleared((prev) => ({ ...prev, [selected.id]: true }))
                           setPhotos((prev) => {
                             const next = { ...prev }
                             delete next[selected.id]
@@ -526,7 +598,7 @@ export function RecognitionCertificateDraft() {
   )
 }
 
-function CertificateSheet({
+export function CertificateSheet({
   draft,
   photo,
   showPhoto,
@@ -565,8 +637,8 @@ function CertificateSheet({
             )}
           />
         ) : null}
-        <div className="absolute top-[53.6%] left-1/2 -translate-x-1/2 text-[2.55cqw] leading-[1.62] font-bold">
-          <div className="grid grid-cols-[7.4em_5.6em]">
+        <div className="absolute inset-x-0 top-[51.6%] flex justify-center text-[calc(2.55cqw+1pt)] leading-[1.62] font-bold">
+          <div className="grid w-fit translate-x-[1.4cqw] grid-cols-[7.4em_minmax(5.6em,max-content)] gap-x-[0.35em]">
             <PreviewLine glyphs="성명" value={draft?.name} />
             <PreviewLine glyphs="소속" value={draft?.department} />
             <PreviewLine glyphs="입사일자" value={dotDate(draft?.issued ?? '')} />
@@ -574,13 +646,13 @@ function CertificateSheet({
             <PreviewLine glyphs="담당업무" value={draft?.duty} />
           </div>
         </div>
-        <p className="absolute top-[69.4%] left-1/2 w-[76%] -translate-x-1/2 text-center text-[2.95cqw] leading-snug font-bold">
+        <p className="absolute top-[71.6%] left-1/2 w-[76%] -translate-x-1/2 text-center text-[2.95cqw] leading-snug font-bold">
           상기자를 교육 수료 및 자격시험에 Pass 하였기에
           <br />
           위 자격을 인정함.
         </p>
-        <p className="absolute inset-x-0 top-[77%] text-center text-[3.35cqw] font-bold">{koreanDate(draft?.issueDate ?? '')}</p>
-        <div className="absolute inset-x-0 top-[82.6%] flex items-center justify-center gap-[0.7em] text-[3.65cqw] font-black">
+        <p className="absolute inset-x-0 top-[79.2%] text-center text-[3.35cqw] font-bold">{koreanDate(draft?.issueDate ?? '')}</p>
+        <div className="absolute inset-x-0 top-[84.8%] flex items-center justify-center gap-[0.7em] text-[3.65cqw] font-black">
           <span>대표이사</span>
           <span className="relative">
             {issuerName}
@@ -594,8 +666,8 @@ function CertificateSheet({
             ) : null}
           </span>
         </div>
-        <div className="absolute top-[89.4%] right-[12.5%] left-[12.5%] h-[0.18cqw] bg-black" />
-        <div className="absolute top-[90.2%] right-[12.5%] left-[12.5%] flex items-center justify-between">
+        <div className="absolute top-[91.2%] right-[12.5%] left-[12.5%] h-[0.18cqw] bg-black" />
+        <div className="absolute top-[92%] right-[12.5%] left-[12.5%] flex items-center justify-between">
           <span className="text-[1.95cqw]">자격인정번호 {draft?.certNo ?? ''}</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="WOORI" className="h-[5.3cqw] w-auto" />
@@ -636,7 +708,7 @@ function issuerPersonName(issuer?: string) {
   return text || '홍성호'
 }
 
-function waitForPrintImages(root: HTMLElement) {
+export function waitForPrintImages(root: HTMLElement) {
   const images = [...root.querySelectorAll('img')]
   return Promise.all(
     images.map(

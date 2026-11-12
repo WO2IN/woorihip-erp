@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function ProcessNcRedirectPage() {
-  redirect('/quality/nonconformity')
+  redirect('/quality/nonconformity?tab=process')
 }

@@ -12,17 +12,21 @@ export function TargetFloorSection({
   id,
   floor,
   statuses,
+  overall,
   children,
 }: {
   id: string
   floor: string
   statuses: TodayStatus[]
+  overall?: { complete: number; total: number }
   children: React.ReactNode
 }) {
   const done = statuses.filter((status) => status === 'done').length
   const missing = statuses.filter((status) => status === 'missing').length
   const total = statuses.length
-  const rate = total ? Math.round((done / Math.max(done + missing, 1)) * 100) : 0
+  const progressTotal = overall?.total ?? done + missing
+  const progressComplete = overall?.complete ?? done
+  const rate = progressTotal ? Math.round((progressComplete / progressTotal) * 100) : 0
 
   return (
     <section aria-labelledby={id} className="rounded-2xl border bg-muted/30 p-4">
@@ -36,9 +40,9 @@ export function TargetFloorSection({
           <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">완료 {done}</span>
           <span className={cn('rounded-full px-2.5 py-1', missing ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' : 'bg-muted text-muted-foreground')}>미점검 {missing}</span>
         </div>
-        {done + missing > 0 && (
+        {progressTotal > 0 && (
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            오늘 진행률
+            전체 진행률
             <span className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
               <span className="block h-full rounded-full bg-[oklch(0.62_0.15_162)]" style={{ width: `${rate}%` }} />
             </span>
