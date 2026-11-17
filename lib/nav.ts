@@ -61,6 +61,7 @@ export const NAV: NavSection[] = [
   {
     id: 'shipment', label: '재고 관리', icon: Factory, children: [
       { label: '재고 관리', href: '/shipment', testing: true },
+      { label: 'LOT 이력카드', href: '/shipment/lot-card' },
     ],
   },
   {

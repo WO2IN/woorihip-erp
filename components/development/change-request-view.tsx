@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronLeft, Download, FilePlus2, ImagePlus, PenLine, Save, Stamp, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { StampApprovalButton } from '@/components/approvals/stamp-approval-button'
 import { useAuth } from '@/components/auth/auth-context'
 import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ import {
   REASON_OPTIONS,
   SUBMISSIONS,
   TARGET_OPTIONS,
+  STAMP_KEYS,
   emptyChangeRequest,
   type ChangeRequest,
   type StampKey,
@@ -51,6 +53,7 @@ export function ChangeRequestView({
   const [beforeBlobs, setBeforeBlobs] = useState<File[] | null>(null)
   const [afterBlobs, setAfterBlobs] = useState<File[] | null>(null)
   const openedId = useRef<string | null>(null)
+  const clearedStamps = useRef<Set<StampKey>>(new Set())
   const [companies, setCompanies] = useState<string[]>([])
 
   useEffect(() => {
@@ -64,11 +67,43 @@ export function ChangeRequestView({
   }, [])
 
   useEffect(() => {
-    fetch(API, { cache: 'no-store' })
-      .then((response) => response.json())
-      .then((result) => setSaved(Array.isArray(result.data) ? result.data : []))
-      .catch(() => toast.error('변경요청을 불러오지 못했습니다.'))
-      .finally(() => setLoading(false))
+    let ignore = false
+    const load = () => {
+      fetch(API, { cache: 'no-store' })
+        .then((response) => response.json())
+        .then((result) => {
+          if (ignore) return
+          const rows = Array.isArray(result.data) ? result.data as ChangeRequest[] : []
+          setSaved(rows)
+          setForm((current) => {
+            const row = rows.find((item) => item.id === current.id)
+            if (!row?.signs) return current
+            const signs = { ...(current.signs ?? {}) }
+            const names: Partial<ChangeRequest> = {}
+            let changed = false
+            for (const key of STAMP_KEYS) {
+              const remote = row.signs[key]
+              if (!remote || signs[key] || clearedStamps.current.has(key)) continue
+              signs[key] = remote
+              names[key] = row[key]
+              changed = true
+            }
+            return changed ? { ...current, ...names, signs } : current
+          })
+        })
+        .catch(() => {
+          if (!ignore) toast.error('변경요청을 불러오지 못했습니다.')
+        })
+        .finally(() => {
+          if (!ignore) setLoading(false)
+        })
+    }
+    load()
+    window.addEventListener('focus', load)
+    return () => {
+      ignore = true
+      window.removeEventListener('focus', load)
+    }
   }, [])
 
   useEffect(() => {
@@ -98,6 +133,7 @@ export function ChangeRequestView({
   }
 
   const applyRow = (row: ChangeRequest) => {
+    clearedStamps.current = new Set()
     setForm({ ...emptyChangeRequest(), ...row, signs: { ...row.signs }, submissions: { ...emptyChangeRequest().submissions, ...row.submissions } })
     setBeforeFiles(null)
     setAfterFiles(null)
@@ -128,7 +164,12 @@ export function ChangeRequestView({
       const response = await fetch(API, {
         method: 'PUT',
         headers: getJsonAuthHeaders(session),
-        body: JSON.stringify({ row, files, detail: `4M 변경요청 저장 · ${row.docNo || row.title || '제목 없음'}` }),
+        body: JSON.stringify({
+          row,
+          files,
+          clearedStamps: [...clearedStamps.current],
+          detail: `4M 변경요청 저장 · ${row.docNo || row.title || '제목 없음'}`,
+        }),
       })
       const result = await response.json().catch(() => null)
       if (!response.ok || !result?.data) {
@@ -136,6 +177,7 @@ export function ChangeRequestView({
         return
       }
       const next = result.data as ChangeRequest
+      clearedStamps.current = new Set()
       setSaved((current) => [next, ...current.filter((item) => item.id !== next.id)])
       applyRow(next)
       toast.success('저장했습니다.')
@@ -198,6 +240,7 @@ export function ChangeRequestView({
     const next = { ...form.signs }
     if (next[key]) {
       delete next[key]
+      clearedStamps.current.add(key)
       patch({ signs: next, [key]: '' })
       return
     }
@@ -206,6 +249,7 @@ export function ChangeRequestView({
       return
     }
     const name = user.displayName?.trim() || ''
+    clearedStamps.current.delete(key)
     patch({ signs: { ...next, [key]: user.id }, [key]: name })
   }
 
@@ -217,9 +261,13 @@ export function ChangeRequestView({
     if (enabled) {
       for (const key of side === 'our' ? (['ourReview', 'ourDecision'] as StampKey[]) : (['customerReview', 'customerDecision'] as StampKey[])) {
         delete signs[key]
+        clearedStamps.current.add(key)
       }
     } else {
-      for (const key of strip) delete signs[key]
+      for (const key of strip) {
+        delete signs[key]
+        clearedStamps.current.add(key)
+      }
     }
     patch(
       side === 'our'
@@ -303,6 +351,9 @@ export function ChangeRequestView({
                 title="우리하이피"
                 jeongyeol={form.ourJeongyeol}
                 onJeongyeolChange={(enabled) => setJeongyeol('our', enabled)}
+                requestId={form.id}
+                docLabel={form.docNo || form.title || '변경요청'}
+                stored={saved.some((row) => row.id === form.id)}
                 stampKeys={['ourDraft', 'ourReview', 'ourDecision', 'ourFinal']}
                 values={[form.ourDraft, form.ourReview, form.ourDecision, form.ourFinal]}
                 signs={form.signs}
@@ -327,6 +378,9 @@ export function ChangeRequestView({
                 }
                 jeongyeol={form.customerJeongyeol}
                 onJeongyeolChange={(enabled) => setJeongyeol('customer', enabled)}
+                requestId={form.id}
+                docLabel={form.docNo || form.title || '변경요청'}
+                stored={saved.some((row) => row.id === form.id)}
                 stampKeys={['customerDraft', 'customerReview', 'customerDecision', 'customerFinal']}
                 values={[form.customerDraft, form.customerReview, form.customerDecision, form.customerFinal]}
                 signs={form.signs}
@@ -522,6 +576,9 @@ function StampSignCell({
   signable,
   highlight,
   onSign,
+  requestId,
+  docLabel,
+  stored,
 }: {
   stamp: string
   stampKey: StampKey
@@ -529,6 +586,9 @@ function StampSignCell({
   signable: boolean
   highlight?: boolean
   onSign: (key: StampKey) => void
+  requestId: string
+  docLabel: string
+  stored: boolean
 }) {
   return (
     <div className="flex flex-col">
@@ -570,6 +630,16 @@ function StampSignCell({
             <span className="text-xs font-medium">서명하기</span>
           </button>
         )}
+        {signable && !signId ? (
+          <StampApprovalButton
+            className="mt-1 block w-full text-center text-xs print:hidden"
+            disabled={!stored}
+            hint="저장한 뒤 결재를 올릴 수 있습니다."
+            target={{ kind: 'change-request', requestId, docLabel, stamp: stampKey }}
+            title={`4M 변경점 ${stamp}`}
+            body={`${docLabel} · ${stamp} 서명`}
+          />
+        ) : null}
       </div>
     </div>
   )
@@ -585,6 +655,9 @@ function StampBox({
   onChange,
   canSign,
   onSign,
+  requestId,
+  docLabel,
+  stored,
 }: {
   title: React.ReactNode
   jeongyeol: boolean
@@ -595,6 +668,9 @@ function StampBox({
   onChange: (index: number, value: string) => void
   canSign: (key: StampKey) => boolean
   onSign: (key: StampKey) => void
+  requestId: string
+  docLabel: string
+  stored: boolean
 }) {
   return (
     <div
@@ -634,6 +710,9 @@ function StampBox({
                 signable={slashed ? false : canSign(key)}
                 highlight={finalActive}
                 onSign={onSign}
+                requestId={requestId}
+                docLabel={docLabel}
+                stored={stored}
               />
               <input
                 aria-label={stamp}

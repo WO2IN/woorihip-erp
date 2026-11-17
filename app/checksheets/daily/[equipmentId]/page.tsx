@@ -67,7 +67,7 @@ export default async function DailyCheckDetailPage({
   }
 
   return (
-    <div className="checksheet-page min-h-dvh bg-background">
+    <div className="checksheet-page min-h-dvh">
       <SiteHeader />
       <main className={cn(PAGE_SHELL, 'print-page checksheet-print-page print:max-w-none print:gap-1 print:p-0')}>
         <div className="no-print flex flex-wrap items-center justify-between gap-3">

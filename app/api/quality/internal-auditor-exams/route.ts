@@ -8,6 +8,7 @@ import {
   type InternalAuditorExamApproval,
   type InternalAuditorExamRecord,
 } from '@/lib/internal-auditor-exam'
+import { mergeExamApprovalsForSave } from '@/lib/approval-apply'
 import { insertRecord, listRecords } from '@/lib/records'
 import { appendAuditLog } from '@/lib/storage'
 
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
   const paperId = text((body as { paperId?: unknown }).paperId, 40)
   const rawAnswers = (body as { answers?: unknown }).answers
   const signed = approvals((body as { approvals?: unknown }).approvals)
+  const basedOnId = text((body as { basedOnId?: unknown }).basedOnId, 80)
 
   if (!examinee || !/^\d{4}-\d{2}-\d{2}$/.test(examDate) || !supervisor) {
     return NextResponse.json({ error: '응시자, 시험일, 감독자를 확인해 주세요.' }, { status: 400 })
@@ -73,6 +75,15 @@ export async function POST(request: NextRequest) {
   if (!graded) {
     return NextResponse.json({ error: '모든 문항을 고른 뒤 저장해 주세요.' }, { status: 400 })
   }
+
+  const mergedApprovals = await mergeExamApprovalsForSave(
+    INTERNAL_AUDITOR_EXAM_COLLECTION,
+    graded.paper.id,
+    examineeId,
+    examinee,
+    signed,
+    basedOnId,
+  )
 
   const record: InternalAuditorExamRecord = {
     id: crypto.randomUUID(),
@@ -88,7 +99,7 @@ export async function POST(request: NextRequest) {
     total: graded.total,
     score: graded.score,
     passed: graded.passed,
-    approvals: signed,
+    approvals: mergedApprovals,
     savedById: user.id,
     savedByName: user.displayName,
     savedAt: new Date().toISOString(),

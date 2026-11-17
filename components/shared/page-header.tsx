@@ -1,4 +1,7 @@
-import type { LucideIcon } from 'lucide-react'
+'use client'
+
+import { useEffect } from 'react'
+import { ClipboardCheckIcon, ThermometerIcon, WrenchIcon, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /** 본문 페이지 여백·너비 (고객심사현황 기준) */
@@ -8,7 +11,15 @@ export const PAGE_SHELL = cn('mx-auto flex w-full flex-col gap-5', PAGE_MAX_WIDT
 export const PAGE_SHELL_RELATIVE = cn('relative mx-auto flex w-full flex-col gap-5', PAGE_MAX_WIDTH, PAGE_PADDING)
 export const PAGE_INSET = cn('mx-auto w-full', PAGE_MAX_WIDTH, PAGE_PADDING)
 
-export type PageTone = 'blue' | 'indigo' | 'green' | 'cyan' | 'amber' | 'rose' | 'violet' | 'teal' | 'slate' | 'steel'
+export type PageTone = 'blue' | 'indigo' | 'green' | 'cyan' | 'amber' | 'rose' | 'violet' | 'teal' | 'orange' | 'red' | 'slate' | 'steel'
+
+const NAMED_PAGE_ICONS = {
+  wrench: WrenchIcon,
+  clipboard: ClipboardCheckIcon,
+  thermometer: ThermometerIcon,
+} as const
+
+export type PageIconName = keyof typeof NAMED_PAGE_ICONS
 
 const BAND: Record<PageTone, string> = {
   blue: 'bg-[linear-gradient(135deg,oklch(0.58_0.16_230),oklch(0.44_0.14_236))]',
@@ -19,6 +30,8 @@ const BAND: Record<PageTone, string> = {
   rose: 'bg-[linear-gradient(135deg,oklch(0.64_0.20_18),oklch(0.50_0.18_12))]',
   violet: 'bg-[linear-gradient(135deg,oklch(0.56_0.18_300),oklch(0.44_0.17_308))]',
   teal: 'bg-[linear-gradient(135deg,oklch(0.58_0.11_185),oklch(0.42_0.09_192))]',
+  orange: 'bg-[linear-gradient(135deg,oklch(0.64_0.17_42),oklch(0.50_0.16_32))]',
+  red: 'bg-[linear-gradient(135deg,oklch(0.50_0.14_27),oklch(0.38_0.12_24))]',
   slate: 'bg-[linear-gradient(135deg,oklch(0.48_0.03_250),oklch(0.34_0.03_255))]',
   steel: 'bg-[linear-gradient(135deg,oklch(0.46_0.06_250),oklch(0.32_0.05_262))]',
 }
@@ -40,14 +53,15 @@ export const GROUP_TONE: Record<string, PageTone> = {
   '재고 관리': 'rose',
   설비관리: 'violet',
   '일일 점검': 'amber',
+  전자결재: 'blue',
   문서관리: 'teal',
-  '조직/사용자': 'slate',
-  시스템관리: 'steel',
+  '조직/사용자': 'orange',
+  시스템관리: 'red',
 }
 
 interface PageHeaderProps {
   tone: PageTone
-  icon: LucideIcon
+  icon: LucideIcon | PageIconName
   eyebrow: string
   title: React.ReactNode
   description?: React.ReactNode
@@ -57,7 +71,17 @@ interface PageHeaderProps {
   className?: string
 }
 
-export function PageHeader({ tone, icon: Icon, eyebrow, title, description, stat, actions, leading, className }: PageHeaderProps) {
+export function PageHeader({ tone, icon, eyebrow, title, description, stat, actions, leading, className }: PageHeaderProps) {
+  const Icon = typeof icon === 'string' ? NAMED_PAGE_ICONS[icon] : icon
+  useEffect(() => {
+    const main = document.querySelector('.app-shell-main')
+    if (!(main instanceof HTMLElement)) return
+    main.dataset.pageTone = tone
+    return () => {
+      if (main.dataset.pageTone === tone) delete main.dataset.pageTone
+    }
+  }, [tone])
+
   return (
     <section className={cn('relative overflow-hidden rounded-2xl px-6 py-5 text-white shadow-sm', BAND[tone], className)}>
       <span className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-white/10" />

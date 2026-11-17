@@ -141,13 +141,17 @@ export async function PUT(request: NextRequest) {
   }
 
   const sorted = await persistLedgerRows(reconciledRows)
-  await appendAuditLog({
-    action: 'UPDATE',
-    target: 'qualification-ledger',
-    detail: typeof body.detail === 'string' && body.detail ? body.detail : '자격인증대장 수정',
-    userId: user.id,
-    userName: user.displayName,
-  })
+  const silent = body.silent === true || body.detail === '적격성평가서 연동'
+  const unchanged = JSON.stringify(previous) === JSON.stringify(sorted)
+  if (!silent && !unchanged) {
+    await appendAuditLog({
+      action: 'UPDATE',
+      target: 'qualification-ledger',
+      detail: typeof body.detail === 'string' && body.detail ? body.detail : '자격인증대장 수정',
+      userId: user.id,
+      userName: user.displayName,
+    })
+  }
   return NextResponse.json({ data: sorted })
 }
 

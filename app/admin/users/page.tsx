@@ -745,7 +745,7 @@ export default function AdminUsersPage() {
   return (
     <div className={cn(PAGE_SHELL, 'space-y-6')}>
       <PageHeader
-        tone="slate"
+        tone="orange"
         icon={UserRound}
         eyebrow="ORGANIZATION · 조직/사용자"
         title="사용자 관리"

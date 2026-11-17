@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Sun, Moon, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Image from "next/image"
+import { ApprovalHeaderActions } from '@/components/approvals/approval-bell'
 import { UserMenu } from '@/components/auth/user-menu'
 
 interface HeaderProps {
@@ -68,6 +69,7 @@ export function Header({ currentPage, onMenuToggle }: HeaderProps) {
       )}
 
       <div className="flex-1" />
+      <ApprovalHeaderActions />
       {/* Dark mode toggle */}
       <Button
         variant="ghost"

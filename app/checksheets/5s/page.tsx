@@ -21,12 +21,12 @@ export default async function FiveSIndexPage({ searchParams }: { searchParams: P
   const targetList = selectedFloor ? allTargets.filter((item) => detectFloor(item.floor, item.name) === selectedFloor) : allTargets
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="min-h-dvh">
       <SiteHeader />
       <main className={PAGE_SHELL}>
         <PageHeader
           tone="amber"
-          icon={ClipboardCheckIcon}
+          icon="clipboard"
           eyebrow="DAILY CHECK · 일일 점검"
           title="3정 5S Check Sheet"
           description="점검할 항목을 선택하세요."

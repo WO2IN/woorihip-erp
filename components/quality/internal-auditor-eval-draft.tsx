@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ClipboardCheck, Layers, Link2, ListChecks, PenLine, Printer, Target, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
+import { StampApprovalButton } from '@/components/approvals/stamp-approval-button'
 import { getJsonAuthHeaders } from '@/lib/auth-client'
 import { qualificationExamKind, type QualificationLedgerRow } from '@/lib/qualification-ledger'
 import { Button } from '@/components/ui/button'
@@ -255,14 +256,19 @@ function QualificationExamDraft({ config }: { config: ExamDraftConfig }) {
 
   useEffect(() => {
     let ignore = false
-    fetch(config.apiPath, { cache: 'no-store' })
-      .then((response) => response.json())
-      .then((body: { data?: InternalAuditorExamRecord[] }) => {
-        if (!ignore && Array.isArray(body.data)) setSavedRecords(body.data)
-      })
-      .catch(() => {})
+    const load = () => {
+      fetch(config.apiPath, { cache: 'no-store' })
+        .then((response) => response.json())
+        .then((body: { data?: InternalAuditorExamRecord[] }) => {
+          if (!ignore && Array.isArray(body.data)) setSavedRecords(body.data)
+        })
+        .catch(() => {})
+    }
+    load()
+    window.addEventListener('focus', load)
     return () => {
       ignore = true
+      window.removeEventListener('focus', load)
     }
   }, [config.apiPath])
 
@@ -304,6 +310,22 @@ function QualificationExamDraft({ config }: { config: ExamDraftConfig }) {
     setApprovalSigns(signs)
     setApprovalNames(names)
   }, [config.defaultSupervisor, examineeId, paper.id, paper.questions, savedForSheet])
+
+  const approvalKey = `${savedForSheet?.id ?? ''}:${(savedForSheet?.approvals ?? []).map((item) => `${item.step}:${item.signedById}:${item.signedByName}`).join('|')}`
+  const seenApproval = useRef('')
+  useEffect(() => {
+    if (!examineeId) return
+    if (seenApproval.current === `${examineeId}:${paper.id}:${approvalKey}`) return
+    seenApproval.current = `${examineeId}:${paper.id}:${approvalKey}`
+    const signs: Partial<Record<ApprovalStep, string>> = {}
+    const names: Partial<Record<ApprovalStep, string>> = {}
+    for (const item of savedForSheet?.approvals ?? []) {
+      if (item.signedById) signs[item.step] = item.signedById
+      if (item.signedByName) names[item.step] = item.signedByName
+    }
+    setApprovalSigns(signs)
+    setApprovalNames(names)
+  }, [approvalKey, examineeId, paper.id, savedForSheet?.approvals])
 
   const isAdmin = user?.role === 'admin'
   const revealKey = isAdmin && showKey
@@ -384,6 +406,7 @@ function QualificationExamDraft({ config }: { config: ExamDraftConfig }) {
           approvals: APPROVAL_STEPS.flatMap((step) =>
             approvalSigns[step] ? [{ step, signedById: approvalSigns[step], signedByName: approvalNames[step] ?? '' }] : [],
           ),
+          basedOnId: savedForSheet?.id ?? '',
         }),
       })
       const body = await response.json().catch(() => ({}))
@@ -595,12 +618,12 @@ function QualificationExamDraft({ config }: { config: ExamDraftConfig }) {
                     {APPROVAL_STEPS.map((label) => {
                       const signUserId = approvalSigns[label]
                       return (
-                        <td key={label} className="h-11 border border-slate-800 bg-white p-0.5 dark:border-zinc-600 dark:bg-zinc-900">
+                        <td key={label} className="border border-slate-800 bg-white p-0.5 align-top dark:border-zinc-600 dark:bg-zinc-900">
                           <button
                             type="button"
                             onClick={() => signApproval(label)}
                             className={cn(
-                              'flex h-full w-full items-center justify-center rounded-[3px]',
+                              'flex h-8 w-full items-center justify-center rounded-[3px]',
                               signUserId
                                 ? 'bg-white dark:bg-zinc-800'
                                 : 'flex-col gap-0.5 border border-dashed border-slate-300 text-slate-400 hover:border-slate-500 hover:text-slate-600 dark:border-zinc-600 dark:text-zinc-500 dark:hover:border-zinc-400 dark:hover:text-zinc-200',
@@ -620,6 +643,22 @@ function QualificationExamDraft({ config }: { config: ExamDraftConfig }) {
                               </>
                             )}
                           </button>
+                          {!signUserId ? (
+                            <StampApprovalButton
+                              className="mt-0.5 block w-full text-center print:hidden"
+                              disabled={!savedForSheet}
+                              hint="채점 저장 후 결재를 올릴 수 있습니다."
+                              target={{
+                                kind: 'exam',
+                                examKind: config.kind,
+                                recordId: savedForSheet?.id ?? '',
+                                examinee,
+                                step: label,
+                              }}
+                              title={`${config.examTitle} ${label}`}
+                              body={`${examinee || '응시자'} · ${paper.step} ${label} 서명`}
+                            />
+                          ) : null}
                         </td>
                       )
                     })}

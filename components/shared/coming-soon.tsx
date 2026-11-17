@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { ArrowLeft, CalendarClock, Construction } from 'lucide-react'
 import { GROUP_TONE, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'

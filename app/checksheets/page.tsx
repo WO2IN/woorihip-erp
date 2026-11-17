@@ -164,7 +164,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   ]
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="min-h-dvh">
       <SiteHeader />
       <FloorHome
         selectedFloor={selectedFloor}

@@ -141,6 +141,176 @@
   }
 }
 
+/* 카드 사이 회색 바탕. 상단 띠 색이 아래로 옅어진다 */
+.app-shell-main[data-page-tone] {
+  background-color: var(--background);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+.app-shell-main[data-page-tone='rose'] {
+  background-image: linear-gradient(180deg, oklch(0.91 0.06 16) 0, oklch(0.96 0.025 18) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='blue'] {
+  background-image:
+    radial-gradient(680px 460px at 0% -6%, oklch(0.84 0.1 265 / 0.55), transparent 68%),
+    radial-gradient(620px 420px at 100% 0%, oklch(0.88 0.1 55 / 0.5), transparent 66%),
+    radial-gradient(540px 380px at 78% 100%, oklch(0.9 0.08 175 / 0.28), transparent 70%),
+    linear-gradient(165deg, oklch(0.94 0.03 250) 0, oklch(0.97 0.012 70) 36rem, var(--background) 52rem);
+}
+.app-shell-main[data-page-tone='indigo'] {
+  background-image: linear-gradient(180deg, oklch(0.92 0.045 278) 0, oklch(0.965 0.02 278) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='green'] {
+  background-image: linear-gradient(180deg, oklch(0.93 0.045 158) 0, oklch(0.968 0.02 160) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='cyan'] {
+  background-image: linear-gradient(180deg, oklch(0.93 0.04 210) 0, oklch(0.968 0.018 212) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='amber'] {
+  background-image: linear-gradient(180deg, oklch(0.91 0.075 68) 0, oklch(0.96 0.032 62) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='violet'] {
+  background-image: linear-gradient(180deg, oklch(0.92 0.045 304) 0, oklch(0.965 0.02 304) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='teal'] {
+  background-image: linear-gradient(180deg, oklch(0.93 0.035 188) 0, oklch(0.968 0.016 190) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='orange'] {
+  background-image: linear-gradient(180deg, oklch(0.92 0.06 40) 0, oklch(0.965 0.025 38) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='red'] {
+  background-image: linear-gradient(180deg, oklch(0.93 0.028 27) 0, oklch(0.968 0.012 26) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='slate'] {
+  background-image: linear-gradient(180deg, oklch(0.93 0.012 252) 0, oklch(0.965 0.006 252) 24rem, var(--background) 48rem);
+}
+.app-shell-main[data-page-tone='steel'] {
+  background-image: linear-gradient(180deg, oklch(0.92 0.02 256) 0, oklch(0.962 0.01 256) 24rem, var(--background) 48rem);
+}
+
+.dark .app-shell-main[data-page-tone='rose'] {
+  background-image: linear-gradient(180deg, oklch(0.3 0.06 16) 0, oklch(0.22 0.03 18) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='blue'] {
+  background-image:
+    radial-gradient(680px 460px at 0% -6%, oklch(0.4 0.1 265 / 0.55), transparent 68%),
+    radial-gradient(620px 420px at 100% 0%, oklch(0.42 0.09 55 / 0.4), transparent 66%),
+    radial-gradient(540px 380px at 78% 100%, oklch(0.36 0.07 175 / 0.28), transparent 70%),
+    linear-gradient(165deg, oklch(0.22 0.04 255) 0, oklch(0.19 0.02 50) 36rem, var(--background) 52rem);
+}
+
+@property --wash-violet {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: oklch(0.84 0.1 265);
+}
+@property --wash-amber {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: oklch(0.88 0.1 55);
+}
+@property --wash-mint {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: oklch(0.9 0.08 175);
+}
+@property --wash-x {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+@property --wash-y {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+@property --wash-x2 {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 100%;
+}
+@property --wash-y2 {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 100%;
+}
+
+.app-shell-main[data-page-wave] {
+  --wash-violet: oklch(0.9 0.05 248 / 0.5);
+  --wash-amber: oklch(0.92 0.04 72 / 0.38);
+  --wash-mint: oklch(0.92 0.035 198 / 0.32);
+  --wash-x3: 50%;
+  --wash-y3: 46%;
+  background-image:
+    radial-gradient(78% 62% at var(--wash-x) var(--wash-y), var(--wash-violet), transparent 74%),
+    radial-gradient(70% 58% at var(--wash-x2) var(--wash-y2), var(--wash-amber), transparent 76%),
+    radial-gradient(88% 70% at var(--wash-x3) var(--wash-y3), var(--wash-mint), transparent 78%),
+    linear-gradient(180deg, oklch(0.95 0.018 250) 0, var(--background) 46rem);
+}
+
+.dark .app-shell-main[data-page-wave] {
+  --wash-violet: oklch(0.4 0.07 248 / 0.55);
+  --wash-amber: oklch(0.38 0.05 72 / 0.4);
+  --wash-mint: oklch(0.36 0.045 198 / 0.35);
+  background-image:
+    radial-gradient(78% 62% at var(--wash-x) var(--wash-y), var(--wash-violet), transparent 74%),
+    radial-gradient(70% 58% at var(--wash-x2) var(--wash-y2), var(--wash-amber), transparent 76%),
+    radial-gradient(88% 70% at var(--wash-x3) var(--wash-y3), var(--wash-mint), transparent 78%),
+    linear-gradient(180deg, oklch(0.22 0.03 250) 0, var(--background) 46rem);
+}
+.dark .app-shell-main[data-page-tone='indigo'] {
+  background-image: linear-gradient(180deg, oklch(0.27 0.05 278) 0, oklch(0.21 0.025 278) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='green'] {
+  background-image: linear-gradient(180deg, oklch(0.28 0.045 158) 0, oklch(0.21 0.022 160) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='cyan'] {
+  background-image: linear-gradient(180deg, oklch(0.27 0.04 210) 0, oklch(0.21 0.02 212) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='amber'] {
+  background-image: linear-gradient(180deg, oklch(0.3 0.05 58) 0, oklch(0.22 0.025 55) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='violet'] {
+  background-image: linear-gradient(180deg, oklch(0.28 0.05 304) 0, oklch(0.21 0.025 304) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='teal'] {
+  background-image: linear-gradient(180deg, oklch(0.27 0.04 188) 0, oklch(0.21 0.02 190) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='orange'] {
+  background-image: linear-gradient(180deg, oklch(0.32 0.07 40) 0, oklch(0.22 0.03 38) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='red'] {
+  background-image: linear-gradient(180deg, oklch(0.28 0.04 27) 0, oklch(0.21 0.02 26) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='slate'] {
+  background-image: linear-gradient(180deg, oklch(0.26 0.015 252) 0, oklch(0.2 0.01 252) 24rem, var(--background) 48rem);
+}
+.dark .app-shell-main[data-page-tone='steel'] {
+  background-image: linear-gradient(180deg, oklch(0.26 0.025 256) 0, oklch(0.2 0.012 256) 24rem, var(--background) 48rem);
+}
+
+@media print {
+  .app-shell-main {
+    background: white !important;
+  }
+}
+
+/* 재고 현황 모달. 로그인 화면과 같은 파랑·앰버 빛 */
+.stock-status-shell {
+  background:
+    radial-gradient(680px 420px at 100% 0%, oklch(0.9 0.05 258 / 0.55), transparent 62%),
+    radial-gradient(520px 380px at 0% 100%, oklch(0.92 0.07 55 / 0.38), transparent 60%),
+    linear-gradient(165deg, oklch(0.985 0.006 250), oklch(0.96 0.014 255) 55%, oklch(0.97 0.02 70));
+}
+
+.dark .stock-status-shell {
+  background:
+    radial-gradient(680px 420px at 100% 0%, oklch(0.42 0.1 258 / 0.4), transparent 62%),
+    radial-gradient(520px 380px at 0% 100%, oklch(0.42 0.08 55 / 0.22), transparent 60%),
+    linear-gradient(165deg, oklch(0.22 0.03 258), oklch(0.18 0.02 255) 58%, oklch(0.2 0.03 40));
+}
+
 /* Smooth scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -223,6 +393,80 @@
   margin: 0;
 }
 
+@page lot-card {
+  size: A4 portrait;
+  margin: 5mm;
+}
+
+.work-date-empty::-webkit-datetime-edit,
+.work-date-empty::-webkit-datetime-edit-fields-wrapper,
+.work-date-empty::-webkit-datetime-edit-text,
+.work-date-empty::-webkit-datetime-edit-year-field,
+.work-date-empty::-webkit-datetime-edit-month-field,
+.work-date-empty::-webkit-datetime-edit-day-field {
+  color: transparent;
+}
+
+@media print {
+  body.lot-card-print {
+    page: lot-card;
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  body.lot-card-print .app-shell > aside,
+  body.lot-card-print .app-shell-column > header {
+    display: none !important;
+  }
+
+  body.lot-card-print .app-shell,
+  body.lot-card-print .app-shell-column,
+  body.lot-card-print .app-shell-main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+    background-image: none !important;
+    padding: 0 !important;
+  }
+
+  body.lot-card-print .lot-card-screen {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  body.lot-card-print .lot-card-sheet {
+    width: 200mm;
+    max-width: 200mm;
+    margin: 0 auto;
+    padding: 0 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.lot-card-print .lot-card-sheet input {
+    color: #0f172a !important;
+    background: transparent !important;
+  }
+
+  body.lot-card-print .lot-card-sheet .work-date-field,
+  body.lot-card-print .lot-card-sheet .work-date-label {
+    display: none !important;
+  }
+
+  body.lot-card-print .lot-card-sheet .work-date-print {
+    display: inline !important;
+  }
+
+  body.lot-card-print .lot-card-sheet svg {
+    max-width: none !important;
+  }
+}
+
 @media print {
   html.recognition-print-root,
   body.recognition-print {
@@ -296,6 +540,264 @@
 
   :is(body.recognition-print, body.qual-hub-print) .recognition-certificate-page .shadow-sm {
     box-shadow: none !important;
+  }
+}
+
+.proposal-print-root {
+  display: none;
+}
+
+.proposal-print-page {
+  box-sizing: border-box;
+  width: 194mm;
+  height: 281mm;
+  max-height: 281mm;
+  overflow: hidden;
+  color: #000;
+  background: #fff;
+  font-family: 'Nanum Gothic', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  font-size: 10pt;
+  line-height: 1.45;
+}
+
+.proposal-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.proposal-print-table th,
+.proposal-print-table td {
+  border: 1px solid #000;
+  padding: 1.4mm 2mm;
+  vertical-align: middle;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.proposal-print-col-label {
+  width: 18mm;
+}
+
+.proposal-print-label {
+  background: #f5f5f5;
+  text-align: center;
+  font-weight: 700;
+  font-size: 9pt;
+  letter-spacing: 0.08em;
+}
+
+.proposal-print-value {
+  font-size: 10pt;
+}
+
+.proposal-print-title-row th,
+.proposal-print-title-row td {
+  padding: 0;
+}
+
+.proposal-print-doc-title {
+  height: 14mm;
+  text-align: center;
+  font-size: 22pt;
+  font-weight: 700;
+  letter-spacing: 0.48em;
+  vertical-align: middle;
+}
+
+.proposal-print-approval-wrap {
+  width: 52mm;
+  max-width: 52mm;
+  padding: 0;
+  vertical-align: top;
+}
+
+.proposal-print-approval {
+  width: 100%;
+  height: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.proposal-print-approval th,
+.proposal-print-approval td {
+  border: 1px solid #000;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.proposal-print-approval-side {
+  width: 5.5mm;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  writing-mode: vertical-rl;
+  padding: 0.5mm 0;
+}
+
+.proposal-print-approval-head {
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.6mm 0;
+}
+
+.proposal-print-approval-sign {
+  height: 9mm;
+  padding: 0;
+}
+
+.proposal-print-approval-sign img {
+  display: block;
+  max-height: 8mm;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.proposal-print-approval-name {
+  font-size: 7.5pt;
+  line-height: 1.15;
+  padding: 0.6mm 0.5mm;
+}
+
+.proposal-print-approval-title {
+  display: block;
+  margin-top: 0.3mm;
+  font-size: 6.5pt;
+  color: #444;
+}
+
+.proposal-print-agree-wrap {
+  height: 8mm;
+  padding: 0 !important;
+  vertical-align: top;
+}
+
+.proposal-print-agree {
+  width: 100%;
+  height: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.proposal-print-agree td {
+  width: 33.33%;
+  height: 8mm;
+  border: none;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.proposal-print-agree td + td {
+  border-left: 1px solid #000;
+}
+
+.proposal-print-choice {
+  text-align: center;
+  font-size: 10pt;
+  font-weight: 600;
+}
+
+.proposal-print-sign-cell {
+  height: 6.5mm;
+}
+
+.proposal-print-opinion {
+  vertical-align: top;
+  white-space: pre-wrap;
+  min-height: 16mm;
+}
+
+.proposal-print-subject {
+  font-weight: 600;
+}
+
+.proposal-print-body {
+  height: 216mm;
+  min-height: 216mm;
+  max-height: 216mm;
+  vertical-align: top;
+  padding: 3.5mm 4mm;
+  overflow: hidden;
+}
+
+.proposal-print-body .proposal-rich {
+  font-family: 'Nanum Gothic', 'Malgun Gothic', sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.6;
+  color: #000;
+}
+
+.proposal-print-body .proposal-rich img {
+  max-width: 100%;
+  height: auto;
+}
+
+@page proposal-sheet {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+@media print {
+  html.proposal-print-active,
+  body.proposal-print {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background: white !important;
+  }
+
+  body.proposal-print {
+    page: proposal-sheet;
+  }
+
+  body.proposal-print .proposal-print-root {
+    display: block !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 2147483647 !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    pointer-events: none !important;
+    background: white !important;
+  }
+
+  body.proposal-print .proposal-print-page {
+    box-sizing: border-box;
+    width: 194mm;
+    height: 281mm;
+    max-height: 281mm;
+    margin: 0 auto;
+    overflow: hidden;
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  body.proposal-print .proposal-print-sheet.proposal-print-page {
+    display: flex !important;
+    flex-direction: column;
+    height: 281mm !important;
+    max-height: 281mm !important;
+    overflow: hidden;
+  }
+
+  body.proposal-print .leave-print-sheet.proposal-print-page {
+    display: block;
+    height: auto !important;
+    max-height: 270mm !important;
+  }
+
+  body.proposal-print .proposal-print-root,
+  body.proposal-print .proposal-print-root * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 

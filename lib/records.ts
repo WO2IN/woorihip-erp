@@ -159,6 +159,42 @@ export async function insertRecord<T extends { id: string | number }>(
   return clone(stored)
 }
 
+/** 컬렉션 잠금 안에서 기존 행을 보고 넣을 내용을 만든다. 순번처럼 겹치면 안 되는 값을 여기서 정한다. */
+export async function insertRecordPrepared<T extends { id: string | number }>(
+  collection: string,
+  prepare: (existing: T[]) => T,
+  at: 'first' | 'last' = 'last',
+): Promise<T> {
+  const placed = await write(
+    collection,
+    async (client, cachedRows) => {
+      const source = cachedRows
+        ? cachedRows.map((row) => row.data as T)
+        : (await client.query<{ data: T }>('SELECT data FROM records WHERE collection = $1', [collection])).rows.map((row) => row.data)
+      const stored = clone(prepare(source.map((row) => clone(row))))
+      const id = String(stored.id)
+      const { rows } = await client.query<{ position: number }>(
+        at === 'first'
+          ? 'SELECT coalesce(min(position), 0) - 1 AS position FROM records WHERE collection = $1'
+          : 'SELECT coalesce(max(position), 0) + 1 AS position FROM records WHERE collection = $1',
+        [collection],
+      )
+      const position = rows[0].position
+      await client.query(
+        'INSERT INTO records (collection, id, position, data) VALUES ($1, $2, $3, $4)',
+        [collection, id, position, JSON.stringify(stored)],
+      )
+      return { id, position, stored }
+    },
+    (rows, result) => {
+      const entry = { id: result.id, position: result.position, data: result.stored }
+      if (at === 'first') rows.unshift(entry)
+      else rows.push(entry)
+    },
+  )
+  return clone(placed.stored)
+}
+
 /** 같은 id 가 있으면 자리는 그대로 두고 내용을 통째로 바꾸고, 없으면 맨 뒤에 추가한다. */
 export async function putRecord<T extends { id: string | number }>(collection: string, data: T): Promise<T> {
   const id = String(data.id)

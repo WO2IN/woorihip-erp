@@ -82,7 +82,7 @@ export function SettingsView() {
   return (
     <div className={cn(PAGE_INSET, 'space-y-6')}>
       <PageHeader
-        tone="steel"
+        tone="red"
         icon={Settings2}
         eyebrow="SYSTEM · 시스템관리"
         title="기준정보 설정"

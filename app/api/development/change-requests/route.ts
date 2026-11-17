@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { canManageQualityRecords, getUserFromHeaders } from '@/lib/auth'
+import { keptChangeStamps } from '@/lib/approval-apply'
 import { normalizeChangeRequest, type ChangeRequest } from '@/lib/change-request'
 import { decodeAttachments, removeRequestAttachments, storeUploadedAttachments } from '@/lib/change-request-files'
 import { getSetting, setSetting } from '@/lib/records'
@@ -32,8 +33,9 @@ export async function PUT(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const rows = await readRows()
   const current = rows.find((row) => row.id === body?.row?.id)
-  const next = normalizeChangeRequest(body?.row, current)
-  if (!next) return NextResponse.json({ error: '변경요청 내용이 올바르지 않습니다.' }, { status: 400 })
+  const normalized = normalizeChangeRequest(body?.row, current)
+  if (!normalized) return NextResponse.json({ error: '변경요청 내용이 올바르지 않습니다.' }, { status: 400 })
+  const next = keptChangeStamps(normalized, current, body?.clearedStamps)
   let uploaded
   try {
     uploaded = decodeAttachments(body?.files)

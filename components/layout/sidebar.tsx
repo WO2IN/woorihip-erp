@@ -63,16 +63,16 @@ const SECTION_ACCENT: Record<string, { icon: string; active: string; child: stri
     dot: 'bg-teal-600 dark:bg-teal-300',
   },
   organization: {
-    icon: 'text-slate-600 dark:text-slate-300',
-    active: 'bg-slate-500/10 text-slate-900 after:bg-slate-500 dark:bg-slate-400/15 dark:text-white dark:after:bg-slate-300',
-    child: 'bg-slate-500/10 font-semibold text-slate-700 before:bg-slate-500 dark:bg-slate-400/15 dark:text-slate-200 dark:before:bg-slate-300',
-    dot: 'bg-slate-500 dark:bg-slate-300',
+    icon: 'text-orange-600 dark:text-orange-300',
+    active: 'bg-orange-500/10 text-slate-900 after:bg-orange-600 dark:bg-orange-400/15 dark:text-white dark:after:bg-orange-300',
+    child: 'bg-orange-500/10 font-semibold text-orange-800 before:bg-orange-600 dark:bg-orange-400/15 dark:text-orange-200 dark:before:bg-orange-300',
+    dot: 'bg-orange-600 dark:bg-orange-300',
   },
   system: {
-    icon: 'text-blue-800 dark:text-blue-200',
-    active: 'bg-blue-900/10 text-slate-900 after:bg-blue-800 dark:bg-blue-300/15 dark:text-white dark:after:bg-blue-200',
-    child: 'bg-blue-900/10 font-semibold text-blue-900 before:bg-blue-800 dark:bg-blue-300/15 dark:text-blue-100 dark:before:bg-blue-200',
-    dot: 'bg-blue-800 dark:bg-blue-200',
+    icon: 'text-red-700 dark:text-red-300',
+    active: 'bg-red-600/10 text-slate-900 after:bg-red-700 dark:bg-red-400/15 dark:text-white dark:after:bg-red-300',
+    child: 'bg-red-600/10 font-semibold text-red-800 before:bg-red-700 dark:bg-red-400/15 dark:text-red-200 dark:before:bg-red-300',
+    dot: 'bg-red-700 dark:bg-red-300',
   },
 }
 

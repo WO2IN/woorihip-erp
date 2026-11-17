@@ -146,7 +146,6 @@ export function ShipmentView() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [negativeOnly, setNegativeOnly] = useState(false)
   const [unitView, setUnitView] = useState('EA')
   const activeFilterCount =
     Number(companyFilter !== 'all') + Number(productFilter !== 'all') + Number(Boolean(startDate || endDate))
@@ -415,9 +414,6 @@ export function ShipmentView() {
   const stockLines = sumByUnit((row) => row.stock)
   const openingLines = sumByUnit((row) => row.opening)
   const negativeCount = groups.filter((row) => (floor3 ? row.finalStock : row.stock) < 0).length
-  const stockRows = negativeOnly
-    ? groups.filter((row) => (floor3 ? row.finalStock : row.stock) < 0)
-    : groups
   const activeUnit = unitOrder.includes(unitView) ? unitView : (unitOrder[0] || '')
   const forUnit = (lines: { unit: string; value: number }[]) => {
     const line = lines.find((item) => item.unit === activeUnit)
@@ -657,6 +653,7 @@ export function ShipmentView() {
     try {
       const buffer = await buildShipmentWorkbook({
         floor3,
+        includeOpening: Boolean(startDate),
         stock: groups.map((row) => ({
           company: row.company,
           product: row.product,
@@ -853,17 +850,6 @@ export function ShipmentView() {
               ))}
             </div>
           )}
-          {tab === 'stock' && negativeCount > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              className={cn('h-10', negativeOnly && 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200')}
-              onClick={() => setNegativeOnly((value) => !value)}
-            >
-              <TriangleAlert className="mr-2 h-4 w-4" />
-              {negativeOnly ? '전체 재고' : '마이너스만'}
-            </Button>
-          )}
           <Button
             variant="outline"
             className={cn('h-10', filtersOpen || activeFilterCount ? 'border-foreground/30 bg-muted' : 'bg-background')}
@@ -879,7 +865,7 @@ export function ShipmentView() {
           </Button>
           {tab === 'stock' && (
             <span className="hidden text-sm text-muted-foreground tabular-nums lg:inline">
-              {stockRows.length.toLocaleString('ko-KR')} / {groups.length.toLocaleString('ko-KR')}종
+              {groups.length.toLocaleString('ko-KR')}종
             </span>
           )}
           {tab === 'in' && (
@@ -970,7 +956,8 @@ export function ShipmentView() {
         <StockTable
           loading={loading}
           floor3={floor3}
-          rows={stockRows}
+          showOpening={Boolean(startDate)}
+          rows={groups}
           onOpen={(row) => {
             setSelectedGroup(row)
             setIsEditMode(false)
@@ -1121,7 +1108,7 @@ export function ShipmentView() {
           }
         }}
       >
-        <DialogContent className="!z-[80] !flex !h-[92vh] !max-h-[92vh] !min-h-0 !w-[min(98vw,1480px)] !max-w-[1480px] !flex-col !gap-4 !overflow-hidden !rounded-2xl !bg-muted !p-5 !ring-0 shadow-[0_8px_40px_oklch(0_0_0/0.18)]">
+        <DialogContent overlayClassName="!z-[70]" className="stock-status-shell !z-[80] !flex !h-[92vh] !max-h-[92vh] !min-h-0 !w-[min(98vw,1480px)] !max-w-[1480px] !flex-col !gap-4 !overflow-hidden !rounded-2xl !p-5 !ring-0 shadow-[0_8px_40px_oklch(0_0_0/0.18)]">
           <DialogHeader className="shrink-0 gap-3 pr-8 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
             <div className="min-w-0">
               <DialogTitle className="text-xl font-bold tracking-tight">재고 현황</DialogTitle>
@@ -1440,25 +1427,88 @@ function StockKpi({
   )
 }
 
+const STOCK_SORT = {
+  company: {},
+  product: {},
+  floor: {},
+  unit: {},
+  opening: { numeric: true },
+  incoming: { numeric: true },
+  outgoing: { numeric: true },
+  stock: { numeric: true },
+  workQuantity: { numeric: true },
+  defect: { numeric: true },
+  sample: { numeric: true },
+  finalStock: { numeric: true },
+  lastDate: {},
+} as const
+
+type StockSortKey = keyof typeof STOCK_SORT
+
+const STOCK_SORT_LABELS: Record<string, StockSortKey> = {
+  업체명: 'company',
+  품목: 'product',
+  층: 'floor',
+  단위: 'unit',
+  기초: 'opening',
+  입고: 'incoming',
+  출고: 'outgoing',
+  현재고: 'stock',
+  작업수량: 'workQuantity',
+  불량: 'defect',
+  검사시료: 'sample',
+  '현 재고수량': 'stock',
+  '최종 재고수량': 'finalStock',
+  최근일자: 'lastDate',
+}
+
+function compareStock(a: StockGroup, b: StockGroup, key: StockSortKey) {
+  if (key === 'company' || key === 'product' || key === 'unit') return a[key].localeCompare(b[key], 'ko')
+  if (key === 'floor') return a.floor.localeCompare(b.floor, 'ko', { numeric: true })
+  if (key === 'lastDate') return a.lastDate.localeCompare(b.lastDate)
+  return a[key] - b[key]
+}
+
 function StockTable({
   loading,
   floor3,
+  showOpening,
   rows,
   onOpen,
 }: {
   loading: boolean
   floor3: boolean
+  showOpening: boolean
   rows: StockGroup[]
   onOpen: (row: StockGroup) => void
 }) {
-  const [dateOrder, setDateOrder] = useState<'desc' | 'asc'>('desc')
+  const [sortKey, setSortKey] = useState<StockSortKey>('lastDate')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  useEffect(() => {
+    if (!showOpening && sortKey === 'opening') {
+      setSortKey('lastDate')
+      setSortOrder('desc')
+    }
+  }, [showOpening, sortKey])
   const headers = floor3
     ? ['업체명', '품목', '층', '단위', '작업수량', '입고', '출고', '불량', '검사시료', '현 재고수량', '최종 재고수량', '최근일자']
-    : ['업체명', '품목', '층', '단위', '기초', '입고', '출고', '현재고', '최근일자']
-  const numericHeaders = floor3
-    ? ['작업수량', '입고', '출고', '불량', '검사시료', '현 재고수량', '최종 재고수량']
-    : ['기초', '입고', '출고', '현재고']
-  const sorted = [...rows].sort((a, b) => dateOrder === 'desc' ? b.lastDate.localeCompare(a.lastDate) : a.lastDate.localeCompare(b.lastDate))
+    : ['업체명', '품목', '층', '단위', ...(showOpening ? ['기초'] : []), '입고', '출고', '현재고', '최근일자']
+  function toggleSort(key: StockSortKey) {
+    if (sortKey === key) {
+      setSortOrder((order) => order === 'asc' ? 'desc' : 'asc')
+      return
+    }
+    setSortKey(key)
+    setSortOrder('numeric' in STOCK_SORT[key] || key === 'lastDate' ? 'desc' : 'asc')
+  }
+  const sorted = [...rows].sort((a, b) => {
+    const direction = sortOrder === 'asc' ? 1 : -1
+    const primary = compareStock(a, b, sortKey)
+    if (primary !== 0) return primary * direction
+    const company = a.company.localeCompare(b.company, 'ko')
+    if (company !== 0) return company
+    return a.product.localeCompare(b.product, 'ko') || b.lastDate.localeCompare(a.lastDate)
+  })
   return (
     <section className="overflow-hidden rounded-2xl border bg-card shadow-[0_1px_3px_oklch(0_0_0/0.06)]">
       <div className="flex items-center gap-2 border-b px-5 py-4">
@@ -1476,16 +1526,25 @@ function StockTable({
         <table className={`w-full text-sm ${floor3 ? 'min-w-[1080px]' : 'min-w-[860px]'}`}>
           <thead className="text-xs text-muted-foreground">
             <tr className="border-b">
-              {headers.map((head) => (
-                <th key={head} className={`whitespace-nowrap px-4 py-3 font-medium ${numericHeaders.includes(head) ? 'text-right' : 'text-left'}`}>
-                  {head === '최근일자' ? (
-                    <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => setDateOrder((value) => value === 'desc' ? 'asc' : 'desc')}>
-                      최근일자
-                      <span aria-hidden="true">{dateOrder === 'desc' ? '↓' : '↑'}</span>
+              {headers.map((head) => {
+                const key = STOCK_SORT_LABELS[head]
+                const active = key === sortKey
+                const numeric = key ? 'numeric' in STOCK_SORT[key] : false
+                return (
+                  <th
+                    key={head}
+                    aria-sort={active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    className={`whitespace-nowrap px-4 py-3 font-medium ${numeric ? 'text-right' : 'text-left'}`}
+                  >
+                    <button type="button" className={`inline-flex items-center gap-1 hover:text-foreground ${numeric ? 'ml-auto' : ''}`} onClick={() => key && toggleSort(key)}>
+                      {head}
+                      <span aria-hidden="true" className={active ? 'text-foreground' : 'opacity-40'}>
+                        {active ? (sortOrder === 'desc' ? '↓' : '↑') : '↕'}
+                      </span>
                     </button>
-                  ) : head}
-                </th>
-              ))}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -1515,7 +1574,7 @@ function StockTable({
                     <td className="px-4 py-3">{row.floor ? `${row.floor}층` : '-'}</td>
                     <td className="px-4 py-3">{row.unit}</td>
                     {floor3 && <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.workQuantity)}</td>}
-                    {!floor3 && <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.opening)}</td>}
+                    {!floor3 && showOpening && <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.opening)}</td>}
                     <td className="px-4 py-3 text-right font-semibold tabular-nums text-blue-700 dark:text-blue-300">{formatQuantity(row.incoming)}</td>
                     <td className="px-4 py-3 text-right font-semibold tabular-nums text-orange-700 dark:text-orange-300">{formatQuantity(row.outgoing)}</td>
                     {floor3 && (

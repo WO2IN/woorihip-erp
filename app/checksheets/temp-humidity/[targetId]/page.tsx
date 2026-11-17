@@ -70,7 +70,7 @@ export default async function TempHumidityPage({
   }
 
   return (
-    <div className="temp-humidity-page min-h-dvh bg-background print:min-h-0">
+    <div className="temp-humidity-page min-h-dvh print:min-h-0">
       <style>{`
         @media print {
           #temp-humidity-print-sheet { height: auto !important; min-height: 0 !important; max-height: none !important; gap: 4px !important; padding: 0 !important; }

@@ -21,12 +21,12 @@ export default async function TempHumidityIndexPage({ searchParams }: { searchPa
   const targetList = selectedFloor ? allTargets.filter((item) => detectFloor(item.floor, item.name) === selectedFloor) : allTargets
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="min-h-dvh">
       <SiteHeader />
       <main className={PAGE_SHELL}>
         <PageHeader
           tone="amber"
-          icon={ThermometerIcon}
+          icon="thermometer"
           eyebrow="DAILY CHECK · 일일 점검"
           title="온/습도 체크시트"
           description="점검할 항목을 선택하세요."

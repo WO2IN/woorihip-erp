@@ -376,9 +376,16 @@ export async function getUserFromHeaders(headers: Headers): Promise<{
   displayName: string
   role: UserRole
   floor?: 1 | 2 | 3
+  jobTitle?: string
 } | null> {
   const user = await verifySessionToken(readCookie(headers.get('cookie'), SESSION_COOKIE))
   if (!user) return null
   void touchUserLastSeen(user.id)
-  return { id: user.id, displayName: user.displayName, role: user.role, floor: user.floor }
+  return {
+    id: user.id,
+    displayName: user.displayName,
+    role: user.role,
+    floor: user.floor,
+    ...(user.jobTitle ? { jobTitle: user.jobTitle } : {}),
+  }
 }

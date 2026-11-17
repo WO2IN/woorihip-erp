@@ -1,8 +1,8 @@
 'use client'
 
 import { useId, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Package } from 'lucide-react'
-import { Area, Bar, CartesianGrid, ComposedChart, ReferenceDot, Tooltip, XAxis, YAxis } from 'recharts'
+import { ArrowDown, ArrowUp, Package, TrendingDown } from 'lucide-react'
+import { Area, Bar, CartesianGrid, ComposedChart, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartContainer, type ChartConfig } from '@/components/ui/chart'
 import { LedgerEntry, displayDate, formatQuantity } from '@/lib/stock'
 
@@ -112,34 +112,6 @@ function axisDate(value: string, lastDate: string) {
   return `${Number(parts[1])}월 ${day}일`
 }
 
-function ChartCallout({
-  x,
-  y,
-  text = '',
-  align = 'center',
-  viewBox,
-}: {
-  x?: number
-  y?: number
-  text?: string
-  align?: 'center' | 'end'
-  viewBox?: { x?: number; y?: number }
-}) {
-  const leftX = x ?? viewBox?.x ?? 0
-  const topY = y ?? viewBox?.y ?? 0
-  const width = Math.max(88, text.length * 11 + 18)
-  const left = Math.max(4, align === 'end' ? leftX - width + 10 : leftX - width / 2)
-  const top = topY - 32
-  return (
-    <g>
-      <rect x={left} y={top} width={width} height={24} rx={8} fill="#2563eb" />
-      <text x={left + width / 2} y={top + 16} textAnchor="middle" fill="#ffffff" fontSize={12} fontWeight={700}>
-        {text}
-      </text>
-    </g>
-  )
-}
-
 function StockTooltip({
   active,
   payload,
@@ -152,7 +124,7 @@ function StockTooltip({
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md">
       <p className="font-semibold">{day.fullDate}</p>
-      <p className="mt-1 font-semibold text-blue-600">재고 {formatQuantity(day.running, day.unit)}</p>
+      <p className={`mt-1 font-semibold ${day.running < 0 ? 'text-red-600' : 'text-blue-600'}`}>재고 {formatQuantity(day.running, day.unit)}</p>
       {day.inbound > 0 && <p className="text-blue-600">입고 {formatQuantity(day.inbound, day.unit)}</p>}
       {day.outbound > 0 && <p className="text-orange-500">출고 {formatQuantity(day.outbound, day.unit)}</p>}
     </div>
@@ -320,8 +292,13 @@ export function StockDashboard({
   const outbound = rows.reduce((sum, row) => sum + (row.kind === '출고' ? row.quantity : 0), 0)
   const last = days[days.length - 1]
   const peak = days.reduce((best, day) => (day.running > best.running ? day : best), days[0])
+  const trough = days.reduce((best, day) => (day.running < best.running ? day : best), days[0])
   const unit = last?.unit || rows[0]?.unit || 'EA'
-  const chartDays = fillCalendar(days)
+  const chartDays = fillCalendar(days).map((day) => ({
+    ...day,
+    runningAbove: Math.max(day.running, 0),
+    runningBelow: Math.min(day.running, 0),
+  }))
   const low = Math.min(0, ...chartDays.map((day) => day.running))
   const high = Math.max(0, ...chartDays.map((day) => Math.max(day.running, day.inbound, day.outbound)))
   const scale = niceAxis(low, high || 1)
@@ -332,7 +309,7 @@ export function StockDashboard({
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.82fr)] lg:grid-rows-[auto_minmax(0,1fr)_minmax(190px,0.62fr)] lg:overflow-hidden">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:col-span-2">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5 lg:col-span-2">
         <KpiCard
           icon={<Package className="h-4 w-4" />}
           iconClass="bg-blue-50 text-blue-600"
@@ -349,6 +326,15 @@ export function StockDashboard({
           value={peak?.running ?? 0}
           unit={unit}
           hint={peak?.fullDate || '-'}
+        />
+        <KpiCard
+          icon={<TrendingDown className="h-4 w-4" />}
+          iconClass="bg-rose-50 text-rose-600"
+          label="최저 재고"
+          value={trough?.running ?? 0}
+          unit={unit}
+          hint={trough?.fullDate || '-'}
+          warn={(trough?.running ?? 0) < 0}
         />
         <KpiCard
           icon={<ArrowDown className="h-4 w-4" />}
@@ -389,11 +375,15 @@ export function StockDashboard({
             <p className="flex h-full items-center justify-center text-sm text-muted-foreground">기간 내 이동이 없습니다.</p>
           ) : (
             <ChartContainer config={chartConfig} className="aspect-auto h-full w-full [&_.recharts-surface]:outline-none [&_svg]:outline-none">
-              <ComposedChart data={chartDays} margin={{ top: 36, right: 8, left: 0, bottom: 0 }} barGap={1} barCategoryGap="28%" accessibilityLayer={false} onClick={handleClick}>
+              <ComposedChart data={chartDays} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={1} barCategoryGap="28%" accessibilityLayer={false} onClick={handleClick}>
                 <defs>
                   <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.28} />
                     <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.03} />
+                  </linearGradient>
+                  <linearGradient id={`${gradientId}-neg`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#ef4444" stopOpacity={0.12} />
+                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0.38} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -403,13 +393,9 @@ export function StockDashboard({
                 <Tooltip content={<StockTooltip />} cursor={{ stroke: '#cbd5e1' }} />
                 <Bar yAxisId="qty" dataKey="inbound" fill="#3b82f6" radius={[2, 2, 0, 0]} maxBarSize={10} isAnimationActive={false} />
                 <Bar yAxisId="qty" dataKey="outbound" fill="#fb923c" radius={[2, 2, 0, 0]} maxBarSize={10} isAnimationActive={false} />
-                <Area yAxisId="stock" dataKey="running" type="monotone" stroke="#2563eb" strokeWidth={2.5} fill={`url(#${gradientId})`} dot={false} activeDot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={false} />
-                {peak && (
-                  <ReferenceDot yAxisId="stock" x={peak.fullDate} y={peak.running} r={5} fill="#2563eb" stroke="#ffffff" strokeWidth={2} ifOverflow="visible" label={<ChartCallout text={`최고 재고 ${formatQuantity(peak.running, unit)}`} />} />
-                )}
-                {last && peak && last.fullDate !== peak.fullDate && (
-                  <ReferenceDot yAxisId="stock" x={last.fullDate} y={last.running} r={5} fill="#2563eb" stroke="#ffffff" strokeWidth={2} ifOverflow="visible" label={<ChartCallout text={`현재 재고 ${formatQuantity(last.running, unit)}`} align="end" />} />
-                )}
+                <Area yAxisId="stock" dataKey="runningBelow" type="monotone" baseValue={0} stroke="none" fill={`url(#${gradientId}-neg)`} dot={false} activeDot={false} isAnimationActive={false} />
+                <Area yAxisId="stock" dataKey="runningAbove" type="monotone" baseValue={0} stroke="none" fill={`url(#${gradientId})`} dot={false} activeDot={false} isAnimationActive={false} />
+                <Area yAxisId="stock" dataKey="running" type="monotone" stroke="#2563eb" strokeWidth={2.5} fill="none" dot={false} activeDot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={false} />
               </ComposedChart>
             </ChartContainer>
           )}

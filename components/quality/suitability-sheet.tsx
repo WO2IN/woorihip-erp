@@ -18,7 +18,9 @@ import {
   type SuitabilitySheetPersisted,
 } from '@/lib/suitability-ledger-bridge'
 import { JOB_TITLES_MENU } from '@/lib/user-job-titles'
+import { StampApprovalButton } from '@/components/approvals/stamp-approval-button'
 import { QualificationStatCard } from '@/components/quality/qualification-stat-card'
+import type { SuitabilityStampBook } from '@/lib/suitability-stamps'
 import { cn } from '@/lib/utils'
 
 type Scores = {
@@ -400,6 +402,8 @@ export function SuitabilitySheet() {
   const [step, setStep] = useState<ApprovalStep>('작성')
   const [approvalNames, setApprovalNames] = useState<Record<ApprovalStep, string>>({ 작성: '', 검토: '', 승인: '' })
   const [approvalSigns, setApprovalSigns] = useState<Partial<Record<ApprovalStep, string>>>({})
+  const [stampBook, setStampBook] = useState<SuitabilityStampBook>({})
+  const stampWrites = useRef(0)
   const [grantStatusesByPerson, setGrantStatusesByPerson] = useState<Record<string, GrantStepStatus[]>>({})
   const [practicalGateByPerson, setPracticalGateByPerson] = useState<Record<string, PracticalGate>>({})
   const [inspectorPracticalByPerson, setInspectorPracticalByPerson] = useState<
@@ -448,10 +452,12 @@ export function SuitabilitySheet() {
     Promise.all([
       fetch('/api/quality/qualifications', { cache: 'no-store' }),
       fetch('/api/quality/suitability', { cache: 'no-store' }),
+      fetch('/api/quality/suitability-stamps', { cache: 'no-store' }),
     ])
-      .then(async ([ledgerRes, storeRes]) => {
+      .then(async ([ledgerRes, storeRes, stampRes]) => {
         const ledgerJson = await ledgerRes.json()
         const storeJson = await storeRes.json()
+        const stampJson = await stampRes.json().catch(() => null)
         if (cancelled) return
 
         const rows: QualificationLedgerRow[] = Array.isArray(ledgerJson.data) ? ledgerJson.data : []
@@ -479,6 +485,9 @@ export function SuitabilitySheet() {
         if (store?.pipelineActiveByPerson) {
           setPipelineActiveByPerson(store.pipelineActiveByPerson)
         }
+        if (stampWrites.current === 0 && stampJson?.data && typeof stampJson.data === 'object') {
+          setStampBook(stampJson.data as SuitabilityStampBook)
+        }
 
         setHydrated(true)
         const firstVisible = merged.find((item) => !hidden.has(item.id))
@@ -493,6 +502,32 @@ export function SuitabilitySheet() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const load = () => {
+      const seen = stampWrites.current
+      fetch('/api/quality/suitability-stamps', { cache: 'no-store' })
+        .then((response) => response.json())
+        .then((body: { data?: SuitabilityStampBook }) => {
+          if (stampWrites.current !== seen || !body?.data || typeof body.data !== 'object') return
+          setStampBook(body.data)
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('focus', load)
+    return () => window.removeEventListener('focus', load)
+  }, [])
+
+  useEffect(() => {
+    if (!selectedId) return
+    const entry = stampBook[selectedId]
+    setApprovalSigns(entry?.signs ?? {})
+    setApprovalNames({
+      작성: entry?.names?.작성 ?? '',
+      검토: entry?.names?.검토 ?? '',
+      승인: entry?.names?.승인 ?? '',
+    })
+  }, [selectedId, stampBook])
 
   const persistSuitability = useCallback(async (): Promise<boolean> => {
     if (!user || !canPersist) return false
@@ -517,16 +552,22 @@ export function SuitabilitySheet() {
     const ledgerJson = await ledgerRes.json()
     if (!Array.isArray(ledgerJson.data)) return false
 
-    const nextRows = (ledgerJson.data as QualificationLedgerRow[]).map((row) => {
+    const ledgerRows = ledgerJson.data as QualificationLedgerRow[]
+    let ledgerDirty = false
+    const nextRows = ledgerRows.map((row) => {
       if (!ledgerIds.has(row.id)) return row
       const linked = people.find((item) => item.id === row.id)
-      return { ...row, suitabilityOnFile: linked?.scores != null }
+      const suitabilityOnFile = linked?.scores != null
+      if (row.suitabilityOnFile !== suitabilityOnFile) ledgerDirty = true
+      return { ...row, suitabilityOnFile }
     })
+
+    if (!ledgerDirty) return true
 
     const ledgerPut = await fetch('/api/quality/qualifications', {
       method: 'PUT',
       headers: getJsonAuthHeaders(user),
-      body: JSON.stringify({ rows: nextRows, detail: '적격성평가서 연동' }),
+      body: JSON.stringify({ rows: nextRows, detail: '적격성평가서 연동', silent: true }),
     })
     return ledgerPut.ok
   }, [
@@ -539,13 +580,17 @@ export function SuitabilitySheet() {
     user,
   ])
 
-  useEffect(() => {
-    if (!hydrated) return
-    const timer = window.setTimeout(() => {
-      void persistSuitability()
+  const persistRef = useRef(persistSuitability)
+  persistRef.current = persistSuitability
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const schedulePersist = useCallback(() => {
+    if (!hydrated || !canPersist) return
+    if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current)
+    persistTimerRef.current = window.setTimeout(() => {
+      void persistRef.current()
     }, 900)
-    return () => window.clearTimeout(timer)
-  }, [hydrated, persistSuitability])
+  }, [canPersist, hydrated])
 
   const person = visiblePeople.find((item) => item.id === selectedId) ?? null
   const total = totalOf(person?.scores ?? null)
@@ -568,6 +613,7 @@ export function SuitabilitySheet() {
       current[index] = next
       return { ...prev, [person.id]: current }
     })
+    schedulePersist()
   }
 
   const inspectorPracticalItems = useMemo(
@@ -597,6 +643,7 @@ export function SuitabilitySheet() {
       const next = PRACTICAL_GATE_CYCLE[(PRACTICAL_GATE_CYCLE.indexOf(current) + 1) % PRACTICAL_GATE_CYCLE.length]
       return { ...prev, [person.id]: next }
     })
+    schedulePersist()
   }
 
   const patchInspectorPractical = (
@@ -609,11 +656,13 @@ export function SuitabilitySheet() {
       const nextItems = { ...current, [itemId]: { ...current[itemId], ...patch } }
       return { ...prev, [person.id]: nextItems }
     })
+    schedulePersist()
   }
 
   const setPipelineActive = (stepId: string) => {
     if (!person) return
     setPipelineActiveByPerson((prev) => ({ ...prev, [person.id]: stepId }))
+    schedulePersist()
   }
   const scoreQualified = total != null && writtenOk
   const formMeta = EVAL_FORM_OPTIONS.find((item) => item.id === formKind) ?? EVAL_FORM_OPTIONS[0]
@@ -634,24 +683,36 @@ export function SuitabilitySheet() {
     }
   }
 
-  const signApproval = (label: ApprovalStep) => {
-    if (approvalSigns[label]) {
-      setApprovalSigns((prev) => {
-        const next = { ...prev }
-        delete next[label]
-        return next
-      })
-      setApprovalNames((prev) => ({ ...prev, [label]: '' }))
+  const writeStamp = async (label: ApprovalStep, action: 'sign' | 'clear' | 'name') => {
+    if (!person || !user) {
+      toast.error('로그인 후 서명할 수 있습니다.')
       return
     }
-    if (!user?.hasSignature || !user.id) {
+    stampWrites.current += 1
+    const response = await fetch('/api/quality/suitability-stamps', {
+      method: 'PATCH',
+      headers: getJsonAuthHeaders(user),
+      body: JSON.stringify({
+        personId: person.id,
+        step: label,
+        action,
+        name: action === 'sign' ? (approvalNames[label].trim() || user.displayName || '') : approvalNames[label],
+      }),
+    })
+    const result = await response.json().catch(() => null)
+    if (!response.ok || !result?.data) {
+      toast.error(typeof result?.error === 'string' ? result.error : '서명을 저장하지 못했습니다.')
+      return
+    }
+    setStampBook(result.data as SuitabilityStampBook)
+  }
+
+  const signApproval = (label: ApprovalStep) => {
+    if (!approvalSigns[label] && !user?.hasSignature) {
       toast.error('오른쪽 위 내 정보에서 서명 그림을 먼저 올려 주세요.')
       return
     }
-    setApprovalSigns((prev) => ({ ...prev, [label]: user.id }))
-    if (!approvalNames[label].trim() && user.displayName) {
-      setApprovalNames((prev) => ({ ...prev, [label]: user.displayName ?? '' }))
-    }
+    void writeStamp(label, approvalSigns[label] ? 'clear' : 'sign')
   }
 
   const summary = useMemo(() => {
@@ -680,6 +741,7 @@ export function SuitabilitySheet() {
   const patchScores = (next: Scores) => {
     if (!person) return
     setPeople((prev) => prev.map((item) => (item.id === person.id ? { ...item, scores: next } : item)))
+    schedulePersist()
   }
 
   const patchPerson = (updates: Partial<Person>) => {
@@ -698,6 +760,7 @@ export function SuitabilitySheet() {
         return merged
       }),
     )
+    schedulePersist()
   }
 
   const changePersonEvalType = (kind: EvalSheetKind) => {
@@ -714,6 +777,7 @@ export function SuitabilitySheet() {
       ...prev,
       [person.id]: DEFAULT_PIPELINE_ACTIVE[kind],
     }))
+    schedulePersist()
   }
 
   const baseScores = (): Scores =>
@@ -999,7 +1063,10 @@ export function SuitabilitySheet() {
               names={approvalNames}
               signs={approvalSigns}
               onNameChange={(label, value) => setApprovalNames((prev) => ({ ...prev, [label]: value }))}
+              onNameBlur={(label) => { void writeStamp(label, 'name') }}
               onSign={signApproval}
+              personId={person.id}
+              personName={person.name}
             />
           </header>
 
@@ -1774,21 +1841,27 @@ function SuitabilityApprovalStrip({
   names,
   signs,
   onNameChange,
+  onNameBlur,
   onSign,
+  personId,
+  personName,
 }: {
   step: ApprovalStep
   onStep: (step: ApprovalStep) => void
   names: Record<ApprovalStep, string>
   signs: Partial<Record<ApprovalStep, string>>
   onNameChange: (step: ApprovalStep, value: string) => void
+  onNameBlur: (step: ApprovalStep) => void
   onSign: (step: ApprovalStep) => void
+  personId: string
+  personName: string
 }) {
   return (
     <div className="flex shrink-0 overflow-hidden rounded-sm border border-slate-400 bg-white text-[10px] dark:border-slate-600">
       <div className="flex w-7 shrink-0 items-center justify-center self-stretch border-r border-slate-300 bg-slate-100 px-0.5 text-[10px] font-bold text-slate-700 [writing-mode:vertical-rl] dark:border-slate-600 dark:bg-muted/50 dark:text-slate-200">
         결재
       </div>
-      <div className="grid w-[10.5rem] grid-cols-3 divide-x divide-slate-300 dark:divide-slate-600">
+      <div className="grid w-[13.5rem] grid-cols-3 divide-x divide-slate-300 dark:divide-slate-600">
           {APPROVAL_STEPS.map((label) => {
             const signUserId = signs[label]
             return (
@@ -1832,11 +1905,21 @@ function SuitabilityApprovalStrip({
                     </button>
                   )}
                 </div>
+                {!signUserId ? (
+                  <div className="flex justify-center border-b border-slate-200 py-0.5 print:hidden dark:border-slate-600">
+                    <StampApprovalButton
+                      target={{ kind: 'suitability', personId, personName, step: label }}
+                      title={`적격성평가서 ${label}`}
+                      body={`${personName} 적격성평가서의 ${label} 서명`}
+                    />
+                  </div>
+                ) : null}
                 <input
                   aria-label={`${label} 성명`}
                   value={names[label]}
                   placeholder="성명"
                   onChange={(event) => onNameChange(label, event.target.value)}
+                  onBlur={() => onNameBlur(label)}
                   className="h-5 w-full min-w-0 border-0 bg-transparent px-0.5 text-center text-[9px] outline-none placeholder:text-muted-foreground/70"
                 />
               </div>

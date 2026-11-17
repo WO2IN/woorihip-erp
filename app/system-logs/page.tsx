@@ -144,10 +144,10 @@ export default function SystemLogsPage() {
   }
 
   return (
-    <div className="min-h-full bg-muted/20">
+    <div className="min-h-full">
       <div className={PAGE_SHELL}>
         <PageHeader
-          tone="steel"
+          tone="red"
           icon={Activity}
           eyebrow="SYSTEM · 시스템관리"
           title="시스템 로그"

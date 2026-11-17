@@ -55,14 +55,18 @@ export async function PUT(request: NextRequest) {
   }
 
   const data = normalizeStore(body.data ?? body)
-  await setSetting(KEY, data)
-  await appendAuditLog({
-    action: 'UPDATE',
-    target: 'suitability-sheet',
-    detail: '적격성평가서 저장',
-    userId: user.id,
-    userName: user.displayName,
-  })
+  const previous = normalizeStore(await getSetting<unknown>(KEY, null))
+  const changed = JSON.stringify(previous) !== JSON.stringify(data)
+  if (changed) {
+    await setSetting(KEY, data)
+    await appendAuditLog({
+      action: 'UPDATE',
+      target: 'suitability-sheet',
+      detail: '적격성평가서 저장',
+      userId: user.id,
+      userName: user.displayName,
+    })
+  }
   return NextResponse.json({ data })
 }
 

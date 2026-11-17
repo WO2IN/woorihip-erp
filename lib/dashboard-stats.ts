@@ -11,7 +11,8 @@ import {
   readProcessTemplates,
 } from './storage'
 import { selectAll } from './local-store'
-import { getSetting } from './records'
+import { getSetting, listRecords } from './records'
+import { APPROVALS_COLLECTION, type ApprovalRequest } from './approval'
 import { applyFloor3WorkLogs, buildLotFlow, buildStockGroups, collectMovements, compactDate } from './stock'
 import { getTodayCheckStatuses } from '@/app/actions/today-status'
 import { detectFloor } from './floor'
@@ -521,7 +522,26 @@ export async function getDashboardStats() {
       dailyRecords: dailyEntries.length,
     },
     audit: { count: auditLogs.length, since: firstLog, recent: recentLogs },
+    absence: await absenceLists(todayIso),
   }
+}
+
+async function absenceLists(today: string) {
+  const approvals = await listRecords<ApprovalRequest>(APPROVALS_COLLECTION)
+  const leaves = approvals.flatMap((item) => {
+    const draft = item.draft
+    if (!draft || draft.kind !== 'leave' || (draft.leaveType !== '연차' && draft.leaveType !== '반차')) return []
+    if (item.status !== 'approved') return []
+    if (draft.endDate < today) return []
+    return [{
+      id: item.id,
+      name: draft.applicantName,
+      start: draft.startDate,
+      end: draft.endDate,
+      leaveType: draft.leaveType,
+    }]
+  }).sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, 'ko'))
+  return { leaves }
 }
 
 export type DashboardStats = Awaited<ReturnType<typeof getDashboardStats>>

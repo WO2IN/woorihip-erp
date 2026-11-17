@@ -32,6 +32,8 @@ interface SearchableComboboxProps {
   appearance?: 'default' | 'form'
   /** 목록 하단 안내. 없으면 "N개 항목" */
   listCaption?: string
+  /** 목록 영역 높이. 없으면 기본 높이 */
+  listClassName?: string
 }
 
 export function SearchableCombobox({
@@ -49,6 +51,7 @@ export function SearchableCombobox({
   disabled = false,
   appearance = 'default',
   listCaption,
+  listClassName,
 }: SearchableComboboxProps) {
   const formStyle = appearance === 'form'
   const [open, setOpen] = useState(false)
@@ -209,7 +212,7 @@ export function SearchableCombobox({
         </div>
 
         {/* 목록 */}
-        <div ref={listRef} className={cn('max-h-52 overflow-y-auto py-1', formStyle && 'px-1 py-1.5')}>
+        <div ref={listRef} className={cn('max-h-52 overflow-y-auto py-1', formStyle && 'px-1 py-1.5', listClassName)}>
           {filtered.length === 0 && !showCreateOption && (
             <p className="py-6 text-center text-sm text-muted-foreground">검색 결과 없음</p>
           )}

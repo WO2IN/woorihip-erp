@@ -23,12 +23,12 @@ export default async function DailyCheckIndexPage({ searchParams }: { searchPara
     : allEquipment
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="min-h-dvh">
       <SiteHeader />
       <main className={PAGE_SHELL}>
         <PageHeader
           tone="amber"
-          icon={WrenchIcon}
+          icon="wrench"
           eyebrow="DAILY CHECK · 일일 점검"
           title="설비 일상점검 체크시트"
           description="점검할 설비를 선택하세요."

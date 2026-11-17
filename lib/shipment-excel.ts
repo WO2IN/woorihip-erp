@@ -230,6 +230,7 @@ export async function buildShipmentWorkbook(input: {
   stock: ShipmentExcelStockRow[]
   ledger: ShipmentExcelLedgerRow[]
   floor3?: boolean
+  includeOpening?: boolean
   exportedAt?: Date
 }) {
   const exportedAt = input.exportedAt ?? new Date()
@@ -242,7 +243,11 @@ export async function buildShipmentWorkbook(input: {
     workbook,
     '재고현황',
     input.floor3 ? '입/출고 관리  ·  재고관리 3층' : '입/출고 관리  ·  재고현황',
-    input.floor3 ? FLOOR3_STOCK_COLUMNS : STOCK_COLUMNS,
+    input.floor3
+      ? FLOOR3_STOCK_COLUMNS
+      : input.includeOpening
+        ? STOCK_COLUMNS
+        : STOCK_COLUMNS.filter((column) => column.key !== 'opening'),
     input.stock,
     TEAL,
     exportedAt,

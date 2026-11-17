@@ -1,9 +1,12 @@
-import type { ReactNode } from 'react'
+'use client'
+
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle,
   Boxes,
   CalendarDays,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Factory,
@@ -11,10 +14,10 @@ import {
   Info,
   ShieldCheck,
   Truck,
-  User,
   Users,
 } from 'lucide-react'
 import { MovementTrend } from '@/components/dashboard/movement-trend'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { DashboardStats } from '@/lib/dashboard-stats'
 import { PAGE_INSET } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
@@ -40,8 +43,128 @@ function shortDate(value: string) {
   return digits.length >= 8 ? `${digits.slice(4, 6)}.${digits.slice(6, 8)}` : value
 }
 
-export function HomeBoard({ data, userName }: { data: DashboardStats; userName?: string }) {
-  const date = new Date(`${data.today.date}T00:00:00`)
+export function HomeBoard({ data }: { data: DashboardStats }) {
+  useEffect(() => {
+    const main = document.querySelector('.app-shell-main')
+    if (!(main instanceof HTMLElement)) return
+    main.dataset.pageTone = 'blue'
+    main.dataset.pageWave = '1'
+    const started = performance.now()
+    let frame = 0
+    const tick = (now: number) => {
+      const t = (now - started) / 1000
+      const dark = document.documentElement.classList.contains('dark')
+      const light = dark ? 0.4 : 0.9
+      const chroma = dark ? 0.07 : 0.055
+      const alpha = dark ? 0.55 : 0.5
+      const breathe = Math.sin(t / 40) * 12
+      main.style.setProperty('--wash-x', `${36 + Math.sin(t * 0.07) * 24}%`)
+      main.style.setProperty('--wash-y', `${16 + Math.cos(t * 0.05) * 14}%`)
+      main.style.setProperty('--wash-x2', `${72 + Math.cos(t * 0.045) * 20}%`)
+      main.style.setProperty('--wash-y2', `${74 + Math.sin(t * 0.055) * 16}%`)
+      main.style.setProperty('--wash-x3', `${48 + Math.sin(t * 0.035 + 1.4) * 22}%`)
+      main.style.setProperty('--wash-y3', `${46 + Math.cos(t * 0.03) * 16}%`)
+      main.style.setProperty('--wash-violet', `oklch(${light} ${chroma} ${248 + breathe} / ${alpha})`)
+      main.style.setProperty('--wash-amber', `oklch(${light} ${chroma * 0.85} ${72 + breathe * 0.5} / ${alpha * 0.75})`)
+      main.style.setProperty('--wash-mint', `oklch(${light} ${chroma * 0.7} ${198 + breathe * 0.7} / ${alpha * 0.65})`)
+      frame = window.requestAnimationFrame(tick)
+    }
+    frame = window.requestAnimationFrame(tick)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      if (main.dataset.pageTone === 'blue') delete main.dataset.pageTone
+      delete main.dataset.pageWave
+      for (const name of ['--wash-x', '--wash-y', '--wash-x2', '--wash-y2', '--wash-x3', '--wash-y3', '--wash-violet', '--wash-amber', '--wash-mint']) {
+        main.style.removeProperty(name)
+      }
+    }
+  }, [])
+
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef({ x: 0, y: 0, id: -1, active: false, moved: false })
+  const wheelAt = useRef(0)
+  const [page, setPage] = useState(0)
+  const [dragX, setDragX] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const pageCount = 2
+
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const blockSelect = (event: Event) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('input, textarea, select, option')) return
+      event.preventDefault()
+    }
+    el.addEventListener('selectstart', blockSelect)
+    return () => el.removeEventListener('selectstart', blockSelect)
+  }, [])
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    dragRef.current = { x: event.clientX, y: event.clientY, id: event.pointerId, active: false, moved: false }
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (drag.id !== event.pointerId) return
+    const dx = event.clientX - drag.x
+    const dy = event.clientY - drag.y
+    if (!drag.active) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+      if (Math.abs(dy) > Math.abs(dx)) {
+        drag.id = -1
+        return
+      }
+      drag.active = true
+      drag.moved = true
+      setDragging(true)
+      window.getSelection()?.removeAllRanges()
+      viewportRef.current?.setPointerCapture(event.pointerId)
+    }
+    const blocked = (page === 0 && dx > 0) || (page === pageCount - 1 && dx < 0)
+    setDragX(blocked ? 0 : dx)
+  }
+
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (drag.id !== event.pointerId) return
+    const dx = event.clientX - drag.x
+    if (drag.active) {
+      const width = viewportRef.current?.clientWidth || 1
+      const threshold = Math.min(140, width * 0.18)
+      if (dx <= -threshold) setPage((current) => Math.min(pageCount - 1, current + 1))
+      else if (dx >= threshold) setPage((current) => Math.max(0, current - 1))
+    }
+    drag.id = -1
+    drag.active = false
+    setDragging(false)
+    setDragX(0)
+    window.setTimeout(() => {
+      dragRef.current.moved = false
+    }, 0)
+  }
+
+  const onClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragRef.current.moved) return
+    event.preventDefault()
+    event.stopPropagation()
+    dragRef.current.moved = false
+  }
+
+  const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (Math.abs(event.deltaX) < 30 || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
+    const now = performance.now()
+    if (now - wheelAt.current < 650) return
+    if (event.deltaX > 0 && page < pageCount - 1) {
+      wheelAt.current = now
+      setPage(page + 1)
+    } else if (event.deltaX < 0 && page > 0) {
+      wheelAt.current = now
+      setPage(page - 1)
+    }
+  }
+
   const done = data.today.progress.reduce((sum, item) => sum + item.done, 0)
   const due = data.today.progress.reduce((sum, item) => sum + item.due, 0)
   const progress = due > 0 ? Math.round((done / due) * 100) : 0
@@ -56,32 +179,37 @@ export function HomeBoard({ data, userName }: { data: DashboardStats; userName?:
   const span = data.process.span
 
   return (
-    <div className={cn(PAGE_INSET, 'space-y-5')}>
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-300">WOORI-HIP · 통합 운영 현황</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-[28px]">통합 운영 대시보드</h1>
-          <p className="mt-1 text-sm text-muted-foreground">효율적인 업무 관리를 위해 주요 현황을 한눈에 확인할 수 있습니다.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-10 items-center gap-2 rounded-xl border bg-card px-4 text-sm font-medium shadow-sm">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            {data.today.date.replace(/-/g, '.')} ({WEEKDAY[date.getDay()]}) 기준
-          </span>
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300" title={userName}>
-            <User className="h-5 w-5" />
-          </span>
-        </div>
-      </header>
+    <div
+      ref={viewportRef}
+      className="absolute inset-0 select-none overflow-hidden [&_*]:select-none"
+      onDragStart={(event) => event.preventDefault()}
+      style={{ touchAction: 'pan-y' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onClickCapture={onClickCapture}
+      onWheel={onWheel}
+    >
+      <div
+        className="flex h-full w-full"
+        style={{
+          transform: `translate3d(calc(${-page * 100}% + ${dragX}px), 0, 0)`,
+          transition: dragging ? 'none' : 'transform 460ms cubic-bezier(0.22, 1, 0.36, 1)',
+        }}
+      >
+        <section className="h-full w-full shrink-0 overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden" aria-label="운영 현황">
+    <div className={cn(PAGE_INSET, 'space-y-6 pb-16')}>
+      <BoardHeader date={data.today.date} />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi href="/shipment" icon={<Truck className="h-7 w-7" />} iconClass="bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300" label="오늘 입 / 출고" value={`${num(data.process.todayIn)} / ${num(data.process.todayOut)}`} unit="건" hint="입고 / 출고" />
         <Kpi href="/shipment?tab=stock" icon={<Boxes className="h-7 w-7" />} iconClass="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300" label="재고 부족" value={num(negative)} unit="종" hint="현재고가 0보다 작은 품목" />
         <Kpi href="/explorer" icon={<FileText className="h-7 w-7" />} iconClass="bg-violet-100 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300" label="오늘 성적서" value={num(data.quality.todayCertificates)} unit="건" hint={`이번 달 ${num(data.quality.monthCertificates)}건`} />
         <Kpi href="/checksheets" icon={<Clock className="h-7 w-7" />} iconClass="bg-orange-100 text-orange-500 dark:bg-orange-500/20 dark:text-orange-300" label="오늘 점검 진행률" value={String(progress)} unit="%" hint={due > 0 ? `${done} / ${due}개소 완료` : '오늘 점검 대상 없음'} />
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-5 md:grid-cols-2 2xl:grid-cols-4">
         <ModuleCard
           tone="blue"
           icon={Truck}
@@ -142,7 +270,7 @@ export function HomeBoard({ data, userName }: { data: DashboardStats; userName?:
         />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)_minmax(0,1fr)]">
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)_minmax(0,1fr)]">
         <MovementTrend week={data.process.views.trend.week} month={data.process.views.trend.month} />
 
         <Panel icon={<AlertTriangle className="h-4 w-4" />} title="품질 불량 현황" href="/quality/nonconformity" linkLabel="상세보기">
@@ -165,6 +293,210 @@ export function HomeBoard({ data, userName }: { data: DashboardStats; userName?:
         </Panel>
       </section>
     </div>
+        </section>
+        <section className="h-full w-full shrink-0 overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden" aria-label="추가 화면">
+          <DetailBoard date={data.today.date} leaves={data.absence.leaves} />
+        </section>
+      </div>
+      {page > 0 && (
+        <button
+          type="button"
+          aria-label="이전 페이지"
+          onClick={() => setPage((current) => Math.max(0, current - 1))}
+          className="absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border bg-card/95 text-slate-700 shadow-md hover:bg-card dark:text-slate-100"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
+      {page < pageCount - 1 && (
+        <button
+          type="button"
+          aria-label="다음 페이지"
+          onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+          className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border bg-card/95 text-slate-700 shadow-md hover:bg-card dark:text-slate-100"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      )}
+      <div className="no-print absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card/95 px-3 py-2 shadow-sm">
+        {['운영 현황', '추가 화면'].map((label, index) => (
+          <button
+            key={label}
+            type="button"
+            aria-label={label}
+            aria-current={index === page ? 'page' : undefined}
+            onClick={() => setPage(index)}
+            className={cn('h-2 rounded-full transition-all', index === page ? 'w-6 bg-blue-600' : 'w-2 bg-slate-300 hover:bg-slate-400 dark:bg-slate-600')}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BoardHeader({ date }: { date: string }) {
+  const weekday = WEEKDAY[new Date(`${date}T00:00:00`).getDay()]
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-300">WOORI-HIP · 통합 운영 현황</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-[28px]">통합 운영 대시보드</h1>
+        <p className="mt-1 text-sm text-muted-foreground">효율적인 업무 관리를 위해 주요 현황을 한눈에 확인할 수 있습니다.</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 items-center gap-2 rounded-xl border bg-card px-4 text-sm font-medium shadow-sm">
+          <CalendarDays className="h-4 w-4 text-muted-foreground" />
+          {date.replace(/-/g, '.')} ({weekday}) 기준
+        </span>
+      </div>
+    </header>
+  )
+}
+
+function DetailBoard({ date, leaves }: { date: string; leaves: DashboardStats['absence']['leaves'] }) {
+  return (
+    <div className={cn(PAGE_INSET, 'flex h-full min-h-0 flex-col gap-6 pb-16')}>
+      <BoardHeader date={date} />
+      <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-5">
+        <BoardShell title="공지사항" icon={<Info className="h-4 w-4 text-sky-600 dark:text-sky-300" />} />
+        <AbsenceBoard leaves={leaves} />
+        <BoardShell title="설비 현황" icon={<Factory className="h-4 w-4 text-violet-600 dark:text-violet-300" />} />
+        <BoardShell title="문서 현황" icon={<FileText className="h-4 w-4 text-teal-600 dark:text-teal-300" />} />
+      </div>
+    </div>
+  )
+}
+
+type AbsenceKind = '연차' | '반차' | '출장'
+
+type AbsenceRow = {
+  id: string
+  name: string
+  start: string
+  end: string
+  kind: AbsenceKind
+  place?: string
+  reason?: string
+}
+
+const ABSENCE_BADGE: Record<AbsenceKind, string> = {
+  연차: BADGE.green,
+  반차: BADGE.violet,
+  출장: BADGE.orange,
+}
+
+function temporaryAbsences(): AbsenceRow[] {
+  const day = (offset: number) => {
+    const date = new Date()
+    date.setDate(date.getDate() + offset)
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const dateOfMonth = String(date.getDate()).padStart(2, '0')
+    return `${date.getFullYear()}-${month}-${dateOfMonth}`
+  }
+  return [
+    { id: 'temp-leave-1', name: '홍길동', start: day(0), end: day(2), kind: '연차' },
+    { id: 'temp-trip-1', name: '김민준', start: day(1), end: day(3), kind: '출장', place: '부산', reason: '고객사 품질 회의' },
+    { id: 'temp-leave-2', name: '이서연', start: day(4), end: day(4), kind: '반차' },
+    { id: 'temp-trip-2', name: '박서준', start: day(6), end: day(8), kind: '출장', place: '창원', reason: '설비 점검 지원' },
+  ]
+}
+
+function leavePeriod(start: string, end: string) {
+  const label = (value: string) => {
+    const digits = String(value ?? '').replace(/\D/g, '')
+    if (digits.length < 8) return value
+    return `${Number(digits.slice(4, 6))}월 ${Number(digits.slice(6, 8))}일`
+  }
+  return start === end ? label(start) : `${label(start)} – ${label(end)}`
+}
+
+function BoardShell({ title, icon }: { title: string; icon: ReactNode }) {
+  return (
+    <section aria-label={title} className="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex items-center border-b px-4 py-3">
+        <h2 className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
+          {icon}
+          {title}
+        </h2>
+      </div>
+    </section>
+  )
+}
+
+function AbsenceBoard({ leaves }: { leaves: DashboardStats['absence']['leaves'] }) {
+  const [trip, setTrip] = useState<AbsenceRow | null>(null)
+  const rows: AbsenceRow[] = [
+    ...temporaryAbsences(),
+    ...leaves.map((row) => ({ ...row, kind: row.leaveType })),
+  ]
+  return (
+    <article className="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <h2 className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
+          <CalendarDays className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+          출장 및 휴가
+        </h2>
+        <Link href="/approvals" className="flex items-center gap-0.5 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
+          결재<ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden">
+        {rows.length === 0 ? (
+          <p className="rounded-xl border border-dashed px-3 py-4 text-sm text-muted-foreground">등록된 출장·휴가가 없습니다.</p>
+        ) : (
+          <ul className="space-y-2">
+            {rows.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => row.kind === '출장' && setTrip(row)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-xl border bg-slate-50/70 px-3 py-2.5 text-left dark:bg-slate-900/40',
+                    row.kind === '출장' ? 'cursor-pointer hover:border-orange-300 hover:bg-orange-50/70 dark:hover:border-orange-500/40 dark:hover:bg-orange-950/30' : 'cursor-default',
+                  )}
+                >
+                  <span className={cn('w-12 shrink-0 rounded-md py-1 text-center text-[11px] font-semibold ring-1', ABSENCE_BADGE[row.kind])}>
+                    {row.kind}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">{row.name}</span>
+                    {row.kind === '출장' && row.place && <span className="block truncate text-xs text-orange-700 dark:text-orange-300">{row.place}</span>}
+                  </span>
+                  <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[13px] font-semibold tabular-nums text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white">{leavePeriod(row.start, row.end)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <Dialog open={trip != null} onOpenChange={(open) => { if (!open) setTrip(null) }}>
+        <DialogContent overlayClassName="!z-[70]" className="!z-[80] sm:max-w-md">
+          {trip && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold">{trip.name} 출장</DialogTitle>
+                <DialogDescription>출장 상세 내용입니다.</DialogDescription>
+              </DialogHeader>
+              <dl className="space-y-3">
+                <div className="rounded-xl border px-3 py-2.5">
+                  <dt className="text-xs font-semibold text-muted-foreground">출장지</dt>
+                  <dd className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{trip.place || '미정'}</dd>
+                </div>
+                <div className="rounded-xl border px-3 py-2.5">
+                  <dt className="text-xs font-semibold text-muted-foreground">기간</dt>
+                  <dd className="mt-1 text-sm font-medium tabular-nums text-slate-900 dark:text-white">{leavePeriod(trip.start, trip.end)}</dd>
+                </div>
+                <div className="rounded-xl border px-3 py-2.5">
+                  <dt className="text-xs font-semibold text-muted-foreground">사유</dt>
+                  <dd className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{trip.reason || '등록된 사유가 없습니다.'}</dd>
+                </div>
+              </dl>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </article>
   )
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
 import {
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { LogOut, User, ShieldCheck, Eye, Pencil, PenLine, Trash2, Upload } from 'lucide-react'
+import { ClipboardList, LogOut, User, ShieldCheck, Eye, Pencil, PenLine, Trash2, Upload } from 'lucide-react'
 import { SessionUser, UserRole } from '@/lib/types'
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -37,6 +38,7 @@ const ROLE_COLOR: Record<UserRole, string> = {
 
 export function UserMenu() {
   const { user, logout, replaceUser } = useAuth()
+  const router = useRouter()
   const [accountOpen, setAccountOpen] = useState(false)
   if (!user) return null
 
@@ -82,6 +84,10 @@ export function UserMenu() {
           <DropdownMenuItem onClick={() => setAccountOpen(true)} className="cursor-pointer gap-2">
             <User className="w-4 h-4" />
             내 정보
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push('/approvals')} className="cursor-pointer gap-2">
+            <ClipboardList className="w-4 h-4" />
+            결재 현황
           </DropdownMenuItem>
 
           <DropdownMenuItem

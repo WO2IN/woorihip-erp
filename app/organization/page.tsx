@@ -142,7 +142,7 @@ export default function OrganizationPage() {
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        tone="slate"
+        tone="orange"
         icon={Network}
         eyebrow="ORGANIZATION · 조직/사용자"
         title="조직 현황"
