@@ -398,6 +398,16 @@
   margin: 5mm;
 }
 
+@page incoming-inspection {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@page outgoing-report {
+  size: A4 portrait;
+  margin: 0;
+}
+
 .work-date-empty::-webkit-datetime-edit,
 .work-date-empty::-webkit-datetime-edit-fields-wrapper,
 .work-date-empty::-webkit-datetime-edit-text,
@@ -464,6 +474,176 @@
 
   body.lot-card-print .lot-card-sheet svg {
     max-width: none !important;
+  }
+
+  body.incoming-inspection-print {
+    page: incoming-inspection;
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  body.incoming-inspection-print .app-shell > aside,
+  body.incoming-inspection-print .app-shell-column > header,
+  body.incoming-inspection-print .no-print {
+    display: none !important;
+  }
+
+  body.incoming-inspection-print .app-shell,
+  body.incoming-inspection-print .app-shell-column,
+  body.incoming-inspection-print .app-shell-main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+    background-image: none !important;
+    padding: 0 !important;
+  }
+
+  body.incoming-inspection-print .incoming-inspection-screen,
+  body.incoming-inspection-print .incoming-inspection-work {
+    display: block !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    min-height: 0 !important;
+  }
+
+  body.incoming-inspection-print .incoming-sheet {
+    width: 210mm;
+    height: 297mm;
+    max-width: 210mm;
+    margin: 0;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.incoming-inspection-print .incoming-sheet input,
+  body.incoming-inspection-print .incoming-sheet textarea,
+  body.incoming-inspection-print .incoming-sheet select {
+    color: #0f172a !important;
+    background: transparent !important;
+  }
+
+  body.incoming-inspection-print .incoming-sheet .sheet-combo {
+    height: auto !important;
+    justify-content: center;
+    color: #0f172a !important;
+    background: transparent !important;
+  }
+
+  body.incoming-inspection-print .incoming-sheet .sheet-combo svg,
+  body.incoming-inspection-print .incoming-sheet .sheet-combo [role='button'] {
+    display: none !important;
+  }
+
+  body.outgoing-report-print {
+    page: outgoing-report;
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  body.outgoing-report-print .app-shell > aside,
+  body.outgoing-report-print .app-shell-column > header,
+  body.outgoing-report-print .no-print {
+    display: none !important;
+  }
+
+  body.outgoing-report-print .app-shell,
+  body.outgoing-report-print .app-shell-column,
+  body.outgoing-report-print .app-shell-main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+    background-image: none !important;
+    padding: 0 !important;
+  }
+
+  body.outgoing-report-print .outgoing-report-screen,
+  body.outgoing-report-print .outgoing-report-work {
+    display: block !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    min-height: 0 !important;
+  }
+
+  body.outgoing-report-print .outgoing-report-preview {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet-scroll {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet {
+    page: outgoing-report;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    page-break-after: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    padding: 3mm 3.5mm !important;
+    font-size: 13px !important;
+    line-height: 1.25 !important;
+    overflow: hidden !important;
+    zoom: 1 !important;
+    transform: none !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet table {
+    font-size: inherit !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet th,
+  body.outgoing-report-print .outgoing-sheet td {
+    padding-top: 0.35mm !important;
+    padding-bottom: 0.35mm !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet .text-\[8px\] {
+    font-size: 13px !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet .text-\[16px\] {
+    font-size: 24px !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet .text-\[10px\] {
+    font-size: 13px !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet .text-\[6px\] {
+    font-size: 9px !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet svg {
+    max-height: 100% !important;
+  }
+
+  body.outgoing-report-print .outgoing-sheet input,
+  body.outgoing-report-print .outgoing-sheet textarea {
+    color: #0f172a !important;
+    background: transparent !important;
+    border: 0 !important;
   }
 }
 
@@ -1382,6 +1562,11 @@
     margin: 4mm;
   }
 
+  @page outgoing-report {
+    size: A4 portrait;
+    margin: 0;
+  }
+
   @page suitability-one {
     size: A4 portrait;
     margin: 8mm;
@@ -2087,6 +2272,15 @@ body.kpi-close-print-delivery .kpi-close-report td {
   vertical-align: middle;
 }
 
+/* 3정 5S · 설비 일상점검 표는 뒤 배경(그라데이션)이 비치지 않게 흰색(카드색) */
+.checksheet-page .print-sheet {
+  background-color: var(--card);
+}
+
+.checksheet-page .print-issue-table table {
+  background-color: var(--card);
+}
+
 @page checksheet-print {
   size: A4 landscape;
   margin: 4mm;
@@ -2489,6 +2683,37 @@ body.kpi-close-print-delivery .kpi-close-report td {
     font-size: 8px !important;
   }
 
+  /* 점검표(3정 5S · 설비 일상점검 · 온/습도)는 무조건 A4 가로 1장.
+     앱 껍데기의 하단 여백(pb-10)이 인쇄에도 남아 빈 2장째가 생기던 문제를 막고,
+     껍데기 높이를 한 장(210mm - 여백 8mm)에 고정해 넘치는 내용은 잘라낸다. */
+  body:has(.checksheet-print-page) .app-shell,
+  body:has(.temp-humidity-page) .app-shell {
+    height: 200mm !important;
+    min-height: 0 !important;
+    max-height: 200mm !important;
+    overflow: hidden !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  body:has(.checksheet-print-page) .app-shell-column,
+  body:has(.temp-humidity-page) .app-shell-column,
+  body:has(.checksheet-print-page) .app-shell-main,
+  body:has(.temp-humidity-page) .app-shell-main {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: 200mm !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body:has(.checksheet-print-page),
+  body:has(.temp-humidity-page) {
+    height: auto !important;
+    max-height: 200mm !important;
+    overflow: hidden !important;
+  }
+
 }
 
 /* Login backdrop — blue wordmark + amber swoosh */
@@ -2784,3 +3009,31 @@ body.kpi-close-print-delivery .kpi-close-report td {
     background-color: #1e293b !important;
   }
 }
+
+/* 제품 이력 창의 서류 미리보기(iframe, 주소에 ?embed=1). 메뉴·머리글·목록·버튼을 숨기고 서류 한 장만 보여 준다. */
+html.embed-preview .app-shell > aside,
+html.embed-preview .app-shell-column > header,
+html.embed-preview .no-print {
+  display: none !important;
+}
+
+html.embed-preview .app-shell-main {
+  padding: 12px !important;
+  background: #e2e8f0 !important;
+  background-image: none !important;
+}
+
+html.embed-preview .lot-card-screen,
+html.embed-preview .incoming-inspection-screen,
+html.embed-preview .outgoing-report-screen {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+html.embed-preview .outgoing-sheet-scroll {
+  overflow: visible !important;
+  cursor: default !important;
+}
+

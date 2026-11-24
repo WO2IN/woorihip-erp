@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useSecretToggle } from '@/hooks/use-secret-toggle'
 import { ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -15,9 +16,14 @@ import {
   ProcessCheckRecord,
   ProcessFieldSpec,
   ProcessTemplate,
+  answersForDisplay,
+  displayProcessAnswer,
+  fieldStandardText,
   isOutOfRange,
+  processValuesRevealed,
   recordFloor,
   sectionsOf,
+  splitChoiceAnswer,
 } from '@/lib/process-checklist'
 import { displayDate, formatQuantity } from '@/lib/stock'
 import { cn } from '@/lib/utils'
@@ -38,13 +44,60 @@ function compactDate(value: string) {
   return value.replace(/\D/g, '').slice(0, 8)
 }
 
-function selectedProduct(record: ProcessCheckRecord, template?: ProcessTemplate) {
-  if (!template) return ''
+function goodQuantity(row: Floor3WorkLog) {
+  return (row.workQuantity || 0) - (row.defectQuantity || 0) - (row.sampleQuantity || 0)
+}
+
+type WorkLogUnitTotal = {
+  unit: string
+  work: number
+  defect: number
+  sample: number
+  good: number
+}
+
+function summarizeWorkLogs(rows: Floor3WorkLog[]): { count: number; units: WorkLogUnitTotal[] } {
+  const buckets = new Map<string, { work: number; defect: number; sample: number }>()
+  for (const row of rows) {
+    const unit = row.unit?.trim() || 'EA'
+    const cur = buckets.get(unit) ?? { work: 0, defect: 0, sample: 0 }
+    cur.work += row.workQuantity || 0
+    cur.defect += row.defectQuantity || 0
+    cur.sample += row.sampleQuantity || 0
+    buckets.set(unit, cur)
+  }
+  const units = [...buckets.entries()]
+    .map(([unit, v]) => ({
+      unit,
+      work: v.work,
+      defect: v.defect,
+      sample: v.sample,
+      good: v.work - v.defect - v.sample,
+    }))
+    .sort((a, b) => a.unit.localeCompare(b.unit, 'ko'))
+  return { count: rows.length, units }
+}
+
+function formatUnitTotals(units: WorkLogUnitTotal[], pick: keyof WorkLogUnitTotal) {
+  if (units.length === 0) return '—'
+  return units.map((row) => formatQuantity(row[pick] as number, row.unit)).join(' · ')
+}
+
+function formatDefectTotals(units: WorkLogUnitTotal[]) {
+  if (units.length === 0) return null
+  return units.map((row) => {
+    const rate = formatDefectRate(row.defect, row.work)
+    const base = formatQuantity(row.defect, row.unit)
+    return rate ? `${base} (${rate})` : base
+  }).join(' · ')
+}
+
+function selectedProducts(record: ProcessCheckRecord, template?: ProcessTemplate) {
+  if (!template) return []
   const field = sectionsOf(template)
     .flatMap((section) => section.fields)
     .find((item) => item.type === 'choice' && item.label === '생산품목')
-  const value = field ? record.answers[field.id] : ''
-  return typeof value === 'string' ? value.trim() : ''
+  return field ? splitChoiceAnswer(record.answers[field.id]) : []
 }
 
 function checksForWork(row: Floor3WorkLog, checks: ProcessCheckRecord[], templates: ProcessTemplate[]) {
@@ -53,8 +106,8 @@ function checksForWork(row: Floor3WorkLog, checks: ProcessCheckRecord[], templat
     .filter((record) => {
       if (recordFloor(record) !== (row.floor ?? 3) || compactDate(record.writtenDate) !== date) return false
       const template = templates.find((item) => item.id === record.lineId)
-      const picked = selectedProduct(record, template)
-      if (picked) return picked === row.product
+      const picked = selectedProducts(record, template)
+      if (picked.length > 0) return picked.includes(row.product)
       return (template?.name || record.product || '').trim() === row.product
     })
     .sort((a, b) => a.writtenTime.localeCompare(b.writtenTime))
@@ -119,14 +172,7 @@ export function Floor3WorkLogPanel({
     [logs],
   )
 
-  const totals = rows.reduce(
-    (sum, row) => ({
-      work: sum.work + (row.workQuantity || 0),
-      defect: sum.defect + (row.defectQuantity || 0),
-      sample: sum.sample + (row.sampleQuantity || 0),
-    }),
-    { work: 0, defect: 0, sample: 0 },
-  )
+  const summary = useMemo(() => summarizeWorkLogs(rows), [rows])
   const companyOptions = useMemo(() => {
     const values = new Set([...settingCompanies, ...catalog.map((item) => item.company)].filter(Boolean))
     return [...values].sort((a, b) => a.localeCompare(b, 'ko'))
@@ -228,18 +274,18 @@ export function Floor3WorkLogPanel({
         )}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] text-sm">
+        <table className="w-full min-w-[1040px] text-sm">
           <thead className="border-b bg-slate-50 text-left text-xs font-medium text-slate-500 dark:bg-muted dark:text-slate-400">
             <tr>
-              {['날짜', ...(floor === 'all' ? ['층'] : []), '업체', '품목', '작업수량', '불량수', '검사시료', '총 작업수량', ...(editable ? [''] : [])].map((head) => (
-                <th key={head || 'actions'} className={cn('px-4 py-2.5 font-medium', ['작업수량', '불량수', '검사시료', '총 작업수량'].includes(head) && 'text-right')}>{head}</th>
+              {['날짜', ...(floor === 'all' ? ['층'] : []), '업체', '품목', '작업수량', '불량수', '검사시료', '양품', '총 작업수량', ...(editable ? [''] : [])].map((head) => (
+                <th key={head || 'actions'} className={cn('px-4 py-2.5 font-medium', ['작업수량', '불량수', '검사시료', '양품', '총 작업수량'].includes(head) && 'text-right')}>{head}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-white/10">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={editable ? (floor === 'all' ? 9 : 8) : (floor === 'all' ? 8 : 7)} className="px-4 py-16 text-center text-muted-foreground">
+                <td colSpan={editable ? (floor === 'all' ? 10 : 9) : (floor === 'all' ? 9 : 8)} className="px-4 py-16 text-center text-muted-foreground">
                   등록된 작업일보가 없습니다.
                 </td>
               </tr>
@@ -269,6 +315,7 @@ export function Floor3WorkLogPanel({
                   {rate ? <span className="ml-1.5 text-xs text-slate-400">{rate}</span> : null}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{formatQuantity(row.sampleQuantity)}</td>
+                <td className={cn('whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums', goodQuantity(row) < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white')}>{formatQuantity(goodQuantity(row), row.unit)}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-slate-900 dark:text-white">{formatQuantity(row.totalQuantity, row.unit)}</td>
                 {editable && (
                   <td className="px-3 py-2">
@@ -290,19 +337,35 @@ export function Floor3WorkLogPanel({
             <tfoot className="border-t bg-slate-50 text-sm text-slate-600 dark:border-white/10 dark:bg-muted dark:text-slate-300">
               <tr>
                 <td className="px-4 py-2.5" colSpan={floor === 'all' ? 4 : 3}>
-                  합계 <span className="tabular-nums text-slate-400">{rows.length}건</span>
+                  합계 <span className="tabular-nums text-slate-400">{summary.count}건</span>
+                  {summary.units.length > 1 ? (
+                    <span className="mt-0.5 block text-[11px] font-normal text-slate-400">단위별 합산</span>
+                  ) : null}
                 </td>
                 <td className="px-4 py-2.5 text-right font-medium tabular-nums text-slate-900 dark:text-white">
-                  {formatQuantity(totals.work)}
+                  {formatUnitTotals(summary.units, 'work')}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
-                  <span className={cn('font-medium', totals.defect > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400')}>{formatQuantity(totals.defect)}</span>
-                  {formatDefectRate(totals.defect, totals.work) ? <span className="ml-1.5 text-xs text-slate-400">{formatDefectRate(totals.defect, totals.work)}</span> : null}
+                  {formatDefectTotals(summary.units) ? (
+                    <span className={cn('font-medium', summary.units.some((row) => row.defect > 0) ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400')}>
+                      {formatDefectTotals(summary.units)}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-right font-medium tabular-nums text-slate-700 dark:text-slate-200">
-                  {formatQuantity(totals.sample)}
+                  {formatUnitTotals(summary.units, 'sample')}
                 </td>
-                <td />
+                <td className={cn(
+                  'px-4 py-2.5 text-right font-medium tabular-nums',
+                  summary.units.some((row) => row.good < 0) ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white',
+                )}>
+                  {formatUnitTotals(summary.units, 'good')}
+                </td>
+                <td className="px-4 py-2.5 text-right text-xs text-slate-400" title="누적 작업수량은 항목마다 달라 합산하지 않습니다.">
+                  —
+                </td>
                 {editable && <td />}
               </tr>
             </tfoot>
@@ -418,10 +481,7 @@ export function Floor3WorkLogPanel({
 }
 
 function answerText(field: ProcessFieldSpec, value: ProcessAnswer | undefined) {
-  if (value === '' || value == null) return '-'
-  if (value === 'yes') return 'Yes'
-  if (value === 'no') return 'No'
-  return field.unit ? `${value} ${field.unit}` : String(value)
+  return displayProcessAnswer(field, value)
 }
 
 function ProcessCheckDialog({
@@ -437,6 +497,7 @@ function ProcessCheckDialog({
   useEffect(() => {
     setRecordId(view?.records[0]?.id || '')
   }, [view])
+  const [secretReveal] = useSecretToggle()
   const record = view?.records.find((item) => item.id === recordId) || view?.records[0]
   const template = templates.find((item) => item.id === record?.lineId)
   const sections = template ? sectionsOf(template) : []
@@ -473,19 +534,30 @@ function ProcessCheckDialog({
             <p className="text-sm text-muted-foreground">
               {template?.name || record.product || '공정검사'} · {record.writtenTime} · {record.author}
             </p>
-            {sections.map((section) => (
+            {(() => {
+              const allFields = sections.flatMap((section) => section.fields)
+              const displayed = answersForDisplay(record, allFields, secretReveal)
+              return sections.map((section) => (
               <section key={section.id}>
                 <h3 className="mb-2 text-sm font-semibold">{section.title}</h3>
                 <ul className="divide-y overflow-hidden rounded-lg border">
                   {section.fields.map((field) => {
-                    const value = record.answers[field.id]
+                    const value = displayed[field.id]
+                    const raw = record.answers[field.id]
+                    const out = processValuesRevealed(record, secretReveal) && isOutOfRange(field, raw ?? '', true)
                     return (
                       <li key={field.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
-                        <span className="min-w-0">{field.label}</span>
+                        <span className="min-w-0">
+                          {field.label}
+                          {fieldStandardText(field) ? <span className="mt-0.5 block text-xs font-normal text-muted-foreground">기준 {fieldStandardText(field)}</span> : null}
+                          {out && typeof raw === 'number' ? (
+                            <span className="mt-0.5 block text-xs font-medium text-rose-600 dark:text-rose-400">원본 {Math.round(raw)}{field.unit ? ` ${field.unit}` : ''} · 이탈</span>
+                          ) : null}
+                        </span>
                         <span className={cn(
                           'shrink-0 font-semibold tabular-nums',
                           value === 'no' && 'text-rose-700 dark:text-rose-300',
-                          isOutOfRange(field, value ?? '') && 'text-rose-700 dark:text-rose-300',
+                          out && 'text-rose-700 dark:text-rose-300',
                         )}>
                           {answerText(field, value)}
                         </span>
@@ -494,7 +566,8 @@ function ProcessCheckDialog({
                   })}
                 </ul>
               </section>
-            ))}
+            ))
+            })()}
             {sections.length === 0 && (
               <p className="text-sm text-muted-foreground">점검표 항목을 찾지 못했습니다.</p>
             )}

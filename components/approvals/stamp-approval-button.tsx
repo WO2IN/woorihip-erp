@@ -64,8 +64,12 @@ export function StampApprovalButton({
   }
 
   const finalPerson = people.find((person) => person.id === finalId) ?? null
+  const selfReview = isTeamLeadTitle(viewerTitle)
   const directFinal = !!finalPerson && isTeamLeadTitle(finalPerson.jobTitle)
-  const reviewMissing = !!finalPerson && !directFinal && teamReviewers.length === 0
+  const reviewMissing = !!finalPerson && !selfReview && !directFinal && teamReviewers.length === 0
+  const shownReviewers = selfReview
+    ? [{ userId: user?.id ?? 'self', name: user?.displayName || '본인', jobTitle: viewerTitle }]
+    : teamReviewers
   const keyword = query.trim().toLowerCase()
   const higher = useMemo(() => people.filter((person) => {
     if (person.id === finalId || !isHigherTitle(person.jobTitle, viewerTitle)) return false
@@ -129,10 +133,11 @@ export function StampApprovalButton({
             <div className="min-h-0 flex-1 overflow-y-auto border-t border-slate-100 px-6 py-4 dark:border-white/10">
               <ApprovalLinePicker
                 people={higher}
-                reviewers={teamReviewers}
+                reviewers={shownReviewers}
                 finalPerson={finalPerson}
-                showReview={!directFinal && (teamReviewers.length > 0 || reviewMissing)}
+                showReview={selfReview || (!directFinal && (teamReviewers.length > 0 || reviewMissing))}
                 reviewMissing={reviewMissing}
+                reviewNote={selfReview ? '올리는 순간 검토도 본인 서명으로 들어가고, 최종 결재만 받습니다.' : undefined}
                 query={query}
                 onQuery={setQuery}
                 onPick={setFinalId}

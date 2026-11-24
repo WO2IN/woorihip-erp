@@ -1,19 +1,42 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowRightIcon,
   Building2Icon,
   ClipboardCheckIcon,
   FactoryIcon,
+  PlusIcon,
   ThermometerIcon,
+  Trash2Icon,
   WrenchIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
+import { Button, buttonVariants } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
+import { TargetCreateDialog } from '@/components/shared/target-create-dialog'
+import { useAuth } from '@/components/auth/auth-context'
+import { canOperateFloor } from '@/lib/access'
+import { getJsonAuthHeaders } from '@/lib/auth-client'
+import { createEquipment, deleteEquipment } from '@/app/actions/equipment'
+import { createFiveSTarget, deleteFiveSTarget } from '@/app/actions/five-s'
+import { createTempHumidityTarget, deleteTempHumidityTarget } from '@/app/actions/temp-humidity'
 import type { TodayStatus } from '@/lib/today-check'
-import { TodayStatusBadge } from '@/components/shared/today-status-badge'
+import { TargetRow, type TargetKind } from '@/components/shared/target-list-row'
 
 type SummaryItem = {
   id: number | string
@@ -55,6 +78,13 @@ const ICONS = {
   factory: FactoryIcon,
 } as const
 
+const KIND_OF: Record<SummaryCard['icon'], TargetKind> = {
+  clipboard: 'fiveS',
+  wrench: 'daily',
+  thermometer: 'temp',
+  factory: 'process',
+}
+
 const TONE_ACCENT = {
   sky: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
   amber: 'bg-amber-500/15 text-amber-800 dark:text-amber-300',
@@ -69,6 +99,7 @@ export function FloorHome({
   year,
   month,
   todayLabel,
+  initialTabTitle,
 }: {
   selectedFloor: string
   floorStats: FloorStat[]
@@ -76,6 +107,7 @@ export function FloorHome({
   year: number
   month: number
   todayLabel: string
+  initialTabTitle?: string
 }) {
   const router = useRouter()
   const active = floorStats.find((stat) => stat.floor === selectedFloor)
@@ -120,7 +152,7 @@ export function FloorHome({
               <span className="relative mt-auto pt-8">
                 <span className="block text-3xl font-bold tracking-tight">{stat.label}</span>
                 <span className="mt-2 block text-sm text-muted-foreground">점검표 {stat.total}개</span>
-                <span className={cn('mt-1 block text-sm font-medium', stat.missing > 0 ? 'text-amber-700' : 'text-emerald-700')}>
+                <span className={cn('mt-1 block text-sm font-medium', stat.missing > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700')}>
                   {stat.missing > 0 ? `오늘 미점검 ${stat.missing}건` : '오늘 점검 완료'}
                 </span>
                 <span className="mt-4 flex items-center gap-1 text-sm font-medium text-primary">
@@ -178,7 +210,11 @@ export function FloorHome({
             >
               <span className="text-base font-semibold sm:text-lg">{stat.label}</span>
               <span className={cn('text-xs', isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
-                {stat && stat.missing > 0 ? `미점검 ${stat.missing}` : `${stat?.total ?? 0}개`}
+                {stat && stat.missing > 0 ? (
+                  <span className="text-rose-700 dark:text-rose-400">미점검 {stat.missing}</span>
+                ) : (
+                  `${stat?.total ?? 0}개`
+                )}
               </span>
             </button>
           )
@@ -186,93 +222,262 @@ export function FloorHome({
       </div>
       )}
 
-      <section aria-labelledby="floor-checksheets-heading" className="flex flex-col gap-4">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <h2 id="floor-checksheets-heading" className="text-lg font-semibold">
-              {active?.label ?? `${selectedFloor}층`} 체크시트
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{todayLabel} 기준으로 오늘 채워야 하는 시트만 미점검으로 표시합니다.</p>
-          </div>
-          <span className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-            총 {totalCount}개
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-          {cards.map((card) => {
-            const Icon = ICONS[card.icon]
-            const missingCount = card.missingCount ?? card.items.filter((item) => item.status === 'missing').length
-            return (
-              <section
-                key={card.title}
-                className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
-              >
-                <div className="border-b border-border px-5 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className={cn('flex size-11 items-center justify-center rounded-xl', TONE_ACCENT[card.tone])}>
-                        <Icon className="size-5" aria-hidden="true" />
-                      </span>
-                      <div>
-                        <h3 className="text-base font-semibold">{card.title}</h3>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{card.description}</p>
-                      </div>
-                    </div>
-                    <span className={cn('rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums', missingCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-muted')}>
-                      {missingCount > 0 ? `미점검 ${missingCount}` : card.count}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-1 flex-col">
-                  {card.items.length > 0 ? (
-                    [...card.items]
-                      .sort((a, b) => Number(b.status === 'missing') - Number(a.status === 'missing'))
-                      .map((item) => (
-                      <Link
-                        key={item.id}
-                        href={item.href}
-                        className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-5 py-3.5 last:border-b-0 transition-colors hover:bg-muted/40 active:bg-muted/60"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{item.name}</span>
-                          {(item.meta || item.inspector) && (
-                            <span className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
-                              {item.meta ? <span className="truncate">{item.meta}</span> : null}
-                              {item.meta && item.inspector ? <span aria-hidden="true">·</span> : null}
-                              {item.inspector ? (
-                                <span className="truncate font-semibold text-primary">점검자 {item.inspector}</span>
-                              ) : null}
-                            </span>
-                          )}
-                          {item.gap ? <span className="mt-0.5 block truncate text-xs font-medium text-amber-700 dark:text-amber-300">{item.gap}</span> : null}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          <TodayStatusBadge status={item.status} label={item.statusLabel} />
-                          <ArrowRightIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-                        </span>
-                      </Link>
-                    ))
-                  ) : (
-                    <p className="px-5 py-8 text-center text-sm text-muted-foreground">이 층에 등록된 항목이 없습니다.</p>
-                  )}
-                </div>
-
-                {card.items.length > 0 ? (
-                  <Link
-                    href={card.href}
-                    className="flex min-h-12 items-center justify-center gap-1 border-t border-border bg-muted/30 px-4 text-sm font-medium text-primary transition-colors hover:bg-muted/50"
-                  >
-                    목록으로 보기
-                    <ArrowRightIcon className="size-4" aria-hidden="true" />
-                  </Link>
-                ) : null}
-              </section>
-            )
-          })}
-        </div>
-      </section>
+      <FloorSheets
+        key={`${selectedFloor}-${initialTabTitle ?? ''}`}
+        cards={cards}
+        todayLabel={todayLabel}
+        floorLabel={active?.label ?? `${selectedFloor}층`}
+        totalCount={totalCount}
+        selectedFloor={selectedFloor}
+        initialTabTitle={initialTabTitle}
+      />
     </main>
+  )
+}
+
+const DELETE_COPY: Record<SummaryCard['icon'], { title: string; detail: string }> = {
+  clipboard: { title: '이 항목을 삭제할까요?', detail: '항목과 입력된 3정 5S 점검 내용이 함께 삭제됩니다.' },
+  wrench: { title: '이 설비를 삭제할까요?', detail: '설비와 연관된 사진, 점검항목, 일상점검 내용이 함께 삭제됩니다.' },
+  thermometer: { title: '이 항목을 삭제할까요?', detail: '항목과 입력된 온/습도 점검 내용이 함께 삭제됩니다.' },
+  factory: { title: '이 점검표를 삭제할까요?', detail: '점검표와 이미 저장된 기록이 목록에서 빠집니다.' },
+}
+
+function RowDelete({ icon, id, name }: { icon: SummaryCard['icon']; id: number | string; name: string }) {
+  const router = useRouter()
+  const [pending, setPending] = useState(false)
+  const copy = DELETE_COPY[icon]
+
+  async function handleDelete() {
+    setPending(true)
+    try {
+      if (icon === 'factory') {
+        const response = await fetch('/api/process-templates', {
+          method: 'DELETE',
+          headers: getJsonAuthHeaders(),
+          body: JSON.stringify({ id }),
+        })
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(result.error || '삭제에 실패했습니다.')
+      } else if (icon === 'wrench') {
+        await deleteEquipment(Number(id))
+      } else if (icon === 'clipboard') {
+        await deleteFiveSTarget(Number(id))
+      } else {
+        await deleteTempHumidityTarget(Number(id))
+      }
+      toast.success('삭제되었습니다.')
+      router.refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '삭제에 실패했습니다.')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="mr-3 shrink-0 text-muted-foreground hover:text-destructive"
+            aria-label={`${name} 삭제`}
+          />
+        }
+      >
+        <Trash2Icon />
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{copy.title}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {name} {copy.detail} 이 작업은 되돌릴 수 없습니다.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>취소</AlertDialogCancel>
+          <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={handleDelete} disabled={pending}>
+            삭제
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+function AddTarget({
+  icon,
+  selectedFloor,
+  defaultFloor,
+  lockedFloor,
+}: {
+  icon: SummaryCard['icon']
+  selectedFloor: string
+  defaultFloor?: string
+  lockedFloor?: string
+}) {
+  if (icon === 'factory') {
+    const floor = /^[123]$/.test(selectedFloor) ? selectedFloor : '1'
+    return (
+      <Link
+        href={`/process-check?floor=${floor}&create=1`}
+        className={cn(buttonVariants({ size: 'sm' }), 'h-8')}
+      >
+        <PlusIcon data-icon="inline-start" />
+        점검표 추가
+      </Link>
+    )
+  }
+  const add = ADD_BY_ICON[icon]
+  return (
+    <TargetCreateDialog
+      key={`${icon}-${defaultFloor ?? 'none'}`}
+      title={add.title}
+      triggerText={add.trigger}
+      createAction={add.action}
+      redirectPathPrefix={add.prefix}
+      lockedFloor={lockedFloor}
+      defaultFloor={defaultFloor}
+      triggerClassName="h-8 px-3"
+    />
+  )
+}
+
+const ADD_BY_ICON = {
+  clipboard: { title: '3정 5S 대상 추가', trigger: '3정 5S 추가', action: createFiveSTarget, prefix: '/checksheets/5s' },
+  wrench: { title: '설비 추가', trigger: '설비 추가', action: createEquipment, prefix: '/checksheets/daily' },
+  thermometer: { title: '온습도 측정 대상 추가', trigger: '온습도 추가', action: createTempHumidityTarget, prefix: '/checksheets/temp-humidity' },
+} as const
+
+function FloorSheets({
+  cards,
+  todayLabel,
+  floorLabel,
+  totalCount,
+  selectedFloor,
+  initialTabTitle,
+}: {
+  cards: readonly SummaryCard[]
+  todayLabel: string
+  floorLabel: string
+  totalCount: number
+  selectedFloor: string
+  initialTabTitle?: string
+}) {
+  const { user } = useAuth()
+  const canAdd = canOperateFloor(user, selectedFloor)
+  const lockedFloor = user && user.role !== 'admin' && user.floor ? String(user.floor) : undefined
+  const defaultFloor = /^[123]$/.test(selectedFloor) ? selectedFloor : undefined
+  const missingOf = (card: SummaryCard) => card.missingCount ?? card.items.filter((item) => item.status === 'missing').length
+  const tabPick = initialTabTitle ? cards.find((item) => item.title === initialTabTitle) : undefined
+  const firstOpen = tabPick ?? cards.find((card) => missingOf(card) > 0) ?? cards.find((card) => card.items.length > 0) ?? cards[0]
+  const [activeTitle, setActiveTitle] = useState(firstOpen?.title)
+  const card = cards.find((item) => item.title === activeTitle) ?? cards[0]
+  if (!card) return null
+  const Icon = ICONS[card.icon]
+  const items = [...card.items].sort((a, b) => Number(b.status === 'missing') - Number(a.status === 'missing'))
+
+  return (
+    <section aria-labelledby="floor-checksheets-heading" className="flex flex-col gap-3">
+      <div className="flex items-end justify-between gap-3 px-1">
+        <div>
+          <h2 id="floor-checksheets-heading" className="text-lg font-semibold">{floorLabel} 체크시트</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">{todayLabel} 기준 · 총 {totalCount}개</p>
+        </div>
+      </div>
+
+      <div role="tablist" aria-label="점검 종류" className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {cards.map((item) => {
+          const TabIcon = ICONS[item.icon]
+          const missing = missingOf(item)
+          const isActive = item.title === card.title
+          return (
+            <button
+              key={item.title}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveTitle(item.title)}
+              className={cn(
+                'flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all active:scale-[0.99]',
+                isActive
+                  ? 'border-primary/40 bg-card shadow-sm ring-2 ring-primary/15'
+                  : 'border-border bg-card/60 hover:bg-card',
+              )}
+            >
+              <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', TONE_ACCENT[item.tone])}>
+                <TabIcon className="size-[1.1rem]" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className={cn('block truncate text-sm font-semibold', !isActive && 'text-muted-foreground')}>{item.title}</span>
+                <span
+                  className={cn(
+                    'block text-xs',
+                    missing > 0
+                      ? 'font-medium text-rose-700 dark:text-rose-400'
+                      : item.count > 0
+                        ? 'font-medium text-emerald-700 dark:text-emerald-400'
+                        : 'text-muted-foreground',
+                  )}
+                >
+                  {missing > 0 ? `미점검 ${missing}건` : item.count > 0 ? `${item.count}개 · 점검 완료` : '등록된 항목 없음'}
+                </span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-border/70 bg-muted/30 px-4 py-2.5">
+          <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-md', TONE_ACCENT[card.tone])}>
+              <Icon className="size-3.5" aria-hidden="true" />
+            </span>
+            <span className="truncate">{card.description}</span>
+          </p>
+          {canAdd ? (
+            <AddTarget
+              icon={card.icon}
+              selectedFloor={selectedFloor}
+              defaultFloor={defaultFloor}
+              lockedFloor={lockedFloor}
+            />
+          ) : null}
+        </div>
+
+        {items.length > 0 ? (
+          items.map((item) => (
+            <TargetRow
+              key={item.id}
+              href={item.href}
+              name={item.name}
+              department={item.meta}
+              person={item.inspector}
+              status={item.status}
+              statusLabel={item.statusLabel}
+              gap={item.gap}
+              todayLabel={todayLabel}
+              kind={KIND_OF[card.icon]}
+              trailing={canAdd ? <RowDelete icon={card.icon} id={item.id} name={item.name} /> : null}
+            />
+          ))
+        ) : (
+          <div className="flex flex-col items-center gap-3 px-5 py-10 text-center">
+            <p className="text-sm text-muted-foreground">이 층에 등록된 항목이 없습니다.</p>
+            {canAdd ? (
+              <AddTarget
+                icon={card.icon}
+                selectedFloor={selectedFloor}
+                defaultFloor={defaultFloor}
+                lockedFloor={lockedFloor}
+              />
+            ) : null}
+          </div>
+        )}
+      </div>
+    </section>
   )
 }

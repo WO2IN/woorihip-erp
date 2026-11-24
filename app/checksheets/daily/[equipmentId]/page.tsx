@@ -14,6 +14,8 @@ import {
   toggleDailyCheckHoliday,
 } from '@/app/actions/daily-check'
 import { SiteHeader } from '@/components/layout/site-header'
+import { ChecksheetBackLink } from '@/components/checksheets/checksheet-back-link'
+import { PageHeader } from '@/components/shared/page-header'
 import { NextCheckLink } from '@/components/checksheets/next-check-link'
 import { YearMonthPicker } from '@/components/shared/year-month-picker'
 import { ApprovalBox } from '@/components/shared/approval-box'
@@ -23,9 +25,7 @@ import { DailySheetEditor } from '@/components/checksheets/daily/daily-sheet-edi
 import { EmergencyActionCard } from '@/components/equipment/emergency-action-card'
 import { currentYearMonth } from '@/lib/date-utils'
 import { SheetHeaderEditor } from '@/components/shared/sheet-header-editor'
-import { PAGE_SHELL } from '@/components/shared/page-header'
 import { canManageChecksheets, canUseFloor, currentActor } from '@/lib/check-access'
-import { cn } from '@/lib/utils'
 
 export default async function DailyCheckDetailPage({
   params,
@@ -69,17 +69,26 @@ export default async function DailyCheckDetailPage({
   return (
     <div className="checksheet-page min-h-dvh">
       <SiteHeader />
-      <main className={cn(PAGE_SHELL, 'print-page checksheet-print-page print:max-w-none print:gap-1 print:p-0')}>
-        <div className="no-print flex flex-wrap items-center justify-between gap-3">
-          <YearMonthPicker year={year} month={month} />
-          <div className="flex items-center gap-2">
-            {canManage && (
-              <DailySheetEditor equipmentId={equipId} equipmentName={equip.name} photos={photos} items={items} />
-            )}
-            <PrintButton />
-            <NextCheckLink kind="daily" id={equipId} floor={equip.floor} name={equip.name} />
-          </div>
-        </div>
+      <main className="print-page checksheet-print-page mx-auto flex w-full max-w-[1500px] flex-col gap-5 p-4 sm:p-6 print:max-w-none print:gap-1 print:p-0">
+        <PageHeader
+          className="no-print"
+          tone="amber"
+          icon="wrench"
+          eyebrow="설비 일상점검 · 일일 점검"
+          title={equip.name}
+          description={`${year}년 ${month}월 · ${equip.department || '부서 미지정'} · ${equip.manager || '담당자 미지정'}`}
+          leading={<ChecksheetBackLink floor={equip.floor} name={equip.name} tab="daily" />}
+          actions={
+            <>
+              <YearMonthPicker year={year} month={month} />
+              {canManage && (
+                <DailySheetEditor equipmentId={equipId} equipmentName={equip.name} photos={photos} items={items} />
+              )}
+              <PrintButton />
+              <NextCheckLink kind="daily" id={equipId} floor={equip.floor} name={equip.name} />
+            </>
+          }
+        />
         {!canManage && (
           <p className="no-print text-sm text-muted-foreground">
             {actor?.role === 'viewer' ? '뷰어 계정은 점검 기록을 보기만 할 수 있습니다.' : '이 층 점검은 조회만 가능합니다.'}

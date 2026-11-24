@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { DocumentMetadata } from '@/lib/types'
+import { SHEET_DOCUMENT_TYPES, documentTypeLabel, normalizeSheetDocumentType } from '@/lib/file-types'
 import { toast } from 'sonner'
 import { notifyDataChanged } from '@/lib/data-events'
 import { getAuthHeaders, getJsonAuthHeaders } from '@/lib/auth-client'
@@ -48,6 +49,7 @@ export function EditDocumentDialog({ document, open, onClose, onUpdate }: EditDo
   const [recentSpecifications, setRecentSpecifications] = useState<string[]>([])
   const [recentProducts, setRecentProducts] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const docTypeLabels = [...new Set([...SHEET_DOCUMENT_TYPES, ...docTypes].map(documentTypeLabel))]
   
   useEffect(() => {
     if (!open) return
@@ -167,11 +169,12 @@ export function EditDocumentDialog({ document, open, onClose, onUpdate }: EditDo
               <Label className="text-sm">문서유형 <span className="text-destructive">*</span></Label>
               <SearchableCombobox
                 configName="document-types"
-                options={docTypes}
-                recentOptions={recentDocTypes}
-                value={form.documentType}
-                onChange={set('documentType')}
-                onOptionsChange={setDocTypes}
+                options={docTypeLabels}
+                recentOptions={recentDocTypes.map(documentTypeLabel)}
+                value={documentTypeLabel(form.documentType)}
+                // 화면에는 '출하성적서'로 보이지만 저장값은 예전 이름('성적서') 그대로 둔다.
+                onChange={(value) => set('documentType')(normalizeSheetDocumentType(value) ?? value)}
+                onOptionsChange={(next) => setDocTypes(next.map((item) => normalizeSheetDocumentType(item) ?? item))}
                 placeholder="문서유형 선택..."
               />
             </div>

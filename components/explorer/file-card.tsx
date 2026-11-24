@@ -24,7 +24,7 @@ import {
 import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { DocumentMetadata } from '@/lib/types'
 import { useAuth } from '@/components/auth/auth-context'
-import { documentDownloadName, documentFileKind, isCertificate } from '@/lib/file-types'
+import { documentDownloadName, documentFileKind, documentTypeLabel, isSheetDocumentType } from '@/lib/file-types'
 import { notifyDataChanged } from '@/lib/data-events'
 import { getAuthHeaders } from '@/lib/auth-client'
 import { format } from 'date-fns'
@@ -92,6 +92,18 @@ function getDocumentTypeStyle(type: string) {
         icon: 'bg-green-50 text-green-500 dark:bg-green-950/30',
       }
 
+    case '수입검사성적서':
+      return {
+        badge: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
+        icon: 'bg-violet-50 text-violet-500 dark:bg-violet-950/30',
+      }
+
+    case '이력카드':
+      return {
+        badge: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+        icon: 'bg-amber-50 text-amber-500 dark:bg-amber-950/30',
+      }
+
     case '검사성적서':
       return {
         badge: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
@@ -129,7 +141,7 @@ export function FileCard({
 
   const typeStyle = getDocumentTypeStyle(document.documentType)
   const kind = documentFileKind(document)
-  const detail = isCertificate(document.documentType)
+  const detail = isSheetDocumentType(document.documentType)
     ? [document.material, document.specification].filter(value => value && value !== '-').join(' · ')
     : document.originalName
   const downloadUrl = `/api/file?path=${encodeURIComponent(document.storagePath)}&download=true&downloadName=${encodeURIComponent(getDownloadName(document))}`
@@ -221,7 +233,7 @@ export function FileCard({
             </div>
             <div className="hidden md:flex items-center justify-center">
               <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${typeStyle.badge}`}>
-                {document.documentType}
+                {documentTypeLabel(document.documentType)}
               </span>
             </div>
 
@@ -382,7 +394,7 @@ export function FileCard({
               <Badge
                 className={`text-sm border-0 px-3 py-1 ${typeStyle.badge}`}
               >
-                {document.documentType}
+                {documentTypeLabel(document.documentType)}
               </Badge>
 
               {document.note && (

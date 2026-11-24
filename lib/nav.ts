@@ -1,6 +1,6 @@
 import {
   BarChart3, Building2, ClipboardCheck, Factory, FileText, LayoutDashboard,
-  Settings, ShieldCheck, Users, Wrench, type LucideIcon,
+  Settings, ShieldAlert, ShieldCheck, Users, Wrench, type LucideIcon,
 } from 'lucide-react'
 
 export type Role = 'viewer' | 'editor' | 'admin'
@@ -27,30 +27,26 @@ export interface NavSection {
 export const NAV: NavSection[] = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/' },
   {
-    id: 'process', label: '공정관리', icon: ClipboardCheck, children: [
-      { label: '통합 점검', href: '/checksheets' },
-      { label: '설비 일상점검', href: '/checksheets/daily' },
-      { label: '온·습도', href: '/checksheets/temp-humidity' },
-      { label: '3정 5S', href: '/checksheets/5s' },
-      { label: '공정 점검', href: '/process-check' },
-    ],
+    id: 'process', label: '공정관리', icon: ClipboardCheck, href: '/checksheets',
   },
   {
-    id: 'customer', label: '고객관리', icon: Building2, children: [
+    id: 'customer', label: '고객관리', icon: Building2, minRole: 'admin', children: [
       { label: '고객심사현황', href: '/customer/audit-status' },
       { label: 'QSA · QPA', href: '/customer/qsa-qpa', soon: true },
     ],
   },
   {
-    id: 'quality', label: '품질관리', icon: ShieldCheck, children: [
+    id: 'quality', label: '품질관리', icon: ShieldCheck, minRole: 'admin', children: [
       { label: '부적합관리', href: '/quality/nonconformity' },
+      { label: '폐기품 관리', href: '/quality/scrap', testing: true },
       { label: '변경점관리 (4M)', href: '/quality/change-points', testing: true },
       { label: '자격인증 관리', href: '/quality/qualifications', testing: true },
       { label: 'IATF 16949', href: '/quality/iatf', testing: true },
     ],
   },
+  { id: 'risk', label: '위험성평가', icon: ShieldAlert, href: '/risk-assessment', minRole: 'admin' },
   {
-    id: 'kpi', label: 'KPI 관리', icon: BarChart3, children: [
+    id: 'kpi', label: 'KPI 관리', icon: BarChart3, minRole: 'admin', children: [
       { label: '수입검사 KPI', href: '/quality/kpi' },
       { label: '공정불량률 KPI', href: '/quality/kpi/process' },
       { label: '출하검사 KPI', href: '/quality/kpi/outgoing' },
@@ -61,7 +57,7 @@ export const NAV: NavSection[] = [
   {
     id: 'shipment', label: '재고 관리', icon: Factory, children: [
       { label: '재고 관리', href: '/shipment', testing: true },
-      { label: 'LOT 이력카드', href: '/shipment/lot-card' },
+      { label: '입고·이력·출하 현황', href: '/shipment/doc-flow', testing: true },
     ],
   },
   {

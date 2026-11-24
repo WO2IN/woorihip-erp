@@ -16,7 +16,7 @@ import { useAuth } from '@/components/auth/auth-context'
 import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { EditDocumentDialog } from '@/components/explorer/edit-document-dialog'
 import { PdfViewerModal } from '@/components/explorer/pdf-viewer-modal'
-import { documentDownloadName, documentFileKind } from '@/lib/file-types'
+import { documentDownloadName, documentFileKind, documentTypeLabel } from '@/lib/file-types'
 
 interface FilePreviewDrawerProps {
   document: DocumentMetadata | null
@@ -121,7 +121,7 @@ export function FilePreviewDrawer({ document, open, onClose, onDelete, onUpdate 
               </div>
               <div className="flex-1 min-w-0">
                 <SheetTitle className="text-sm font-semibold truncate">{document.filename}</SheetTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">{document.company} · {document.documentType}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{document.company} · {documentTypeLabel(document.documentType)}</p>
               </div>
             </div>
           </SheetHeader>
@@ -170,7 +170,7 @@ export function FilePreviewDrawer({ document, open, onClose, onDelete, onUpdate 
               <Separator className="mb-3" />
               <div className="divide-y divide-border/50">
                 <MetaRow label="업체명" value={document.company} />
-                <MetaRow label="문서유형" value={document.documentType} />
+                <MetaRow label="문서유형" value={documentTypeLabel(document.documentType)} />
                 <MetaRow label="도금 종류" value={document.shipmentCategory} />
                 <MetaRow
                   label="층수"
@@ -295,7 +295,7 @@ export function FilePreviewDrawer({ document, open, onClose, onDelete, onUpdate 
         fileUrl={fileUrl}
         filename={document.filename}
         downloadName={downloadName}
-        subtitle={`${document.company} · ${document.documentType}`}
+        subtitle={`${document.company} · ${documentTypeLabel(document.documentType)}`}
       />
 
       {/* Delete confirmation */}

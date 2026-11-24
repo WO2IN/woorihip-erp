@@ -1,24 +1,32 @@
 'use client'
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle,
   Boxes,
   CalendarDays,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
   Factory,
   FileText,
   Info,
+  MoreHorizontal,
+  RefreshCw,
+  Settings,
   ShieldCheck,
   Truck,
   Users,
 } from 'lucide-react'
+import { ExternalLinks } from '@/components/dashboard/external-links'
 import { MovementTrend } from '@/components/dashboard/movement-trend'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useAuth } from '@/components/auth/auth-context'
+import { approvalDocNoOf, pendingFor, type ApprovalRequest } from '@/lib/approval'
 import type { DashboardStats } from '@/lib/dashboard-stats'
+import type { FloorTask } from '@/lib/my-tasks'
 import { PAGE_INSET } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
 
@@ -43,7 +51,12 @@ function shortDate(value: string) {
   return digits.length >= 8 ? `${digits.slice(4, 6)}.${digits.slice(6, 8)}` : value
 }
 
-export function HomeBoard({ data }: { data: DashboardStats }) {
+export function HomeBoard({ data, myTasks }: { data: DashboardStats; myTasks?: FloorTask[] | null }) {
+  const { user } = useAuth()
+  // 고객 관리·품질 관리 카드는 관리자만 볼 수 있으므로, 그 외 사용자에게는 같은 자리에 문서·설비 카드를 보여준다.
+  const isAdmin = user?.role === 'admin'
+  const outboundThisMonth = data.process.views.outbound.monthly.at(-1)?.count ?? 0
+  const inboundThisMonth = data.process.views.inbound.monthly.at(-1)?.count ?? 0
   useEffect(() => {
     const main = document.querySelector('.app-shell-main')
     if (!(main instanceof HTMLElement)) return
@@ -198,6 +211,9 @@ export function HomeBoard({ data }: { data: DashboardStats }) {
           transition: dragging ? 'none' : 'transform 460ms cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
+        <section className="h-full w-full shrink-0 overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden" aria-label="추가 화면">
+          <DetailBoard data={data} myTasks={myTasks} />
+        </section>
         <section className="h-full w-full shrink-0 overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden" aria-label="운영 현황">
     <div className={cn(PAGE_INSET, 'space-y-6 pb-16')}>
       <BoardHeader date={data.today.date} />
@@ -226,6 +242,7 @@ export function HomeBoard({ data }: { data: DashboardStats }) {
           ]}
           links={[['입고등록', '/shipment?tab=in'], ['출고등록', '/upload'], ['재고현황', '/shipment?tab=stock']]}
         />
+        {isAdmin ? (<>
         <ModuleCard
           tone="violet"
           icon={Users}
@@ -255,6 +272,20 @@ export function HomeBoard({ data }: { data: DashboardStats }) {
           stats={[['고객', `${num(customerOpen)}건`], ['공정', `${num(processOpen)}건`]]}
           links={[['부적합 관리', '/quality/nonconformity'], ['4M', '/quality/change-points'], ['IATF', '/quality/iatf']]}
         />
+        </>) : (<>
+        <ModuleCard
+          tone="violet"
+          icon={FileText}
+          title="문서 관리"
+          text="수입검사 · 이력카드 · 출하성적서"
+          href="/explorer"
+          value={num(data.quality.monthCertificates)}
+          unit="건"
+          caption="이번 달 성적서"
+          side={['전체 문서', `${num(data.totalDocuments)}건`]}
+          links={[['문서탐색기', '/explorer'], ['수입검사', '/shipment/incoming-inspection'], ['이력카드', '/shipment/lot-card']]}
+        />
+        </>)}
         <ModuleCard
           tone="orange"
           icon={Factory}
@@ -268,14 +299,43 @@ export function HomeBoard({ data }: { data: DashboardStats }) {
           stats={span.floors.map((row) => [`${row.floor}층`, row.rate == null ? '-' : `${row.rate}%`])}
           links={[['일상점검', '/checksheets/daily'], ['5S', '/checksheets/5s'], ['온습도', '/checksheets/temp-humidity'], ['공정점검', '/process-check']]}
         />
+        {!isAdmin && (user?.role === 'editor' ? (
+          <ModuleCard
+            tone="slate"
+            icon={Settings}
+            title="설정"
+            text="기준값 · 업체 · 품목 관리"
+            href="/settings"
+            value={user.displayName}
+            unit=""
+            caption="현재 로그인 계정"
+            side={['권한', '편집자']}
+            links={[['설정 바로가기', '/settings']]}
+          />
+        ) : (
+          <ModuleCard
+            tone="green"
+            icon={Truck}
+            title="출하 관리"
+            text="출고 현황 · 출하성적서"
+            href="/shipment?tab=out"
+            value={num(outboundThisMonth)}
+            unit="건"
+            caption="이번 달 출고"
+            side={['이번 달 입고', `${num(inboundThisMonth)}건`]}
+            links={[['출고 현황', '/shipment?tab=out'], ['출하성적서', '/shipment/outgoing-report']]}
+          />
+        ))}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)_minmax(0,1fr)]">
+      <section className={cn('grid gap-5', isAdmin ? 'xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]')}>
         <MovementTrend week={data.process.views.trend.week} month={data.process.views.trend.month} />
 
-        <Panel icon={<AlertTriangle className="h-4 w-4" />} title="품질 불량 현황" href="/quality/nonconformity" linkLabel="상세보기">
-          <DefectStatus customer={data.quality.customerNc} process={data.quality.processNc} open={data.quality.openNc} />
-        </Panel>
+        {isAdmin && (
+          <Panel icon={<AlertTriangle className="h-4 w-4" />} title="품질 불량 현황" href="/quality/nonconformity" linkLabel="상세보기">
+            <DefectStatus customer={data.quality.customerNc} process={data.quality.processNc} open={data.quality.openNc} />
+          </Panel>
+        )}
 
         <Panel icon={<Boxes className="h-4 w-4" />} title="재고 현황" href="/shipment?tab=stock" linkLabel="상세보기">
           <StockDonut total={data.process.stockItems} positive={positive} zero={zero} negative={negative} />
@@ -293,9 +353,6 @@ export function HomeBoard({ data }: { data: DashboardStats }) {
         </Panel>
       </section>
     </div>
-        </section>
-        <section className="h-full w-full shrink-0 overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden" aria-label="추가 화면">
-          <DetailBoard date={data.today.date} leaves={data.absence.leaves} />
         </section>
       </div>
       {page > 0 && (
@@ -319,7 +376,7 @@ export function HomeBoard({ data }: { data: DashboardStats }) {
         </button>
       )}
       <div className="no-print absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card/95 px-3 py-2 shadow-sm">
-        {['운영 현황', '추가 화면'].map((label, index) => (
+        {['추가 화면', '운영 현황'].map((label, index) => (
           <button
             key={label}
             type="button"
@@ -353,17 +410,157 @@ function BoardHeader({ date }: { date: string }) {
   )
 }
 
-function DetailBoard({ date, leaves }: { date: string; leaves: DashboardStats['absence']['leaves'] }) {
+function DetailBoard({ data, myTasks }: { data: DashboardStats; myTasks?: FloorTask[] | null }) {
   return (
-    <div className={cn(PAGE_INSET, 'flex h-full min-h-0 flex-col gap-6 pb-16')}>
-      <BoardHeader date={date} />
+    <div className={cn(PAGE_INSET, 'flex min-h-full flex-col gap-5 pb-16')}>
+      <BoardHeader date={data.today.date} />
       <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-5">
         <BoardShell title="공지사항" icon={<Info className="h-4 w-4 text-sky-600 dark:text-sky-300" />} />
-        <AbsenceBoard leaves={leaves} />
-        <BoardShell title="설비 현황" icon={<Factory className="h-4 w-4 text-violet-600 dark:text-violet-300" />} />
-        <BoardShell title="문서 현황" icon={<FileText className="h-4 w-4 text-teal-600 dark:text-teal-300" />} />
+        <AbsenceBoard leaves={data.absence.leaves} />
+        <ApprovalBoard />
+        <TaskBoard data={data} myTasks={myTasks} />
       </div>
+      <ExternalLinks />
     </div>
+  )
+}
+
+type TaskRow = { id: string; label: string; text: string; count: string; href: string; tone: BadgeTone }
+
+function MyTaskBoard({ tasks: initial }: { tasks: FloorTask[] }) {
+  const [tasks, setTasks] = useState(initial)
+  useEffect(() => {
+    setTasks(initial)
+  }, [initial])
+  const doneCount = tasks.filter((task) => task.done).length
+
+  const setDone = (key: string, done: boolean) =>
+    setTasks((prev) => prev.map((row) => (row.key === key ? { ...row, done } : row)))
+
+  const toggle = async (task: FloorTask) => {
+    const next = !task.done
+    setDone(task.key, next)
+    try {
+      const res = await fetch('/api/my-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: task.key, done: next }),
+      })
+      if (!res.ok) setDone(task.key, !next)
+    } catch {
+      setDone(task.key, !next)
+    }
+  }
+
+  return (
+    <article aria-label="업무대기" className="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <h2 className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
+          <Clock className="h-4 w-4 text-orange-600 dark:text-orange-300" />
+          업무대기
+        </h2>
+        <span className="text-xs font-semibold text-muted-foreground">{tasks.length > 0 ? `완료 ${doneCount}/${tasks.length}` : '오늘 기준'}</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden">
+        {tasks.length === 0 ? (
+          <p className="rounded-xl border border-dashed px-3 py-4 text-sm text-muted-foreground">오늘 배정된 업무가 없습니다.</p>
+        ) : (
+          <ul className="space-y-2">
+            {tasks.map((task) => (
+              <li key={task.key} className="flex items-center gap-3 rounded-xl border bg-slate-50/70 px-3 py-2.5 dark:bg-slate-900/40">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={task.done}
+                  aria-label={`${task.label} ${task.done ? '대기로 되돌리기' : '완료 처리'}`}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => toggle(task)}
+                  className={cn(
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                    task.done ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white hover:border-blue-400 dark:border-slate-500 dark:bg-slate-800',
+                  )}
+                >
+                  {task.done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                </button>
+                <Link
+                  href={task.href}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  className={cn(
+                    'min-w-0 flex-1 truncate text-sm font-medium',
+                    task.done ? 'text-slate-400 line-through dark:text-slate-500' : 'text-slate-800 dark:text-slate-100',
+                  )}
+                >
+                  {task.label}
+                </Link>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{task.detail}</span>
+                <span className={cn('w-14 shrink-0 rounded-md py-1 text-center text-[11px] font-semibold ring-1', task.done ? BADGE.green : BADGE.orange)}>
+                  {task.done ? '완료' : '대기'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function TaskBoard({ data, myTasks }: { data: DashboardStats; myTasks?: FloorTask[] | null }) {
+  const { user } = useAuth()
+  if (myTasks) return <MyTaskBoard tasks={myTasks} />
+  const showQuality = user?.role === 'admin'
+  const missing = data.today.missing
+  const missingBy = (kind: string) => missing.filter((item) => item.kind === kind).length
+  const customerOpen = data.quality.customerNc.not_started + data.quality.customerNc.in_progress
+  const processOpen = data.quality.processNc.not_started + data.quality.processNc.in_progress
+  const flowOpen = data.process.views.flow.open
+  const shortage = data.process.shortage
+
+  const candidates: (TaskRow & { n: number })[] = [
+    { id: 'miss-daily', label: '점검', text: '설비 일상점검 미점검', n: missingBy('설비'), count: '', href: '/checksheets/daily', tone: 'orange' },
+    { id: 'miss-5s', label: '점검', text: '3정 5S 미점검', n: missingBy('5S'), count: '', href: '/checksheets/5s', tone: 'orange' },
+    { id: 'miss-temp', label: '점검', text: '온·습도 미점검', n: missingBy('온습도'), count: '', href: '/checksheets/temp-humidity', tone: 'orange' },
+    { id: 'miss-process', label: '점검', text: '공정 점검 미점검', n: missingBy('공정'), count: '', href: '/process-check', tone: 'orange' },
+    { id: 'nc-customer', label: '부적합', text: '고객 부적합 미결', n: customerOpen, count: '', href: '/quality/nonconformity', tone: 'rose' },
+    { id: 'nc-process', label: '부적합', text: '공정 부적합 미결', n: processOpen, count: '', href: '/quality/nonconformity', tone: 'rose' },
+    { id: 'flow', label: '입출고', text: '진행 중인 입고·이력·출하', n: flowOpen, count: '', href: '/shipment/doc-flow', tone: 'blue' },
+    { id: 'stock', label: '재고', text: '재고 부족 품목', n: shortage, count: '', href: '/shipment?tab=stock', tone: 'violet' },
+  ]
+  const rows = candidates
+    .filter((row) => row.n > 0 && (showQuality || !row.id.startsWith('nc-')))
+    .map((row) => ({ ...row, count: `${num(row.n)}${row.id === 'stock' ? '종' : '건'}` }))
+
+  return (
+    <article aria-label="업무대기" className="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <h2 className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
+          <Clock className="h-4 w-4 text-orange-600 dark:text-orange-300" />
+          업무대기
+        </h2>
+        <span className="text-xs font-semibold text-muted-foreground">{rows.length > 0 ? `${rows.length}개 항목` : '오늘 기준'}</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden">
+        {rows.length === 0 ? (
+          <p className="rounded-xl border border-dashed px-3 py-4 text-sm text-muted-foreground">처리 대기 중인 업무가 없습니다.</p>
+        ) : (
+          <ul className="space-y-2">
+            {rows.map((row) => (
+              <li key={row.id}>
+                <Link
+                  href={row.href}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  className="flex items-center gap-3 rounded-xl border bg-slate-50/70 px-3 py-2.5 hover:border-blue-300 hover:bg-blue-50/60 dark:bg-slate-900/40 dark:hover:border-blue-500/40 dark:hover:bg-blue-950/30"
+                >
+                  <span className={cn('w-14 shrink-0 rounded-md py-1 text-center text-[11px] font-semibold ring-1', BADGE[row.tone])}>{row.label}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">{row.text}</span>
+                  <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900 dark:text-white">{row.count}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </article>
   )
 }
 
@@ -377,12 +574,6 @@ type AbsenceRow = {
   kind: AbsenceKind
   place?: string
   reason?: string
-}
-
-const ABSENCE_BADGE: Record<AbsenceKind, string> = {
-  연차: BADGE.green,
-  반차: BADGE.violet,
-  출장: BADGE.orange,
 }
 
 function temporaryAbsences(): AbsenceRow[] {
@@ -401,6 +592,16 @@ function temporaryAbsences(): AbsenceRow[] {
   ]
 }
 
+/** 목록용 짧은 기간. 2026-11-24 ~ 2026-11-27 → 11.24~11.27 */
+function shortPeriod(start: string, end: string) {
+  const label = (value: string) => {
+    const digits = String(value ?? '').replace(/\D/g, '')
+    if (digits.length < 8) return value
+    return `${digits.slice(4, 6)}.${digits.slice(6, 8)}`
+  }
+  return start === end ? label(start) : `${label(start)}~${label(end)}`
+}
+
 function leavePeriod(start: string, end: string) {
   const label = (value: string) => {
     const digits = String(value ?? '').replace(/\D/g, '')
@@ -408,6 +609,95 @@ function leavePeriod(start: string, end: string) {
     return `${Number(digits.slice(4, 6))}월 ${Number(digits.slice(6, 8))}일`
   }
   return start === end ? label(start) : `${label(start)} – ${label(end)}`
+}
+
+function ApprovalBoard() {
+  const { user } = useAuth()
+  const [items, setItems] = useState<ApprovalRequest[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/approvals', { cache: 'no-store' })
+      if (!response.ok) throw new Error('approvals')
+      const body = await response.json()
+      setItems(Array.isArray(body?.data) ? body.data : [])
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const userId = user?.id ?? ''
+  const waiting = (items ?? [])
+    .filter((item) => pendingFor(item, userId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const stop = (event: ReactPointerEvent) => event.stopPropagation()
+
+  return (
+    <article aria-label="결재대기" className="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <h2 className="text-[15px] font-bold text-slate-900 dark:text-white">결재대기</h2>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/approvals"
+            aria-label="결재 전체보기"
+            onPointerDown={stop}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500 text-white shadow-sm hover:bg-blue-600"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Link>
+          <button
+            type="button"
+            aria-label="새로고침"
+            onPointerDown={stop}
+            onClick={() => void load()}
+            disabled={loading}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500 text-white shadow-sm hover:bg-blue-600 disabled:opacity-60"
+          >
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+          </button>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:!hidden">
+        {failed ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">결재 정보를 불러오지 못했습니다.</p>
+        ) : items === null ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">불러오는 중…</p>
+        ) : waiting.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">결재 대기 중인 문서가 없습니다.</p>
+        ) : (
+          <ul className="space-y-2">
+            {waiting.map((item) => (
+              <li key={item.id}>
+                <Link
+                  href="/approvals"
+                  onPointerDown={stop}
+                  className="flex items-center gap-3 rounded-xl border bg-slate-50/70 px-3 py-2.5 hover:border-blue-300 hover:bg-blue-50/60 dark:bg-slate-900/40 dark:hover:border-blue-500/40 dark:hover:bg-blue-950/30"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">{item.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {approvalDocNoOf(item) || '번호 없음'} · {item.requesterName} · {shortDate(item.createdAt)}
+                    </span>
+                  </span>
+                  <span className={cn('shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold ring-1', BADGE.rose)}>내 차례</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </article>
+  )
 }
 
 function BoardShell({ title, icon }: { title: string; icon: ReactNode }) {
@@ -418,6 +708,10 @@ function BoardShell({ title, icon }: { title: string; icon: ReactNode }) {
           {icon}
           {title}
         </h2>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-400/15 dark:text-sky-300">개발 중</span>
+        <p className="text-sm text-muted-foreground">준비 중인 영역입니다.</p>
       </div>
     </section>
   )
@@ -434,7 +728,7 @@ function AbsenceBoard({ leaves }: { leaves: DashboardStats['absence']['leaves'] 
       <div className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
           <CalendarDays className="h-4 w-4 text-blue-600 dark:text-blue-300" />
-          출장 및 휴가
+          출장/휴가
         </h2>
         <Link href="/approvals" className="flex items-center gap-0.5 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
           결재<ChevronRight className="h-3.5 w-3.5" />
@@ -444,29 +738,30 @@ function AbsenceBoard({ leaves }: { leaves: DashboardStats['absence']['leaves'] 
         {rows.length === 0 ? (
           <p className="rounded-xl border border-dashed px-3 py-4 text-sm text-muted-foreground">등록된 출장·휴가가 없습니다.</p>
         ) : (
-          <ul className="space-y-2">
-            {rows.map((row) => (
-              <li key={row.id}>
-                <button
-                  type="button"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => row.kind === '출장' && setTrip(row)}
-                  className={cn(
-                    'flex w-full items-center gap-3 rounded-xl border bg-slate-50/70 px-3 py-2.5 text-left dark:bg-slate-900/40',
-                    row.kind === '출장' ? 'cursor-pointer hover:border-orange-300 hover:bg-orange-50/70 dark:hover:border-orange-500/40 dark:hover:bg-orange-950/30' : 'cursor-default',
-                  )}
-                >
-                  <span className={cn('w-12 shrink-0 rounded-md py-1 text-center text-[11px] font-semibold ring-1', ABSENCE_BADGE[row.kind])}>
-                    {row.kind}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">{row.name}</span>
-                    {row.kind === '출장' && row.place && <span className="block truncate text-xs text-orange-700 dark:text-orange-300">{row.place}</span>}
-                  </span>
-                  <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[13px] font-semibold tabular-nums text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white">{leavePeriod(row.start, row.end)}</span>
-                </button>
-              </li>
-            ))}
+          <ul className="space-y-1.5">
+            {rows.map((row) => {
+              const isTrip = row.kind === '출장'
+              return (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => isTrip && setTrip(row)}
+                    className={cn(
+                      'flex w-full min-w-0 items-center gap-2 rounded-md border border-sky-200 bg-sky-50/80 px-3 py-2 text-left text-[13px] text-slate-800 dark:border-sky-500/25 dark:bg-sky-950/30 dark:text-slate-100',
+                      isTrip ? 'cursor-pointer hover:bg-sky-100/80 dark:hover:bg-sky-900/40' : 'cursor-default',
+                    )}
+                  >
+                    <span className={cn('shrink-0 font-semibold', isTrip ? 'text-orange-700 dark:text-orange-300' : 'text-emerald-700 dark:text-emerald-300')}>
+                      {isTrip ? '[출장]' : '[휴가]'}
+                    </span>
+                    <span className="shrink-0 font-medium">{row.name}</span>
+                    <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">{shortPeriod(row.start, row.end)}</span>
+                    <span className="min-w-0 flex-1 truncate text-slate-600 dark:text-slate-300">{isTrip ? row.place : row.kind}</span>
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
@@ -520,6 +815,7 @@ const MODULE = {
   violet: { band: 'bg-[linear-gradient(120deg,#9b8cf5,#7a68ee)]', icon: 'text-violet-600', value: 'text-slate-900 dark:text-white' },
   green: { band: 'bg-[linear-gradient(120deg,#3fb68f,#22957a)]', icon: 'text-emerald-600', value: 'text-slate-900 dark:text-white' },
   orange: { band: 'bg-[linear-gradient(120deg,#fbab55,#f58a2c)]', icon: 'text-orange-500', value: 'text-slate-900 dark:text-white' },
+  slate: { band: 'bg-[linear-gradient(120deg,#8493a8,#5b6b82)]', icon: 'text-slate-600', value: 'text-slate-900 dark:text-white' },
 } as const
 
 function ModuleCard({

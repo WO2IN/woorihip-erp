@@ -34,6 +34,11 @@ export function parseOccurrenceDate(value: unknown, fallbackIso?: string): strin
   return todayOccurrenceDate()
 }
 
+export interface CountermeasureFile {
+  id: string
+  name: string
+}
+
 export interface CustomerNonconformity {
   id: string
   /** 발생일 YYYY-MM-DD */
@@ -46,10 +51,14 @@ export interface CustomerNonconformity {
   /** 불량 수량 */
   defectQty?: number | null
   description: string
+  /** 회신기한 YYYY-MM-DD. 없으면 접수일+14일 */
+  responseDueDate?: string
   countermeasurePlan: WorkflowStatus
   processingResult: WorkflowStatus
   effectivenessVerification: WorkflowStatus
   remarks?: string
+  /** 대책서 PDF */
+  countermeasureFile?: CountermeasureFile | null
   createdAt: string
   updatedAt?: string
   createdBy?: string
@@ -70,6 +79,16 @@ export const CUSTOMER_NC_DEFECT_TYPES = [
 export const CUSTOMER_NC_RESPONSE_DAYS = 14
 
 export type CustomerNcStatusFilter = 'all' | 'in_progress' | 'closed' | 'overdue'
+
+export function parseOptionalIsoDate(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : undefined
+}
+
+export function ncResponseDueDate(row: { occurrenceDate: string; responseDueDate?: string }): string {
+  return parseOptionalIsoDate(row.responseDueDate) ?? addDaysToIsoDate(row.occurrenceDate, CUSTOMER_NC_RESPONSE_DAYS)
+}
 
 export function addDaysToIsoDate(iso: string, days: number): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
@@ -94,12 +113,11 @@ export function isCustomerNcStarted(row: Pick<CustomerNonconformity, 'countermea
 }
 
 export function isCustomerNcOverdue(
-  row: Pick<CustomerNonconformity, 'occurrenceDate' | 'countermeasurePlan' | 'processingResult' | 'effectivenessVerification'>,
+  row: Pick<CustomerNonconformity, 'occurrenceDate' | 'responseDueDate' | 'countermeasurePlan' | 'processingResult' | 'effectivenessVerification'>,
   today = todayOccurrenceDate(),
 ) {
   if (isCustomerNcClosed(row)) return false
-  const due = addDaysToIsoDate(row.occurrenceDate, CUSTOMER_NC_RESPONSE_DAYS)
-  return today > due
+  return today > ncResponseDueDate(row)
 }
 
 const DEFECT_TYPE_KEYWORDS: { type: (typeof CUSTOMER_NC_DEFECT_TYPES)[number]; tokens: string[] }[] = [
@@ -154,10 +172,14 @@ export interface ProcessNonconformity {
   defectQty?: number | null
   customerCompany: string
   description: string
+  /** 회신기한 YYYY-MM-DD. 없으면 발생일+14일 */
+  responseDueDate?: string
   actions: Record<ProcessNcActionKey, boolean>
   /** 동일 불량 재발 */
   recurred?: boolean
   remarks?: string
+  /** 대책서 PDF */
+  countermeasureFile?: CountermeasureFile | null
   assignee?: string
   responsible?: string
   /** 없으면 처리결과만으로 단계를 잡는다 */

@@ -32,6 +32,8 @@ export type InventoryRecord = Pick<DocumentMetadata, 'id' | 'company' | 'product
   sampleQuantity?: number
   /** 고객 소재의 작업 단계. 출고 완료는 성적서 출고로 자동 판정하므로 저장하지 않는다. */
   workStage?: WorkStage
+  /** 입고등록 때 발급한 제품 바코드 */
+  barcode?: string
 }
 
 export interface AuditLogEntry {

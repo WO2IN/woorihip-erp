@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
+import { useSecretToggle } from '@/hooks/use-secret-toggle'
 import { ArrowDownLeft, ArrowLeft, ArrowUpRight, ClipboardCheck, ClipboardList, FileText, History, Package, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { certificatesFor, lotText } from '@/lib/lot-link'
-import { ProcessAnswer, ProcessCheckRecord, ProcessFieldSpec, ProcessTemplate, isOutOfRange, recordFloor, recordLineId, sectionsOf } from '@/lib/process-checklist'
+import { ProcessAnswer, ProcessCheckRecord, ProcessFieldSpec, ProcessTemplate, answersForDisplay, displayProcessAnswer, fieldStandardText, isOutOfRange, processValuesRevealed, recordFloor, recordLineId, sectionsOf } from '@/lib/process-checklist'
 import { compactDate, displayDate, inboundBatches, StockMovement } from '@/lib/stock'
 import { Floor3WorkLog } from '@/lib/floor3-work-log'
 import { DocumentMetadata } from '@/lib/types'
@@ -651,6 +652,7 @@ function ProcessCheckSnapshot({
   onClose: () => void
 }) {
   const [index, setIndex] = useState(0)
+  const [secretReveal] = useSecretToggle()
   const record = records[Math.min(index, records.length - 1)]
   const template = templates.find((item) => item.id === recordLineId(record))
   const sections = template ? sectionsOf(template) : []
@@ -698,16 +700,27 @@ function ProcessCheckSnapshot({
         <div className="space-y-4 overflow-y-auto px-6 pb-6">
           {sections.length === 0 ? (
             <p className="text-sm text-muted-foreground">점검 항목 구성을 찾지 못했습니다.</p>
-          ) : sections.map((section) => (
+          ) : (() => {
+            const allFields = sections.flatMap((section) => section.fields)
+            const displayed = answersForDisplay(record, allFields, secretReveal)
+            return sections.map((section) => (
             <section key={section.id} className="overflow-hidden rounded-2xl border border-slate-300 bg-card">
               <h3 className="border-b border-slate-200 px-5 py-3 text-sm font-semibold">{section.title}</h3>
               <ul className="divide-y divide-border">
                 {section.fields.map((field) => {
-                  const value = record.answers[field.id]
+                  const value = displayed[field.id]
+                  const raw = record.answers[field.id]
+                  const out = processValuesRevealed(record, secretReveal) && isOutOfRange(field, raw ?? '', true)
                   return (
                     <li key={field.id} className="flex items-start justify-between gap-4 px-5 py-3">
-                      <p className="min-w-0 text-sm">{field.label}</p>
-                      <p className={cn('shrink-0 text-sm font-semibold tabular-nums', answerTone(field, value))}>
+                      <p className="min-w-0 text-sm">
+                        {field.label}
+                        {fieldStandardText(field) ? <span className="mt-0.5 block text-xs text-muted-foreground">기준 {fieldStandardText(field)}</span> : null}
+                        {out && typeof raw === 'number' ? (
+                          <span className="mt-0.5 block text-xs font-medium text-destructive">원본 {typeof raw === 'number' ? Math.round(raw) : raw}{field.unit ? ` ${field.unit}` : ''} · 이탈</span>
+                        ) : null}
+                      </p>
+                      <p className={cn('shrink-0 text-sm font-semibold tabular-nums', answerTone(field, value, out))}>
                         {formatCheckAnswer(field, value)}
                       </p>
                     </li>
@@ -715,7 +728,8 @@ function ProcessCheckSnapshot({
                 })}
               </ul>
             </section>
-          ))}
+          ))
+          })()}
         </div>
       </div>
     </div>
@@ -723,14 +737,11 @@ function ProcessCheckSnapshot({
 }
 
 function formatCheckAnswer(field: ProcessFieldSpec, value: ProcessAnswer | undefined) {
-  if (value === '' || value == null) return '-'
-  if (value === 'yes') return 'Yes'
-  if (value === 'no') return 'No'
-  return field.unit ? `${value} ${field.unit}` : String(value)
+  return displayProcessAnswer(field, value)
 }
 
-function answerTone(field: ProcessFieldSpec, value: ProcessAnswer | undefined) {
+function answerTone(field: ProcessFieldSpec, value: ProcessAnswer | undefined, out = false) {
   if (value === 'yes') return 'text-emerald-600'
-  if (value === 'no' || (value != null && isOutOfRange(field, value))) return 'text-destructive'
+  if (value === 'no' || out) return 'text-destructive'
   return ''
 }

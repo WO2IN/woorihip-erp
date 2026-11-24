@@ -585,9 +585,11 @@ export function lotsFromCertificates(docs: Array<{
   quantity?: number
   quantityUnit?: string
   lotStart?: string
+  sourceSheetId?: string
 }>): InspectionLot[] {
   const lots: InspectionLot[] = []
   for (const doc of docs) {
+    if (doc.sourceSheetId) continue
     if (doc.documentType !== '성적서' || doc.storagePath === 'INVENTORY' || doc.filename === '수기입력' || doc.movementType === '입고') continue
     let date = ''
     try {

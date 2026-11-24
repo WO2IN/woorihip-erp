@@ -34,7 +34,7 @@ import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { DocumentMetadata } from '@/lib/types'
 import { yearFromIssueDate } from '@/lib/lot'
 import { FileCard, LIST_GRID } from './file-card'
-import { documentDownloadName } from '@/lib/file-types'
+import { SHEET_DOCUMENT_TYPES, documentDownloadName, documentTypeLabel } from '@/lib/file-types'
 import { FilePreviewDrawer } from './file-preview-drawer'
 import { cn } from '@/lib/utils'
 import { FILTER_CONSONANTS, chosungSearch, matchesChosung } from '@/lib/korean'
@@ -281,7 +281,9 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   const docTypesForCompany = useMemo(() => {
     if (!selectedCompany) return []
     const docs = allDocs.filter(d => d.company === selectedCompany)
-    return docTypes
+    // 수입검사성적서·이력카드·출하성적서는 설정값에 아직 없어도 항상 폴더로 보이고(문서가 있으면), 그 뒤에 나머지 유형이 온다.
+    const types = [...new Set([...SHEET_DOCUMENT_TYPES, ...docTypes, ...docs.map(d => d.documentType)])]
+    return types
       .filter(dt => docs.some(d => d.documentType === dt))
       .map(dt => ({ name: dt, count: docs.filter(d => d.documentType === dt).length }))
   }, [allDocs, docTypes, selectedCompany])
@@ -372,6 +374,7 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
           d.originalName?.toLowerCase().includes(keyword) ||
           d.company?.toLowerCase().includes(keyword) ||
           d.documentType?.toLowerCase().includes(keyword) ||
+          documentTypeLabel(d.documentType).toLowerCase().includes(keyword) ||
           d.product?.toLowerCase().includes(keyword) ||
           d.material?.toLowerCase().includes(keyword) ||
           d.specification?.toLowerCase().includes(keyword) ||
@@ -713,7 +716,7 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
       action: selectedDocType ? () => setNav(n => ({ ...n, docType: null, year: null })) : undefined
     } : null,
     selectedDocType ? {
-      label: selectedDocType,
+      label: documentTypeLabel(selectedDocType),
       action: selectedYear ? () => setNav(n => ({ ...n, year: null })) : undefined
     } : null,
     selectedYear ? { label: selectedYear === 'ALL' ? '전체 연도' : `${selectedYear}년`, action: undefined } : null,
@@ -769,8 +772,9 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   )
 
   return (
-    <div className={cn(PAGE_SHELL, 'h-full min-h-0')}>
+    <div className={cn(PAGE_SHELL, 'flex h-[calc(100dvh-6rem)] min-h-0 flex-col gap-4 overflow-hidden pb-4 sm:pb-4')}>
       <PageHeader
+        className="shrink-0"
         tone="teal"
         icon={FileText}
         eyebrow="DOCUMENTS · 문서관리"
@@ -1039,7 +1043,7 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
                           : 'border-border bg-background text-foreground hover:border-primary/40'
                       )}
                     >
-                      {type} <span className={cn('ml-0.5 tabular-nums', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{count}</span>
+                      {documentTypeLabel(type)} <span className={cn('ml-0.5 tabular-nums', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{count}</span>
                     </button>
                   )
                 })}
@@ -1141,7 +1145,7 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
                           <FolderOpen className="h-5 w-5 text-blue-500" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-base font-bold text-foreground">{dt.name}</p>
+                          <p className="truncate text-base font-bold text-foreground">{documentTypeLabel(dt.name)}</p>
                           <p className="text-sm text-muted-foreground">{dt.count.toLocaleString()}건</p>
                         </div>
                         <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />

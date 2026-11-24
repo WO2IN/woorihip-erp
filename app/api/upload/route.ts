@@ -1,12 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import { appendMetadata, appendAuditLog } from '@/lib/storage'
-import { putStoredFile } from '@/lib/stored-files'
+import { appendMetadata, appendAuditLog, deleteMetadata, readConfig, readMetadata, writeConfig } from '@/lib/storage'
+import { getStoredFile, putStoredFile, removeStoredFileObject, softDeleteStoredFile } from '@/lib/stored-files'
+import { removeDocumentFile } from '@/lib/object-storage'
 import { DocumentMetadata } from '@/lib/types'
 import { normalizeLot, normalizeRegisteredLot, buildLotEnd, normalizeIssueDate } from '@/lib/lot'
 import { format } from 'date-fns'
 import { getUserFromHeaders, canEdit } from '@/lib/auth'
-import { CERTIFICATE_TYPE, fileKind, isCertificate } from '@/lib/file-types'
+import { documentTypeLabel, fileKind, normalizeSheetDocumentType } from '@/lib/file-types'
+
+async function ensureConfigValue(name: string, value: string) {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === '-') return
+  const current = await readConfig(name)
+  if (current.some((item) => item.trim() === trimmed)) return
+  await writeConfig(name, [trimmed, ...current])
+}
+
+async function removeSavedDocument(doc: DocumentMetadata) {
+  try {
+    if (doc.storedFileId) {
+      const row = await getStoredFile(doc.storedFileId)
+      if (row) {
+        await softDeleteStoredFile(row.id)
+        await removeStoredFileObject(row)
+      }
+    } else {
+      await removeDocumentFile(doc.storagePath)
+    }
+  } catch (err) {
+    console.error('이전 자동 저장 파일 삭제 실패:', err)
+  }
+  await deleteMetadata(doc.id)
+}
 
 export async function POST(req: NextRequest) {
   const requestUser = await getUserFromHeaders(req.headers)
@@ -23,18 +49,19 @@ export async function POST(req: NextRequest) {
 
   const company = (formData.get('company') as string)?.trim()
   const rawDocumentType = (formData.get('documentType') as string)?.trim()
-  const certificate = isCertificate(rawDocumentType)
-  if (!certificate) {
+  // 수입검사성적서·이력카드·출하성적서만 등록할 수 있다. 출하성적서는 예전 이름 그대로 '성적서'로 저장한다.
+  const documentType = normalizeSheetDocumentType(rawDocumentType)
+  if (!documentType) {
     return NextResponse.json({ error: '도면과 기타 문서는 테스트 중이라 아직 등록할 수 없습니다.' }, { status: 400 })
   }
-  const documentType = CERTIFICATE_TYPE
   const kind = fileKind(file.name)
   if (!kind) {
     return NextResponse.json({ error: '지원하지 않는 파일 형식입니다.' }, { status: 400 })
   }
-  if (certificate && kind.ext !== 'pdf') {
-    return NextResponse.json({ error: '성적서는 PDF 파일만 올릴 수 있습니다.' }, { status: 400 })
+  if (kind.ext !== 'pdf') {
+    return NextResponse.json({ error: `${documentTypeLabel(documentType)}는 PDF 파일만 올릴 수 있습니다.` }, { status: 400 })
   }
+  const sourceSheetId = (formData.get('sourceSheetId') as string)?.trim() || undefined
   const shipmentCategoryRaw = (formData.get('shipmentCategory') as string)?.trim()
   const shipmentFloorRaw = (formData.get('shipmentFloor') as string)?.trim()
   const userFloor = requestUser.floor
@@ -68,7 +95,7 @@ export async function POST(req: NextRequest) {
   const movementType = movementRaw === '입고' || movementRaw === '출고' ? movementRaw : undefined
   const linkedMovementId = (formData.get('linkedMovementId') as string)?.trim() || undefined
 
-  if (!company || !documentType) {
+  if (!company) {
     return NextResponse.json({ error: '업체명과 문서유형은 필수입니다.' }, { status: 400 })
   }
 
@@ -125,19 +152,18 @@ export async function POST(req: NextRequest) {
     company,
     documentType,
     product,
-    lotStart: certificate ? lotStart : '',
-    material: certificate ? material : '',
-    ...(certificate ? {
-      movementType,
-      linkedMovementId,
-      shipmentCategory,
-      shipmentFloor,
-      floor: shipmentFloor,
-      lotEnd: lotEnd || undefined,
-      specification: specification || undefined,
-      quantity,
-      quantityUnit,
-    } : {}),
+    lotStart,
+    material,
+    movementType,
+    linkedMovementId,
+    sourceSheetId,
+    shipmentCategory,
+    shipmentFloor,
+    floor: shipmentFloor,
+    lotEnd: lotEnd || undefined,
+    specification: specification || undefined,
+    quantity,
+    quantityUnit,
     issueDate: issueDate === '-' ? '-' : effectiveDate,
     note: note || undefined,
     fileSize: file.size,
@@ -149,8 +175,20 @@ export async function POST(req: NextRequest) {
     createdById: requestUser.id,
   }
 
+  // 화면에서 자동 저장한 문서는 같은 원본을 다시 완료하면 앞서 저장한 문서를 교체한다.
+  if (sourceSheetId) {
+    const previous = (await readMetadata()).filter((item) => item.sourceSheetId === sourceSheetId && item.documentType === documentType)
+    for (const item of previous) await removeSavedDocument(item)
+  }
+
   await appendMetadata(doc)
-  const registered = [doc.company, doc.product && doc.product !== '-' ? doc.product : '', doc.documentType].filter(Boolean).join(' · ')
+  // 문서탐색기는 업체·문서유형 목록(설정값)을 기준으로 폴더를 보여 주므로 처음 쓰는 값이면 넣어 둔다.
+  await Promise.all([
+    ensureConfigValue('document-types', documentType),
+    ensureConfigValue('companies', company),
+    ensureConfigValue('products', product),
+  ])
+  const registered = [doc.company, doc.product && doc.product !== '-' ? doc.product : '', documentTypeLabel(doc.documentType)].filter(Boolean).join(' · ')
   await appendAuditLog({
     action: 'UPLOAD',
     target: 'document',
@@ -160,4 +198,30 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json({ success: true, data: doc })
+}
+
+/** '완료 취소'한 화면의 자동 저장 문서를 문서탐색기에서 치운다. */
+export async function DELETE(req: NextRequest) {
+  const requestUser = await getUserFromHeaders(req.headers)
+  if (!requestUser || !canEdit(requestUser.role)) {
+    return NextResponse.json({ error: '문서 삭제 권한이 없습니다.' }, { status: 403 })
+  }
+  const { searchParams } = new URL(req.url)
+  const sourceSheetId = searchParams.get('sourceSheetId')?.trim()
+  const documentType = normalizeSheetDocumentType(searchParams.get('documentType'))
+  if (!sourceSheetId || !documentType) {
+    return NextResponse.json({ error: '삭제할 문서를 알 수 없습니다.' }, { status: 400 })
+  }
+  const targets = (await readMetadata()).filter((item) => item.sourceSheetId === sourceSheetId && item.documentType === documentType)
+  for (const item of targets) {
+    await removeSavedDocument(item)
+    await appendAuditLog({
+      action: 'DELETE',
+      target: 'document',
+      detail: `${item.originalName} (완료 취소로 자동 저장 문서 삭제, 문서 ID ${item.id})`,
+      userId: requestUser.id,
+      userName: requestUser.displayName,
+    })
+  }
+  return NextResponse.json({ success: true, removed: targets.length })
 }

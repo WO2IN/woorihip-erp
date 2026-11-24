@@ -8,6 +8,7 @@ type InventoryLike = Pick<
   defectQuantity?: number
   sampleQuantity?: number
   workStage?: WorkStage
+  barcode?: string
 }
 
 export type StockKind = '입고' | '출고'
@@ -28,6 +29,10 @@ export interface StockMovement {
   defect: number
   sample: number
   workStage?: WorkStage
+  /** 입고등록에서 발급한 바코드 */
+  barcode?: string
+  /** 1층 출고를 특정 입고 재고 행에 붙인 경우. 없으면 오래된 입고부터 채운다. */
+  consumedInboundId?: string
 }
 
 export interface StockGroup {
@@ -92,6 +97,7 @@ function asMovementFromInventory(record: InventoryLike): StockMovement | null {
     defect: nonNegative(record.defectQuantity),
     sample: nonNegative(record.sampleQuantity),
     workStage: record.workStage === 'working' || record.workStage === 'ready' ? record.workStage : undefined,
+    ...(record.barcode ? { barcode: record.barcode } : {}),
   }
 }
 
@@ -100,6 +106,8 @@ function asMovementFromDocument(doc: DocumentMetadata): StockMovement | null {
   if (doc.movementType === '입고' && doc.filename === '수기입력') return null
   if (doc.storagePath === 'INVENTORY') return null
   if (doc.linkedMovementId) return null
+  // 재고 관리 화면에서 완료할 때 자동 저장된 문서는 수량이 없는 사본이라 출고로 세지 않는다.
+  if (doc.sourceSheetId) return null
   const quantity = Number(doc.quantity ?? 0)
   if (!Number.isFinite(quantity)) return null
   return {
@@ -116,12 +124,19 @@ function asMovementFromDocument(doc: DocumentMetadata): StockMovement | null {
     shipmentCategory: doc.shipmentCategory,
     defect: 0,
     sample: 0,
+    consumedInboundId: doc.consumedInboundId?.trim() || undefined,
   }
 }
 
 function nonNegative(value: unknown) {
   const number = Number(value ?? 0)
   return Number.isFinite(number) && number > 0 ? number : 0
+}
+
+function byMovementOrder(left: StockMovement, right: StockMovement) {
+  const byDate = left.issueDate.localeCompare(right.issueDate)
+  if (byDate !== 0) return byDate
+  return left.kind.localeCompare(right.kind, 'ko')
 }
 
 export function collectMovements(
@@ -306,6 +321,66 @@ function roundQty(value: number) {
   return Math.round((value + Number.EPSILON) * 10000) / 10000
 }
 
+/** 1층 출고를 입고에 붙인다. 지정된 출고를 먼저 두고, 나머지는 오래된 입고부터 채운다. */
+function assignInboundTargets(movements: StockMovement[]) {
+  const sorted = [...movements].sort(byMovementOrder)
+  const inbounds = sorted.filter((item) => item.kind === '입고')
+  const inboundById = new Map(inbounds.map((item) => [item.id, item]))
+  const consumed = new Map<string, number>()
+  const targets = new Map<string, StockMovement>()
+  const take = (outbound: StockMovement, inbound: StockMovement) => {
+    targets.set(outbound.id, inbound)
+    consumed.set(inbound.id, roundQty((consumed.get(inbound.id) ?? 0) + outbound.quantity))
+  }
+  const usePins = sorted.length > 0 && sorted.every((item) => item.floor === '1')
+  const pinned: StockMovement[] = []
+  const rest: StockMovement[] = []
+  for (const movement of sorted) {
+    if (movement.kind !== '출고') continue
+    if (usePins && movement.consumedInboundId && inboundById.has(movement.consumedInboundId)) pinned.push(movement)
+    else rest.push(movement)
+  }
+  for (const outbound of pinned) take(outbound, inboundById.get(outbound.consumedInboundId!)!)
+  const queue = [...inbounds]
+  const filled = (inbound: StockMovement) => (consumed.get(inbound.id) ?? 0) >= inbound.quantity - QTY_EPS
+  for (const outbound of rest) {
+    while (queue.length > 0 && filled(queue[0])) queue.shift()
+    if (queue.length === 0) break
+    take(outbound, queue[0])
+  }
+  return targets
+}
+
+export interface InboundChoice {
+  id: string
+  issueDate: string
+  quantity: number
+  unit: string
+  remaining: number
+}
+
+/** 1층 입고 후보. 잔량은 이미 붙은 출고를 뺀 값이다. */
+export function floor1InboundChoices(movements: StockMovement[]): InboundChoice[] {
+  const targets = assignInboundTargets(movements)
+  const used = new Map<string, number>()
+  for (const movement of movements) {
+    if (movement.kind !== '출고') continue
+    const inbound = targets.get(movement.id)
+    if (!inbound) continue
+    used.set(inbound.id, roundQty((used.get(inbound.id) ?? 0) + movement.quantity))
+  }
+  return movements
+    .filter((item) => item.kind === '입고')
+    .sort(byMovementOrder)
+    .map((item) => ({
+      id: item.id,
+      issueDate: item.issueDate,
+      quantity: item.quantity,
+      unit: item.unit,
+      remaining: roundQty(item.quantity - (used.get(item.id) ?? 0)),
+    }))
+}
+
 export interface ClosedInboundLot {
   id: string
   issueDate: string
@@ -324,6 +399,8 @@ export interface LedgerEntry extends StockMovement {
   closedLots: ClosedInboundLot[]
   /** 첫 입고보다 앞선 출고 */
   beforeInbound: boolean
+  /** 1층 출고가 차감된 입고 */
+  consumedFrom?: ClosedInboundLot
 }
 
 export type LedgerSegmentTone = 'plain' | 'settled' | 'open' | 'uncovered' | 'unknown'
@@ -364,20 +441,45 @@ export function buildLedger(movements: StockMovement[], startDate = '', endDate 
     return a.kind.localeCompare(b.kind, 'ko')
   })
 
+  const floor1 = sorted.length > 0 && sorted.every((item) => item.floor === '1')
+  const targets = floor1 ? assignInboundTargets(sorted) : new Map<string, StockMovement>()
   const inboundSections: DraftSection[] = []
   const queue: DraftSection[] = []
+  const sectionsByInbound = new Map<string, DraftSection>()
   let unknown = blankSection('unknown', 'unknown')
   let uncovered = blankSection('uncovered', 'uncovered')
   let band = 0
 
-  const append = (section: DraftSection, movement: StockMovement, closedLots: ClosedInboundLot[] = []) => {
+  const append = (section: DraftSection, movement: StockMovement, closedLots: ClosedInboundLot[] = [], consumedFrom?: ClosedInboundLot) => {
     section.rows.push({
       ...movement,
       running: section.running,
       band,
       closedLots,
       beforeInbound: section.key === 'unknown',
+      consumedFrom,
     })
+  }
+
+  const openSection = (inbound: StockMovement) => {
+    const existing = sectionsByInbound.get(inbound.id)
+    if (existing) return existing
+    const lot: ClosedInboundLot = {
+      id: `${inbound.source}-${inbound.id}`,
+      issueDate: inbound.issueDate,
+      lot: inbound.lot,
+      quantity: inbound.quantity,
+      unit: inbound.unit,
+    }
+    const section = blankSection(lot.id, 'open')
+    section.lot = lot
+    section.remaining = inbound.quantity
+    section.running = inbound.quantity
+    band += 1
+    inboundSections.push(section)
+    queue.push(section)
+    sectionsByInbound.set(inbound.id, section)
+    return section
   }
 
   for (const movement of sorted) {
@@ -385,21 +487,32 @@ export function buildLedger(movements: StockMovement[], startDate = '', endDate 
     const beforeRange = Boolean(start && movement.issueDate && movement.issueDate < start)
 
     if (movement.kind === '입고') {
-      const lot: ClosedInboundLot = {
-        id: `${movement.source}-${movement.id}`,
-        issueDate: movement.issueDate,
-        lot: movement.lot,
-        quantity: movement.quantity,
-        unit: movement.unit,
-      }
-      const section = blankSection(lot.id, 'open')
-      section.lot = lot
-      section.remaining = movement.quantity
-      section.running = movement.quantity
-      band += 1
+      const section = openSection(movement)
       if (!beforeRange) append(section, movement)
-      inboundSections.push(section)
-      queue.push(section)
+      continue
+    }
+
+    if (floor1) {
+      const assigned = targets.get(movement.id)
+      if (!assigned) {
+        const bucket = inboundSections.length === 0 ? unknown : uncovered
+        bucket.running = roundQty(bucket.running - movement.quantity)
+        band = inboundSections.length === 0 ? 0 : band + 1
+        if (!beforeRange) append(bucket, movement)
+        continue
+      }
+      const target = openSection(assigned)
+      target.remaining = roundQty(target.remaining - movement.quantity)
+      target.running = roundQty(target.running - movement.quantity)
+      const closedLots: ClosedInboundLot[] = []
+      if (target.remaining <= QTY_EPS && target.lot && target.tone !== 'settled') {
+        closedLots.push(target.lot)
+        target.tone = 'settled'
+        target.remaining = 0
+        const index = queue.indexOf(target)
+        if (index >= 0) queue.splice(index, 1)
+      }
+      if (!beforeRange) append(target, movement, closedLots, target.lot ?? undefined)
       continue
     }
 
@@ -478,15 +591,36 @@ export interface InboundBatch {
   rows: StockMovement[]
 }
 
-function byMovementOrder(left: StockMovement, right: StockMovement) {
-  const byDate = left.issueDate.localeCompare(right.issueDate)
-  if (byDate !== 0) return byDate
-  return left.kind.localeCompare(right.kind, 'ko')
-}
-
 /** 입고 한 건과, 그 수량을 날짜순으로 소진한 출고. 원장 구간 배정과 같은 순서입니다. */
 export function inboundBatches(movements: StockMovement[]): InboundBatch[] {
   const sorted = [...movements].sort(byMovementOrder)
+  if (sorted.length > 0 && sorted.every((item) => item.floor === '1')) {
+    const targets = assignInboundTargets(sorted)
+    const batches: InboundBatch[] = []
+    const byId = new Map<string, InboundBatch>()
+    let unknown: InboundBatch | null = null
+    for (const movement of sorted) {
+      if (movement.kind !== '입고') continue
+      const batch: InboundBatch = { key: `${movement.source}-${movement.id}`, inbound: movement, rows: [movement] }
+      batches.push(batch)
+      byId.set(movement.id, batch)
+    }
+    for (const movement of sorted) {
+      if (movement.kind !== '출고') continue
+      const inbound = targets.get(movement.id)
+      const batch = inbound ? byId.get(inbound.id) : undefined
+      if (!batch) {
+        if (!unknown) {
+          unknown = { key: 'unknown', inbound: null, rows: [] }
+          batches.push(unknown)
+        }
+        unknown.rows.push(movement)
+        continue
+      }
+      batch.rows.push(movement)
+    }
+    return batches
+  }
   const batches: InboundBatch[] = []
   const queue: InboundBatch[] = []
   let unknown: InboundBatch | null = null

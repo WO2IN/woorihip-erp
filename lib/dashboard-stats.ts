@@ -19,6 +19,7 @@ import { detectFloor } from './floor'
 import { isDayOffDate, isWeekend } from './date-utils'
 import { recordFloor, recordLineId } from './process-checklist'
 import type { WorkflowStatus } from './non-conformity'
+import type { FloorTask } from './my-tasks'
 
 export interface MissingCheck {
   kind: '설비' | '5S' | '온습도' | '공정'
@@ -35,7 +36,7 @@ export interface FloorCheck {
 
 export type StatusCounts = Record<WorkflowStatus, number>
 
-function localDate(date = new Date()) {
+export function localDate(date = new Date()) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
@@ -241,7 +242,7 @@ export async function getDashboardStats() {
     .map(([company, count]) => ({ company, count }))
 
   const byType = (type: string) => docs.filter((d) => d.documentType === type).length
-  const certificateDocs = docs.filter((d) => d.documentType === '성적서' && d.storagePath !== 'INVENTORY')
+  const certificateDocs = docs.filter((d) => d.documentType === '성적서' && d.storagePath !== 'INVENTORY' && !d.sourceSheetId)
   const certificateMonthly = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -454,7 +455,42 @@ export async function getDashboardStats() {
       .map((row) => `${row.lineId ?? ''}:${row.writtenDate}`),
   ).size
 
+  // 층별 담당자의 오늘 업무. 시스템 기록으로 자동 판정한 완료 여부를 담는다.
+  const floorTasks: Record<string, FloorTask[]> = Object.fromEntries(['1', '2', '3'].map((floor) => {
+    const tasks: FloorTask[] = []
+    if (!today.weekend) {
+      const checkTask = (
+        key: string,
+        label: string,
+        href: string,
+        items: { id: number | string; floor?: unknown; name?: string }[],
+        statuses: Record<string, string>,
+      ) => {
+        const due = items
+          .filter((item) => detectFloor(String(item.floor ?? ''), item.name) === floor)
+          .map((item) => statuses[String(item.id)])
+          .filter((status) => status === 'done' || status === 'missing')
+        if (due.length === 0) return
+        const done = due.filter((status) => status === 'done').length
+        tasks.push({ key: `${floor}:${key}`, label, href, detail: `${done}/${due.length}`, done: done === due.length })
+      }
+      checkTask('daily', '설비 일상점검', '/checksheets/daily', equipment, today.daily)
+      checkTask('5s', '3정 5S 점검', '/checksheets/5s', fiveSTargets, today.fiveS)
+      checkTask('temp', '온·습도 점검', '/checksheets/temp-humidity', tempTargets, today.temp)
+      if (processFloors.includes(floor)) {
+        const covered = processCovered(floor)
+        tasks.push({ key: `${floor}:process`, label: '공정 점검 작성', href: `/process-check?floor=${floor}`, detail: covered ? '작성 완료' : '미작성', done: covered })
+      }
+    }
+    if (floor === '3') {
+      const written = workLogs.filter((w) => (w.floor ?? 3) === 3 && w.workDate === todayIso).length
+      tasks.push({ key: '3:worklog', label: '작업일보 작성', href: '/shipment?tab=work', detail: written > 0 ? `${written}건` : '미작성', done: written > 0 })
+    }
+    return [floor, tasks]
+  }))
+
   return {
+    floorTasks,
     totalDocuments: docs.length,
     todayUploads: todayCount,
     companyCount: companies.length,

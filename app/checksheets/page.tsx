@@ -11,8 +11,16 @@ import { recordFloor, recordLineId, type ProcessCheckRecord, type ProcessTemplat
 import { readHiddenProcessLines, readProcessChecks, readProcessTemplates } from '@/lib/storage'
 import { todayStatusLabel, uncheckedDaysLabel, type TodayStatus } from '@/lib/today-check'
 
-export default async function HomePage({ searchParams }: { searchParams: Promise<{ floor?: string }> }) {
-  const { floor: rawFloor } = await searchParams
+const TAB_TO_CARD_TITLE: Record<string, string> = {
+  process: '공정 점검',
+  daily: '설비 일상점검',
+  '5s': '3정 5S',
+  temp: '온/습도',
+}
+
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ floor?: string; tab?: string }> }) {
+  const { floor: rawFloor, tab: rawTab } = await searchParams
+  const initialTabTitle = rawTab ? TAB_TO_CARD_TITLE[rawTab] : undefined
   const actor = await currentActor()
   const home = actor?.floor && actor.role !== 'admin' ? String(actor.floor) : null
   const requestedFloor =
@@ -157,6 +165,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       items: filteredProcessLines.map((template) => ({
         id: template.id,
         name: template.name,
+        meta: template.department?.trim() || undefined,
+        inspector: template.inspector?.trim() || undefined,
         href: `/process-check?floor=${template.floor}&line=${encodeURIComponent(template.id)}`,
         ...statusOf(processStatusOf(template)),
       })),
@@ -173,6 +183,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         year={year}
         month={month}
         todayLabel={`${today.month}월 ${today.day}일`}
+        initialTabTitle={initialTabTitle}
       />
     </div>
   )

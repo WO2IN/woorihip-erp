@@ -29,31 +29,30 @@ export function TargetFloorSection({
   const rate = progressTotal ? Math.round((progressComplete / progressTotal) * 100) : 0
 
   return (
-    <section aria-labelledby={id} className="rounded-2xl border bg-muted/30 p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <span className={cn('flex h-9 min-w-12 items-center justify-center rounded-xl px-3 text-sm font-extrabold text-white shadow-sm', FLOOR_TONE[floor] ?? 'bg-[oklch(0.55_0.02_260)]')}>
+    <section aria-labelledby={id} className="flex flex-col gap-3 rounded-2xl border bg-muted/30 p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className={cn('flex h-9 min-w-12 items-center justify-center rounded-lg px-3 text-sm font-extrabold text-white shadow-sm', FLOOR_TONE[floor] ?? 'bg-[oklch(0.55_0.02_260)]')}>
           {formatFloorLabel(floor)}
         </span>
         <h2 id={id} className="sr-only">{formatFloorLabel(floor)}</h2>
         <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
           <span className="rounded-full border bg-card px-2.5 py-1">전체 {total}</span>
           <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">완료 {done}</span>
-          <span className={cn('rounded-full px-2.5 py-1', missing ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' : 'bg-muted text-muted-foreground')}>미점검 {missing}</span>
+          <span className={cn('rounded-full px-2.5 py-1', missing ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-muted text-muted-foreground')}>미점검 {missing}</span>
         </div>
         {progressTotal > 0 && (
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            전체 진행률
-            <span className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
+            <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
               <span className="block h-full rounded-full bg-[oklch(0.62_0.15_162)]" style={{ width: `${rate}%` }} />
             </span>
-            <b className="tabular-nums text-foreground">{rate}%</b>
+            <b className="w-8 text-right tabular-nums text-foreground">{rate}%</b>
           </div>
         )}
       </div>
       {total === 0 ? (
         <p className="rounded-xl border border-dashed bg-card py-6 text-center text-sm text-muted-foreground">등록된 항목이 없습니다.</p>
       ) : (
-        <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">{children}</div>
+        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{children}</div>
       )}
     </section>
   )

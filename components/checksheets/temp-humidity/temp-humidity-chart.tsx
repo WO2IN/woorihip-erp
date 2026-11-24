@@ -167,7 +167,7 @@ export function TempHumidityChart({
         className="print-only-chart hidden"
         style={{ ['--color-temperature' as string]: 'var(--chart-1)', ['--color-humidity' as string]: 'var(--chart-2)' }}
       >
-        {chartBody({ width: 1040, height: 520 })}
+        {chartBody({ width: 1040, height: 480 })}
       </div>
     </div>
   )

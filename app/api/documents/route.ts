@@ -188,11 +188,14 @@ export async function PATCH(req: NextRequest) {
 
   const { id, ...updates } = body
   const currentDocument = (await readMetadata()).find(document => document.id === id)
-  if (currentDocument && ('quantity' in updates || 'floor' in updates)) {
+  if (currentDocument && ('quantity' in updates || 'floor' in updates || 'consumedInboundId' in updates)) {
     const nextFloor = updates.floor ?? currentDocument.floor
     if (!canOperateFloor(requestUser, currentDocument.floor) || !canOperateFloor(requestUser, nextFloor)) {
       return NextResponse.json({ error: '다른 층 출고 수량은 수정할 수 없습니다.' }, { status: 403 })
     }
+  }
+  if ('consumedInboundId' in updates) {
+    updates.consumedInboundId = String(updates.consumedInboundId ?? '').trim()
   }
 
   Object.keys(updates).forEach(key => {
@@ -278,6 +281,7 @@ export async function PATCH(req: NextRequest) {
       quantityUnit: '수량 단위',
       issueDate: '발행일',
       note: '비고',
+      consumedInboundId: '차감 입고',
     }
     const changedFields = Object.keys(updates)
       .filter(key => !['updatedAt', 'updatedBy', 'updatedById'].includes(key))

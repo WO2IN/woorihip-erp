@@ -40,6 +40,13 @@ export interface DocumentMetadata {
   movementType?: '입고' | '출고'
   /** 이미 있는 입출고 건에 붙인 성적서. 있으면 재고 수량으로 다시 세지 않습니다. */
   linkedMovementId?: string
+  /** 1층 출고가 차감된 입고 재고 행. 없으면 오래된 입고부터 채운다. */
+  consumedInboundId?: string
+  /**
+   * 재고 관리의 수입검사성적서·이력카드·출하성적서 화면에서 '완료'할 때 자동으로 저장된 문서의 원본 id.
+   * 같은 원본을 다시 완료하면 이 문서를 교체한다. 입출고 수량으로 세지 않는다.
+   */
+  sourceSheetId?: string
   shipmentFloor?: 1 | 2 | 3
   floor?: 1 | 2 | 3
   lotStart: string

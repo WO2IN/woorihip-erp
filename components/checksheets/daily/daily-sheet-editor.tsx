@@ -1,7 +1,9 @@
 'use client'
 
 import { SettingsIcon } from 'lucide-react'
-import { buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
+import { BAND_BUTTON } from '@/components/shared/page-header'
+import { cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PhotoSlot, type EquipmentPhoto } from '@/components/equipment/photo-slot'
@@ -25,9 +27,13 @@ export function DailySheetEditor({
 
   return (
     <Dialog>
-      <DialogTrigger className={buttonVariants({ variant: 'outline', className: 'h-10 gap-1.5 px-4' })}>
+      <DialogTrigger
+        render={
+          <Button variant="outline" className={cn('h-10 gap-1.5 px-4', BAND_BUTTON)} />
+        }
+      >
         <SettingsIcon className="size-4" aria-hidden="true" />
-        편집
+        항목 편집
       </DialogTrigger>
       <DialogContent
         overlayClassName="z-[80]"

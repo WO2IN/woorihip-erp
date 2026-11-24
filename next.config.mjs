@@ -6,6 +6,8 @@ const nextConfig = {
   // 로그인 확인용 proxy가 요청 본문을 10MB까지만 잡아 두면, 그 이상 PDF 업로드가 잘린다.
   experimental: {
     proxyClientMaxBodySize: '50mb',
+    // dev 서버가 컴파일 캐시를 디스크에 계속 써서(.next/dev/cache 7GB+) HDD 가 100% 가 되는 것을 막는다.
+    turbopackFileSystemCacheForDev: false,
   },
   serverExternalPackages: ['minio', 'pg', 'tesseract.js', 'sharp'],
 

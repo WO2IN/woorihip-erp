@@ -32,6 +32,12 @@ const SECTION_ACCENT: Record<string, { icon: string; active: string; child: stri
     child: 'bg-indigo-500/10 font-semibold text-indigo-700 before:bg-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-200 dark:before:bg-indigo-300',
     dot: 'bg-indigo-600 dark:bg-indigo-300',
   },
+  risk: {
+    icon: 'text-red-600 dark:text-red-300',
+    active: 'bg-red-500/10 text-slate-900 after:bg-red-600 dark:bg-red-400/15 dark:text-white dark:after:bg-red-300',
+    child: 'bg-red-500/10 font-semibold text-red-700 before:bg-red-600 dark:bg-red-400/15 dark:text-red-200 dark:before:bg-red-300',
+    dot: 'bg-red-600 dark:bg-red-300',
+  },
   quality: {
     icon: 'text-emerald-600 dark:text-emerald-300',
     active: 'bg-emerald-500/10 text-slate-900 after:bg-emerald-600 dark:bg-emerald-400/15 dark:text-white dark:after:bg-emerald-300',
@@ -45,10 +51,10 @@ const SECTION_ACCENT: Record<string, { icon: string; active: string; child: stri
     dot: 'bg-cyan-600 dark:bg-cyan-300',
   },
   shipment: {
-    icon: 'text-rose-600 dark:text-rose-300',
-    active: 'bg-rose-500/10 text-slate-900 after:bg-rose-500 dark:bg-rose-400/15 dark:text-white dark:after:bg-rose-300',
-    child: 'bg-rose-500/10 font-semibold text-rose-700 before:bg-rose-500 dark:bg-rose-400/15 dark:text-rose-200 dark:before:bg-rose-300',
-    dot: 'bg-rose-500 dark:bg-rose-300',
+    icon: 'text-teal-600 dark:text-teal-300',
+    active: 'bg-teal-500/10 text-slate-900 after:bg-teal-600 dark:bg-teal-400/15 dark:text-white dark:after:bg-teal-300',
+    child: 'bg-teal-500/10 font-semibold text-teal-800 before:bg-teal-600 dark:bg-teal-400/15 dark:text-teal-200 dark:before:bg-teal-300',
+    dot: 'bg-teal-600 dark:bg-teal-300',
   },
   equipment: {
     icon: 'text-violet-600 dark:text-violet-300',
@@ -121,7 +127,7 @@ export function Sidebar({ open, onClose, collapsed, setCollapsed }: SidebarProps
           'no-print fixed left-0 top-0 z-[60] flex h-full flex-col overflow-visible lg:static',
           'bg-[linear-gradient(180deg,oklch(0.995_0.003_250),oklch(0.965_0.012_250))] dark:bg-[linear-gradient(180deg,oklch(0.235_0.045_255),oklch(0.175_0.035_258))] text-slate-700 dark:text-[oklch(0.86_0.02_250)]',
           'border-r border-slate-200 dark:border-white/5 transition-[width,transform] duration-300 ease-in-out',
-          collapsed ? 'w-20' : 'w-64',
+          collapsed ? 'w-20' : 'w-72',
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         )}
       >
@@ -445,20 +451,20 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
                     href={item.href ?? '#'}
                     onClick={onClose}
                     className={cn(
-                      'relative flex h-9 items-center rounded-md px-3 text-[15px] transition-colors',
+                      'relative flex min-h-9 items-center gap-2 rounded-md px-3 py-1.5 text-[15px] leading-snug transition-colors',
                       isActive(item.href, pathname, tab)
-                        ? cn('before:absolute before:-left-[13px] before:top-2 before:h-5 before:w-[2px]', accent.child)
+                        ? cn('before:absolute before:-left-[13px] before:top-1/2 before:h-5 before:w-[2px] before:-translate-y-1/2', accent.child)
                         : item.soon
                           ? 'text-slate-700 dark:text-white/70 hover:bg-slate-100 dark:hover:bg-white/5'
                           : 'text-slate-800 dark:text-white/90 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-950 dark:hover:text-white',
                     )}
                   >
-                    <span className="truncate">{item.label}</span>
+                    <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>
                     {item.soon && (
-                      <span className="ml-auto rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-700 dark:bg-white/5 dark:text-white/40">예정</span>
+                      <span className="shrink-0 rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-700 dark:bg-white/5 dark:text-white/40">예정</span>
                     )}
                     {item.testing && (
-                      <span className="ml-auto rounded bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/10 dark:text-sky-300">개발 중</span>
+                      <span className="shrink-0 rounded bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/10 dark:text-sky-300">개발 중</span>
                     )}
                   </Link>
                 ))}

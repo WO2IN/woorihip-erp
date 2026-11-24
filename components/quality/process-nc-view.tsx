@@ -11,6 +11,7 @@ import {
   addDaysToIsoDate,
   customerNcDefectType,
   emptyProcessNcActions,
+  ncResponseDueDate,
   todayOccurrenceDate,
 } from '@/lib/non-conformity'
 import { FLOOR_OPTIONS, formatFloorLabel } from '@/lib/floor'
@@ -29,6 +30,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CountermeasurePdfButton } from '@/components/quality/countermeasure-pdf-button'
+import { LedgerPager } from '@/components/quality/ledger-pager'
 import { ProcessNcActionChecklist } from '@/components/quality/process-nc-action-chips'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { cn } from '@/lib/utils'
@@ -36,6 +39,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 const API = '/api/quality/process-nonconformities'
 const FILTER_ALL = '__all__'
+const PAGE_SIZE = 15
 const dateInputClass = 'h-7 min-w-0 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0 [&::-webkit-calendar-picker-indicator]:ml-0'
 const selectTriggerClass = 'h-7 min-h-0 w-full border-0 bg-transparent px-0 py-0 text-[13px] shadow-none focus-visible:ring-0'
 
@@ -49,6 +53,24 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
 ]
 
 const STAGES = ['발견', '원인분석', '대책수립', '조치', '유효성 확인', '종결'] as const
+
+type ProcessNcSortKey = 'code' | 'date' | 'floor' | 'line' | 'process' | 'part' | 'type' | 'qty' | 'actions' | 'stage' | 'recurred'
+
+const SORT_COLUMNS: { key: ProcessNcSortKey; label: string }[] = [
+  { key: 'code', label: 'No' },
+  { key: 'date', label: '발생일' },
+  { key: 'floor', label: '층' },
+  { key: 'line', label: '라인' },
+  { key: 'process', label: '공정' },
+  { key: 'part', label: '품번' },
+  { key: 'type', label: '불량유형' },
+  { key: 'qty', label: '수량' },
+  { key: 'actions', label: '처리' },
+  { key: 'stage', label: '진행상태' },
+  { key: 'recurred', label: '재발' },
+]
+
+const TEXT_SORT_KEYS = new Set<ProcessNcSortKey>(['code', 'floor', 'line', 'process', 'part', 'type', 'actions'])
 
 const STAGE_BADGE = [
   'bg-slate-100 text-slate-600',
@@ -96,7 +118,7 @@ function isClosed(row: ProcessNonconformity) {
 
 function isOverdue(row: ProcessNonconformity, today: string) {
   if (isClosed(row)) return false
-  return today > addDaysToIsoDate(row.occurrenceDate, CUSTOMER_NC_RESPONSE_DAYS)
+  return today > ncResponseDueDate(row)
 }
 
 function stageIndex(row: ProcessNonconformity) {
@@ -135,11 +157,68 @@ function formatQty(value: number | null | undefined) {
   return value.toLocaleString('ko-KR')
 }
 
+function compareText(a: string, b: string) {
+  return a.localeCompare(b, 'ko', { numeric: true, sensitivity: 'base' })
+}
+
+function compareProcessNc(
+  a: ProcessNonconformity,
+  b: ProcessNonconformity,
+  key: ProcessNcSortKey,
+  order: 'asc' | 'desc',
+  codeById: Map<string, string>,
+) {
+  const sign = order === 'asc' ? 1 : -1
+  let result = 0
+  switch (key) {
+    case 'code':
+      result = compareText(codeById.get(a.id) ?? '', codeById.get(b.id) ?? '')
+      break
+    case 'date':
+      result = a.occurrenceDate.localeCompare(b.occurrenceDate) || a.createdAt.localeCompare(b.createdAt)
+      break
+    case 'floor':
+      result = compareText(formatFloorLabel(a.occurrenceLine), formatFloorLabel(b.occurrenceLine))
+      break
+    case 'line':
+      result = compareText(a.lineName ?? '', b.lineName ?? '')
+      break
+    case 'process':
+      result = compareText(a.processName ?? '', b.processName ?? '')
+      break
+    case 'part':
+      result = compareText(a.partNo ?? '', b.partNo ?? '')
+      break
+    case 'type':
+      result = compareText(defectTypeOf(a), defectTypeOf(b))
+      break
+    case 'qty': {
+      const left = typeof a.defectQty === 'number' ? a.defectQty : null
+      const right = typeof b.defectQty === 'number' ? b.defectQty : null
+      if (left == null || right == null) return left == null && right == null ? 0 : left == null ? 1 : -1
+      result = left - right
+      break
+    }
+    case 'actions':
+      result = compareText(actionLabels(a).join(' · '), actionLabels(b).join(' · '))
+      break
+    case 'stage':
+      result = stageIndex(a) - stageIndex(b)
+      break
+    case 'recurred':
+      result = Number(a.recurred === true) - Number(b.recurred === true)
+      break
+  }
+  if (result !== 0) return result * sign
+  return b.occurrenceDate.localeCompare(a.occurrenceDate) || b.createdAt.localeCompare(a.createdAt)
+}
+
 type ProcessNcForm = ReturnType<typeof emptyProcessNcForm>
 
 function emptyProcessNcForm() {
   return {
     occurrenceDate: todayOccurrenceDate(),
+    responseDueDate: addDaysToIsoDate(todayOccurrenceDate(), CUSTOMER_NC_RESPONSE_DAYS),
     occurrenceLine: FLOOR_OPTIONS[0].label as string,
     lineName: '',
     processName: '',
@@ -162,6 +241,7 @@ function emptyProcessNcForm() {
 function processRowToForm(row: ProcessNonconformity): ProcessNcForm {
   return {
     occurrenceDate: row.occurrenceDate,
+    responseDueDate: ncResponseDueDate(row),
     occurrenceLine: row.occurrenceLine,
     lineName: row.lineName ?? '',
     processName: row.processName ?? '',
@@ -213,6 +293,9 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
   const [companyFilter, setCompanyFilter] = useState(FILTER_ALL)
   const [defectTypeFilter, setDefectTypeFilter] = useState(FILTER_ALL)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [sortKey, setSortKey] = useState<ProcessNcSortKey>('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [page, setPage] = useState(0)
   const [exporting, setExporting] = useState(false)
   const [catalogCompanies, setCatalogCompanies] = useState<string[]>([])
   const [productsByCompany, setProductsByCompany] = useState<Record<string, string[]>>({})
@@ -407,6 +490,27 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
     [periodFiltered, statusFilter, today],
   )
 
+  const sorted = useMemo(
+    () => [...visible].sort((a, b) => compareProcessNc(a, b, sortKey, sortOrder, codeById)),
+    [visible, sortKey, sortOrder, codeById],
+  )
+  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageRows = sorted.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+
+  useEffect(() => {
+    setPage(0)
+  }, [statusFilter, companyFilter, defectTypeFilter, periodFrom, periodTo, sortKey, sortOrder])
+
+  function toggleSort(key: ProcessNcSortKey) {
+    if (sortKey === key) {
+      setSortOrder((order) => (order === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortOrder(TEXT_SORT_KEYS.has(key) ? 'asc' : 'desc')
+  }
+
   useEffect(() => {
     if (selectedId && visible.some((row) => row.id === selectedId)) return
     setSelectedId(visible[0]?.id ?? null)
@@ -449,7 +553,7 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
     setExporting(true)
     try {
       const { buildProcessNcWorkbook } = await import('@/lib/process-nc-excel')
-      const sheetRows = visible.map((row) => ({
+      const sheetRows = sorted.map((row) => ({
         code: codeById.get(row.id) ?? '',
         occurrenceDate: formatDotDate(row.occurrenceDate, ''),
         floor: formatFloorLabel(row.occurrenceLine),
@@ -461,7 +565,7 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
         defectQty: typeof row.defectQty === 'number' ? row.defectQty : '' as const,
         actions: actionLabels(row).join(', '),
         description: row.description,
-        dueDate: formatDotDate(addDaysToIsoDate(row.occurrenceDate, CUSTOMER_NC_RESPONSE_DAYS), ''),
+        dueDate: formatDotDate(ncResponseDueDate(row), ''),
         stage: STAGES[stageIndex(row)],
         status: (isClosed(row) ? '종결' : isOverdue(row, today) ? '기한 초과' : '진행중') as '종결' | '기한 초과' | '진행중',
         recurred: row.recurred ? '재발' : '',
@@ -508,7 +612,6 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
             productsByCompany={productsByCompany}
             onCompaniesChange={setCatalogCompanies}
             onToggleAction={toggleFormAction}
-            showCountermeasure={false}
             wide
           />
         </div>
@@ -520,7 +623,7 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
   )
 
   const selectedCode = selected ? codeById.get(selected.id) ?? '' : ''
-  const selectedDue = selected ? addDaysToIsoDate(selected.occurrenceDate, CUSTOMER_NC_RESPONSE_DAYS) : ''
+  const selectedDue = selected ? ncResponseDueDate(selected) : ''
   const selectedDays = selected ? daysUntil(today, selectedDue) : 0
   const selectedStage = selected ? stageIndex(selected) : 0
 
@@ -565,14 +668,14 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
               </SelectContent>
             </Select>
           </InsetField>
-          <div className="flex h-9 items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5 dark:border-border dark:bg-background">
+          <div className="flex h-11 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 dark:border-border dark:bg-background">
             {STATUS_FILTERS.map(({ key, label }) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setStatusFilter(key)}
                 className={cn(
-                  'h-7 rounded-md px-2.5 text-[12px] font-semibold whitespace-nowrap transition-colors',
+                  'h-9 min-w-[3.25rem] rounded-md px-4 text-sm font-semibold whitespace-nowrap transition-colors',
                   statusFilter === key ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-muted',
                 )}
               >
@@ -603,18 +706,40 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1.75fr)_minmax(18rem,0.78fr)]">
-          <section className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border bg-card">
+          <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card">
             <header className="border-b px-4 py-3">
               <h3 className="text-[15px] font-bold tracking-tight">공정 부적합 대장</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">{visible.length}건 · 행을 누르면 오른쪽에 상세가 열립니다</p>
             </header>
-            <div className="min-h-0 flex-1 overflow-x-auto">
+            <div className="flex-1 overflow-x-auto">
               <table className="w-full min-w-[52rem] border-collapse text-center text-[13px]">
                 <thead className="bg-slate-50 text-xs font-medium text-slate-500 dark:bg-muted/40">
                   <tr>
-                    {['No', '발생일', '층', '라인', '공정', '품번', '불량유형', '수량', '처리', '진행상태', '재발'].map((head) => (
-                      <th key={head} className="px-2.5 py-2.5 text-center font-medium whitespace-nowrap">{head}</th>
-                    ))}
+                    {SORT_COLUMNS.map(({ key, label }) => {
+                      const active = sortKey === key
+                      return (
+                        <th
+                          key={key}
+                          aria-sort={active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                          className="px-1.5 py-1.5 text-center font-medium whitespace-nowrap"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleSort(key)}
+                            aria-label={`${label} ${active && sortOrder === 'asc' ? '내림차순으로' : '오름차순으로'} 정렬`}
+                            className={cn(
+                              'inline-flex items-center justify-center gap-0.5 rounded-md px-1 py-1 hover:text-slate-900 dark:hover:text-foreground',
+                              active ? 'text-slate-900 dark:text-foreground' : 'text-slate-500',
+                            )}
+                          >
+                            {label}
+                            <span aria-hidden className={active ? 'text-emerald-600' : 'text-slate-300'}>
+                              {active ? (sortOrder === 'desc' ? '↓' : '↑') : '↕'}
+                            </span>
+                          </button>
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -624,7 +749,7 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
                         {loading ? '불러오는 중…' : periodFiltered.length > 0 ? '조건에 맞는 항목이 없습니다' : '등록된 항목이 없습니다'}
                       </td>
                     </tr>
-                  ) : visible.map((row) => {
+                  ) : pageRows.map((row) => {
                     const stage = stageIndex(row)
                     const active = row.id === selectedId
                     const actions = actionLabels(row)
@@ -658,9 +783,18 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
                 </tbody>
               </table>
             </div>
+            {sorted.length > 0 ? (
+              <LedgerPager
+                page={currentPage}
+                pageCount={pageCount}
+                total={sorted.length}
+                pageSize={PAGE_SIZE}
+                onPage={setPage}
+              />
+            ) : null}
           </section>
 
-          <aside className="flex h-full min-w-0 flex-col rounded-xl border bg-card">
+          <aside className="flex min-w-0 flex-col rounded-xl border bg-card">
             <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
               <h3 className="text-base font-bold tracking-tight">상세보기 : {selectedCode || '—'}</h3>
               {editable && selected ? (
@@ -675,12 +809,12 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
               ) : null}
             </header>
             {selected ? (
-              <div className="flex flex-1 flex-col gap-3 p-4">
+              <div className="flex flex-1 flex-col gap-4 p-4">
                 <StageTrack
                   current={selectedStage}
                   onSelect={editable ? (index) => { void patchRow(selected.id, stageStatuses(index)) } : undefined}
                 />
-                <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 text-[13px] sm:grid-cols-3">
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px] sm:grid-cols-3">
                   <DetailField label="고객사" value={selected.customerCompany || '—'} />
                   <DetailField label="발생일" value={formatDotDate(selected.occurrenceDate)} />
                   <DetailField label="층 / 라인" value={`${formatFloorLabel(selected.occurrenceLine)} · ${selected.lineName || '—'}`} />
@@ -689,29 +823,57 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
                   <DetailField label="불량유형" value={defectTypeOf(selected)} />
                   <DetailField label="불량수량" value={typeof selected.defectQty === 'number' ? `${formatQty(selected.defectQty)} EA` : '—'} />
                   <DetailField label="처리" value={actionLabels(selected).join(' · ') || '—'} />
-                  <DetailField
-                    label="회신기한"
-                    value={
-                      isClosed(selected)
-                        ? formatDotDate(selectedDue)
-                        : `${formatDotDate(selectedDue)} · ${selectedDays < 0 ? `초과 ${Math.abs(selectedDays)}일` : `${selectedDays}일`}`
-                    }
-                  />
+                  {editable ? (
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground">회신기한</span>
+                      <Input
+                        type="date"
+                        className="h-8 text-[13px]"
+                        value={selectedDue}
+                        onChange={(event) => { void patchRow(selected.id, { responseDueDate: event.target.value }) }}
+                      />
+                      {!isClosed(selected) ? (
+                        <span className="text-[11px] text-muted-foreground">
+                          {selectedDays < 0 ? `초과 ${Math.abs(selectedDays)}일` : `D-${selectedDays}`}
+                        </span>
+                      ) : null}
+                    </label>
+                  ) : (
+                    <DetailField
+                      label="회신기한"
+                      value={
+                        isClosed(selected)
+                          ? formatDotDate(selectedDue)
+                          : `${formatDotDate(selectedDue)} · ${selectedDays < 0 ? `초과 ${Math.abs(selectedDays)}일` : `${selectedDays}일`}`
+                      }
+                    />
+                  )}
                 </dl>
-                <div className="mt-4 grid grid-cols-2 items-start gap-x-3 gap-y-1">
-                  <p className="text-xs leading-4 font-medium text-muted-foreground">부적합 내용</p>
-                  <p className="text-xs leading-4 font-medium text-muted-foreground">대책 · 처리내용</p>
-                  <div className="h-28 overflow-auto rounded-lg border border-input bg-slate-50 px-3 py-2 text-sm leading-relaxed dark:bg-muted/40">
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
+                  <DetailNote label="부적합 내용" tone="rose">
                     {selected.description || '—'}
-                  </div>
-                  <div className="h-28 overflow-auto rounded-lg border border-input bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-700 dark:bg-muted/40 dark:text-foreground">
+                  </DetailNote>
+                  <DetailNote label="대책 · 처리내용" tone="emerald">
                     {selected.remarks?.trim() ? selected.remarks : (
-                      <span className="whitespace-pre-line text-muted-foreground">{editable ? '우측 상단 수정에서 대책을\n입력하세요.' : '—'}</span>
+                      <span className="text-muted-foreground">{editable ? '수정에서 대책을 입력해 주세요.' : '—'}</span>
                     )}
-                  </div>
+                  </DetailNote>
                 </div>
-                <div className="mt-auto grid grid-cols-3 gap-1.5">
-                  {DOC_ACTIONS.map((label) => (
+                <p className="text-[11px] text-muted-foreground">
+                  등록 {selected.createdBy || '—'} · {formatDotDate(selected.createdAt.slice(0, 10))}
+                  {selected.assignee ? ` · 담당 ${selected.assignee}` : ''}
+                  {selected.responsible ? ` · 책임 ${selected.responsible}` : ''}
+                </p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <CountermeasurePdfButton
+                    kind="process"
+                    recordId={selected.id}
+                    file={selected.countermeasureFile}
+                    editable={editable}
+                    onChange={(countermeasureFile) => setRows((prev) => prev.map((row) => (row.id === selected.id ? { ...row, countermeasureFile } : row)))}
+                    className="text-[11px]"
+                  />
+                  {DOC_ACTIONS.filter((label) => label !== '대책서').map((label) => (
                     <button
                       key={label}
                       type="button"
@@ -724,7 +886,7 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
                 </div>
               </div>
             ) : (
-              <p className="px-4 py-10 text-center text-sm text-muted-foreground">선택된 항목이 없습니다.</p>
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">선택된 항목이 없습니다.</p>
             )}
           </aside>
         </div>
@@ -743,6 +905,7 @@ export function ProcessNcView({ embedded = false }: { embedded?: boolean }) {
           </DialogHeader>
           <div className="max-h-[min(70vh,36rem)] space-y-4 overflow-y-auto pr-1">
             <ProcessNcFormFields
+              key={editId ?? 'edit'}
               form={editForm}
               setForm={setEditForm}
               companies={companyChoices}
@@ -848,6 +1011,20 @@ function SummaryCard({ label, value, unit, hint, tone }: { label: string; value:
   )
 }
 
+function DetailNote({ label, tone, children }: { label: string; tone: 'rose' | 'emerald'; children: ReactNode }) {
+  return (
+    <section className="flex min-h-24 flex-1 flex-col overflow-hidden rounded-lg border bg-slate-50/70 dark:bg-muted/30">
+      <p className="flex items-center gap-1.5 border-b bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:bg-transparent dark:text-slate-300">
+        <span className={cn('size-1.5 rounded-full', tone === 'rose' ? 'bg-rose-500' : 'bg-emerald-500')} aria-hidden />
+        {label}
+      </p>
+      <div className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-3 py-2 text-sm leading-relaxed text-slate-800 dark:text-foreground">
+        {children}
+      </div>
+    </section>
+  )
+}
+
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
@@ -894,14 +1071,22 @@ function ProcessNcFormFields({
   showCountermeasure?: boolean
 }) {
   const companyProducts = productsForCompany(productsByCompany, form.customerCompany)
+  const [partManual, setPartManual] = useState(false)
+  useEffect(() => {
+    if (!form.customerCompany && !form.partNo) setPartManual(false)
+  }, [form.customerCompany, form.partNo])
   const fieldLabel = 'text-xs font-medium text-slate-500'
   const noteClass = 'h-28 min-h-28 resize-none overflow-auto leading-relaxed'
   return (
     <div className="space-y-4">
-      <div className={cn('grid gap-3', wide ? 'sm:grid-cols-3' : 'grid-cols-1')}>
+      <div className={cn('grid gap-3', wide ? 'sm:grid-cols-4' : 'grid-cols-1')}>
         <label className="block space-y-1.5">
           <span className={fieldLabel}>발생일</span>
           <Input type="date" value={form.occurrenceDate} onChange={(e) => setForm((current) => ({ ...current, occurrenceDate: e.target.value }))} />
+        </label>
+        <label className="block space-y-1.5">
+          <span className={fieldLabel}>회신기한</span>
+          <Input type="date" value={form.responseDueDate} onChange={(e) => setForm((current) => ({ ...current, responseDueDate: e.target.value }))} />
         </label>
         <label className="block space-y-1.5">
           <span className={fieldLabel}>불량수량</span>
@@ -958,35 +1143,54 @@ function ProcessNcFormFields({
             value={form.customerCompany}
             onChange={(customerCompany) => setForm((current) => {
               const parts = productsForCompany(productsByCompany, customerCompany)
-              return { ...current, customerCompany, partNo: parts.includes(current.partNo) ? current.partNo : '' }
+              const keepPart = partManual || parts.includes(current.partNo)
+              return { ...current, customerCompany, partNo: keepPart ? current.partNo : '' }
             })}
             onOptionsChange={onCompaniesChange}
             placeholder="고객사 검색"
           />
         </div>
         <div className="space-y-1.5">
-          <p className={fieldLabel}>품번</p>
-          <SearchableCombobox
-            key={form.customerCompany.trim() || 'part'}
-            appearance="form"
-            configName="products"
-            options={companyProducts}
-            listAll
-            creatable={false}
-            clearable
-            disabled={!form.customerCompany.trim()}
-            value={form.partNo}
-            onChange={(partNo) => setForm((current) => ({ ...current, partNo }))}
-            placeholder={form.customerCompany.trim() ? (companyProducts.length ? `${form.customerCompany.trim()} 품번` : '성적서·입고에 품번 없음') : '고객사를 먼저 선택'}
-            listCaption={form.customerCompany.trim() ? `${form.customerCompany.trim()} 품번 ${companyProducts.length}개` : undefined}
-          />
+          <div className="flex items-center justify-between gap-2">
+            <p className={fieldLabel}>품번</p>
+            <button
+              type="button"
+              onClick={() => setPartManual((current) => !current)}
+              className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+            >
+              {partManual ? '목록에서 선택' : '직접 입력'}
+            </button>
+          </div>
+          {partManual ? (
+            <Input
+              value={form.partNo}
+              onChange={(e) => setForm((current) => ({ ...current, partNo: e.target.value }))}
+              placeholder="품번을 입력해 주세요"
+              className="h-10"
+            />
+          ) : (
+            <SearchableCombobox
+              key={form.customerCompany.trim() || 'part'}
+              appearance="form"
+              configName="products"
+              options={companyProducts}
+              listAll
+              creatable={false}
+              clearable
+              disabled={!form.customerCompany.trim()}
+              value={form.partNo}
+              onChange={(partNo) => setForm((current) => ({ ...current, partNo }))}
+              placeholder={form.customerCompany.trim() ? (companyProducts.length ? `${form.customerCompany.trim()} 품번` : '성적서·입고에 품번이 없습니다') : '고객사를 먼저 선택해 주세요'}
+              listCaption={form.customerCompany.trim() ? `${form.customerCompany.trim()} 품번 ${companyProducts.length}개` : undefined}
+            />
+          )}
         </div>
       </div>
       <div className={cn('grid gap-3', wide && showCountermeasure && 'sm:grid-cols-2')}>
         <label className="block space-y-1.5">
           <span className={fieldLabel}>부적합 내용</span>
           <Textarea
-            placeholder="어떤 부적합인지"
+            placeholder="부적합 내용을 입력해 주세요"
             value={form.description}
             onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
             style={{ fieldSizing: 'fixed' }}
@@ -995,9 +1199,9 @@ function ProcessNcFormFields({
         </label>
         {showCountermeasure ? (
           <label className="block space-y-1.5">
-            <span className={fieldLabel}>대책 입력</span>
+            <span className={fieldLabel}>대책 내용</span>
             <Textarea
-              placeholder="처리 내용, 반품·회신 등 대책"
+              placeholder="대책 내용을 입력해 주세요"
               value={form.remarks}
               onChange={(e) => setForm((current) => ({ ...current, remarks: e.target.value }))}
               style={{ fieldSizing: 'fixed' }}

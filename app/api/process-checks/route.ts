@@ -5,6 +5,7 @@ import { canOperateFloor } from '@/lib/access'
 import {
   PROCESS_CHECK_FIELDS,
   PROCESS_LINES,
+  choiceAllowsMultiple,
   ProcessAnswer,
   ProcessCheckRecord,
   ProcessFieldSpec,
@@ -48,6 +49,7 @@ function answerText(value: ProcessAnswer | undefined) {
   if (value === 'yes') return '예'
   if (value === 'no') return '아니오'
   if (value === '' || value == null) return '미입력'
+  if (typeof value === 'string' && value.includes('\n')) return value.split('\n').filter(Boolean).join(' · ')
   return String(value)
 }
 
@@ -94,8 +96,20 @@ function parseAnswers(incoming: unknown, fields: ProcessFieldSpec[]): Record<str
       continue
     }
     if (field.type === 'choice') {
+      const allowed = new Set(field.options ?? [])
+      if (choiceAllowsMultiple(field)) {
+        const parts = Array.isArray(raw) ? raw : String(raw).split('\n')
+        const picked: string[] = []
+        for (const part of parts) {
+          const label = String(part).trim()
+          if (!allowed.has(label) || picked.includes(label)) continue
+          picked.push(label)
+        }
+        answers[field.id] = picked.join('\n')
+        continue
+      }
       const choice = String(raw).trim()
-      answers[field.id] = field.options?.includes(choice) ? choice : ''
+      answers[field.id] = allowed.has(choice) ? choice : ''
       continue
     }
     const quantity = Number(raw)

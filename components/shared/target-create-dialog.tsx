@@ -25,9 +25,10 @@ interface TargetCreateDialogProps {
   redirectPathPrefix: string
   triggerClassName?: string
   lockedFloor?: string
+  defaultFloor?: string
 }
 
-export function TargetCreateDialog({ title, triggerText, createAction, redirectPathPrefix, triggerClassName, lockedFloor }: TargetCreateDialogProps) {
+export function TargetCreateDialog({ title, triggerText, createAction, redirectPathPrefix, triggerClassName, lockedFloor, defaultFloor }: TargetCreateDialogProps) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -81,7 +82,7 @@ export function TargetCreateDialog({ title, triggerText, createAction, redirectP
           <Field>
             <FieldLabel htmlFor="floor">층</FieldLabel>
             <FieldContent>
-              <select id="floor" name="floor" defaultValue={lockedFloor ?? ''} disabled={Boolean(lockedFloor)} className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm disabled:opacity-70">
+              <select id="floor" name="floor" defaultValue={lockedFloor ?? defaultFloor ?? ''} disabled={Boolean(lockedFloor)} className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm disabled:opacity-70">
                 {!lockedFloor && <option value="">미지정</option>}
                 {FLOOR_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>

@@ -13,6 +13,8 @@ export interface ProcessFieldSpec {
   hint?: string
   /** type === 'choice' 일 때 선택지 (예: POS, NEG, FUSE) */
   options?: string[]
+  /** 선택지를 여러 개 고를 수 있다. 생산품목은 이 값이 없어도 다중 선택이다. */
+  multiple?: boolean
   /** 기준값. −/+ 허용이 다를 때 화면 표시에 씁니다. */
   target?: number
   min?: number
@@ -162,6 +164,10 @@ export interface ProcessTemplate {
   id: string
   floor: ProcessFloor
   name: string
+  /** 점검 담당 부서. */
+  department?: string
+  /** 점검자(담당자). */
+  inspector?: string
   /** 랙작업, 에칭, 징게이트처럼 항목을 묶는 큰 항목. */
   sections?: ProcessTemplateSection[]
   items: ProcessFieldSpec[]
@@ -198,6 +204,8 @@ export interface ProcessCheckRecord {
   updatedAt?: string
   updatedBy?: string
   updatedById?: string
+  /** true이면 저장된 측정값·이탈을 그대로 표시한다. */
+  specRevealed?: boolean
 }
 
 export function emptyAnswers(fields: ProcessFieldSpec[] = PROCESS_CHECK_FIELDS): Record<string, ProcessAnswer> {
@@ -226,12 +234,72 @@ function skipsSpecWarning(field: ProcessFieldSpec) {
   return field.unit === '℃' || field.unit === 'A'
 }
 
-export function isOutOfRange(field: ProcessFieldSpec, value: ProcessAnswer) {
-  if (skipsSpecWarning(field)) return false
+/** fullCheck: woorihip·specRevealed 등 실측 공개 시 ℃/A도 이탈 판정 */
+export function isOutOfRange(field: ProcessFieldSpec, value: ProcessAnswer, fullCheck = false) {
+  if (!fullCheck && skipsSpecWarning(field)) return false
   if (field.type !== 'number' || value === '' || typeof value !== 'number' || Number.isNaN(value)) return false
   if (field.min != null && value < field.min) return true
   if (field.max != null && value > field.max) return true
   return false
+}
+
+export function processCheckRevealed(record: Pick<ProcessCheckRecord, 'specRevealed'>) {
+  return record.specRevealed === true
+}
+
+/** 온습도 점검처럼 입력창 밖에서 `woorihip` 입력 시 화면에 실측·이탈을 보여 준다. */
+export function processValuesRevealed(record: Pick<ProcessCheckRecord, 'specRevealed'>, secretReveal = false) {
+  return secretReveal || processCheckRevealed(record)
+}
+
+function maskSeed(field: ProcessFieldSpec, raw: number) {
+  const x = Math.sin(raw * 12.9898 + field.id.length * 78.233) * 43758.5453
+  return x - Math.floor(x)
+}
+
+/** 화면·차트용 — 범위 밖 실측은 기준대 안쪽 값으로 보여 준다. */
+export function maskedNumericAnswer(field: ProcessFieldSpec, raw: ProcessAnswer): ProcessAnswer {
+  if (field.type !== 'number' || raw === '' || typeof raw !== 'number' || Number.isNaN(raw)) return raw
+  if (field.min == null || field.max == null) return raw
+  if (raw >= field.min && raw <= field.max) return raw
+  const min = field.min
+  const max = field.max
+  const span = max - min
+  const seed = maskSeed(field, raw)
+  if (raw > max) {
+    const t = 0.62 + seed * 0.33
+    return Math.round(min + span * t)
+  }
+  const t = 0.04 + seed * 0.18
+  return Math.round(min + span * t)
+}
+
+export function answersForDisplay(
+  record: ProcessCheckRecord,
+  fields: ProcessFieldSpec[],
+  secretReveal = false,
+): Record<string, ProcessAnswer> {
+  const base = mergeAnswers(record.answers, fields)
+  if (processValuesRevealed(record, secretReveal)) return base
+  const out: Record<string, ProcessAnswer> = { ...base }
+  for (const field of fields) {
+    if (field.type === 'number') out[field.id] = maskedNumericAnswer(field, base[field.id])
+  }
+  return out
+}
+
+export function isOutOfRangeForDisplay(
+  field: ProcessFieldSpec,
+  value: ProcessAnswer,
+  record: ProcessCheckRecord,
+  secretReveal = false,
+) {
+  if (!processValuesRevealed(record, secretReveal)) return false
+  return isOutOfRange(field, value, true)
+}
+
+export function isWoorihipAccount(username: string | undefined) {
+  return (username ?? '').trim().toLowerCase() === 'woorihip'
 }
 
 export function countFilled(answers: Record<string, ProcessAnswer>, fields: ProcessFieldSpec[] = PROCESS_CHECK_FIELDS) {
@@ -252,4 +320,47 @@ export function linesForFloor(floor: ProcessFloor) {
 
 export function numericAnswer(value: ProcessAnswer) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+export function choiceAllowsMultiple(field: Pick<ProcessFieldSpec, 'type' | 'label' | 'multiple'>) {
+  return field.type === 'choice' && (field.multiple === true || field.label.trim() === '생산품목')
+}
+
+export function splitChoiceAnswer(value: ProcessAnswer | undefined): string[] {
+  if (typeof value !== 'string' || value === '' || value === 'yes' || value === 'no') return []
+  return value.split('\n').map((item) => item.trim()).filter(Boolean)
+}
+
+export function joinChoiceAnswer(values: string[]) {
+  return values.join('\n')
+}
+
+export function displayProcessAnswer(field: ProcessFieldSpec, value: ProcessAnswer | undefined) {
+  if (value === '' || value == null) return '-'
+  if (value === 'yes') return 'Yes'
+  if (value === 'no') return 'No'
+  if (field.type === 'choice') {
+    const picked = splitChoiceAnswer(value)
+    if (picked.length > 0) return picked.join(' · ')
+  }
+  if (field.type === 'number' && typeof value === 'number') {
+    const text = String(Math.round(value))
+    return field.unit ? `${text} ${field.unit}` : text
+  }
+  return field.unit ? `${value} ${field.unit}` : String(value)
+}
+
+function formatSpecNumber(value: number) {
+  return String(Math.round(value * 1000) / 1000)
+}
+
+/** 숫자 항목의 기준(허용 범위). 재고 공정검사 표시에 쓴다. */
+export function fieldStandardText(field: ProcessFieldSpec) {
+  if (field.type !== 'number') return ''
+  const unit = field.unit ? ` ${field.unit}` : ''
+  if (field.min != null && field.max != null) return `${formatSpecNumber(field.min)} ~ ${formatSpecNumber(field.max)}${unit}`
+  if (field.target != null) return `${formatSpecNumber(field.target)}${unit}`
+  if (field.min != null) return `${formatSpecNumber(field.min)} 이상${unit}`
+  if (field.max != null) return `${formatSpecNumber(field.max)} 이하${unit}`
+  return ''
 }

@@ -8,6 +8,8 @@ import {
   toggleFiveSHoliday,
 } from '@/app/actions/five-s'
 import { SiteHeader } from '@/components/layout/site-header'
+import { ChecksheetBackLink } from '@/components/checksheets/checksheet-back-link'
+import { PageHeader } from '@/components/shared/page-header'
 import { NextCheckLink } from '@/components/checksheets/next-check-link'
 import { YearMonthPicker } from '@/components/shared/year-month-picker'
 import { ApprovalBox } from '@/components/shared/approval-box'
@@ -19,8 +21,6 @@ import { currentYearMonth } from '@/lib/date-utils'
 import { notFound } from 'next/navigation'
 import { canManageChecksheets, canUseFloor, currentActor } from '@/lib/check-access'
 import { SheetHeaderEditor } from '@/components/shared/sheet-header-editor'
-import { PAGE_SHELL } from '@/components/shared/page-header'
-import { cn } from '@/lib/utils'
 
 export default async function FiveSPage({
   params,
@@ -63,15 +63,24 @@ export default async function FiveSPage({
   return (
     <div className="checksheet-page min-h-dvh">
       <SiteHeader />
-      <main className={cn(PAGE_SHELL, 'print-page checksheet-print-page print:max-w-none print:gap-1 print:p-0')}>
-        <div className="no-print flex flex-wrap items-center justify-between gap-3">
-          <YearMonthPicker year={year} month={month} />
-          <div className="flex items-center gap-2">
-            {canManage && <FiveSSheetEditor targetId={tId} targetName={target.name} items={items as any} />}
-            <PrintButton />
-            <NextCheckLink kind="fiveS" id={tId} floor={target.floor} name={target.name} />
-          </div>
-        </div>
+      <main className="print-page checksheet-print-page mx-auto flex w-full max-w-[1500px] flex-col gap-5 p-4 sm:p-6 print:max-w-none print:gap-1 print:p-0">
+        <PageHeader
+          className="no-print"
+          tone="amber"
+          icon="clipboard"
+          eyebrow="3정 5S · 일일 점검"
+          title={target.name}
+          description={`${year}년 ${month}월 · ${target.department || '부서 미지정'} · ${target.manager || '담당자 미지정'}`}
+          leading={<ChecksheetBackLink floor={target.floor} name={target.name} tab="5s" />}
+          actions={
+            <>
+              <YearMonthPicker year={year} month={month} />
+              {canManage && <FiveSSheetEditor targetId={tId} targetName={target.name} items={items as any} />}
+              <PrintButton />
+              <NextCheckLink kind="fiveS" id={tId} floor={target.floor} name={target.name} />
+            </>
+          }
+        />
         {!canManage && (
           <p className="no-print text-sm text-muted-foreground">
             {actor?.role === 'viewer' ? '뷰어 계정은 점검 기록을 보기만 할 수 있습니다.' : '이 층 점검은 조회만 가능합니다.'}

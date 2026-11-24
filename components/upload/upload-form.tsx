@@ -20,8 +20,12 @@ import {
   ACCEPT_CERTIFICATE,
   CERTIFICATE_TYPE,
   DEFAULT_OTHER_TYPE,
+  SHEET_DOCUMENT_TYPES,
+  documentTypeLabel,
   fileKind,
   isCertificate,
+  isSheetDocumentType,
+  normalizeSheetDocumentType,
 } from '@/lib/file-types'
 
 const saveConfigValue = async (
@@ -104,7 +108,8 @@ export function UploadForm() {
   const [success, setSuccess] = useState(false)
   // Required fields
   const [documentType, setDocumentType] = useState(CERTIFICATE_TYPE)
-  const isCert = isCertificate(documentType)
+  // 수입검사성적서·이력카드·출하성적서는 모두 PDF로 올리고 업체·품목·LOT 같은 항목을 쓴다.
+  const isCert = isSheetDocumentType(documentType)
   const [company, setCompany] = useState('')
   const [shipmentCategory, setShipmentCategory] = useState('판재')
   const [shipmentFloor, setShipmentFloor] = useState('1')
@@ -131,7 +136,8 @@ export function UploadForm() {
     if (companyName) setCompany(companyName)
     if (productName) setProduct(productName)
     if (floor) setShipmentFloor(floor)
-    if (type && isCertificate(type)) setDocumentType(type)
+    const linkedType = normalizeSheetDocumentType(type)
+    if (linkedType) setDocumentType(linkedType)
     if (qty) setQuantity(formatQuantity(qty))
     if (unit === 'Kg' || unit === 'EA' || unit === 'R') setQuantityUnit(unit)
     if (date) setIssueDate(date)
@@ -279,8 +285,8 @@ export function UploadForm() {
       toast.error('먼저 PDF 파일을 선택해 주세요.')
       return
     }
-    if (!isCert || fileKind(file.name)?.ext !== 'pdf') {
-      toast.error('성적서 PDF만 자동 인식할 수 있습니다.')
+    if (!isCertificate(documentType) || fileKind(file.name)?.ext !== 'pdf') {
+      toast.error('출하성적서 PDF만 자동 인식할 수 있습니다.')
       return
     }
 
@@ -381,7 +387,7 @@ export function UploadForm() {
     }
 
     if (isCert && kind.ext !== 'pdf') {
-      toast.error('성적서는 PDF 파일만 올릴 수 있습니다.')
+      toast.error(`${documentTypeLabel(documentType)}는 PDF 파일만 올릴 수 있습니다.`)
       return
     }
 
@@ -395,18 +401,20 @@ export function UploadForm() {
   }
 
   const docTypeOptions = [
+    // 출하성적서를 맨 앞에 둔다 (문서탐색기 순서는 그대로)
     CERTIFICATE_TYPE,
+    ...SHEET_DOCUMENT_TYPES.filter(type => type !== CERTIFICATE_TYPE),
     '도면',
-    ...docTypes.filter(type => !isCertificate(type) && type !== '도면' && type !== DEFAULT_OTHER_TYPE),
+    ...docTypes.filter(type => !isSheetDocumentType(type) && type !== '도면' && type !== DEFAULT_OTHER_TYPE),
     DEFAULT_OTHER_TYPE,
   ]
   const fileInfo = file ? fileKind(file.name) : null
 
   const selectDocumentType = (type: string) => {
-    if (!isCertificate(type)) return
+    if (!isSheetDocumentType(type)) return
     if (file && fileKind(file.name)?.ext !== 'pdf') {
       setFile(null)
-      toast.info('성적서는 PDF만 올릴 수 있어 선택한 파일을 비웠습니다.')
+      toast.info(`${documentTypeLabel(type)}는 PDF만 올릴 수 있어 선택한 파일을 비웠습니다.`)
     }
     setDocumentType(type)
   }
@@ -437,13 +445,13 @@ export function UploadForm() {
       return
     }
 
-    if (!isCertificate(documentType)) {
+    if (!isSheetDocumentType(documentType)) {
       toast.error('도면과 기타 문서는 테스트 중이라 아직 등록할 수 없습니다.')
       return
     }
 
     if (isCert && fileKind(file.name)?.ext !== 'pdf') {
-      toast.error('성적서는 PDF 파일만 올릴 수 있습니다.')
+      toast.error(`${documentTypeLabel(documentType)}는 PDF 파일만 올릴 수 있습니다.`)
       return
     }
 
@@ -597,7 +605,7 @@ export function UploadForm() {
             <div className="flex flex-wrap gap-2">
               {docTypeOptions.map(type => {
                 const active = type === documentType
-                const planned = !isCertificate(type)
+                const planned = !isSheetDocumentType(type)
                 return (
                   <button
                     key={type}
@@ -614,7 +622,7 @@ export function UploadForm() {
                           : 'border-border bg-background text-foreground hover:border-primary/40'
                     )}
                   >
-                    {type}
+                    {documentTypeLabel(type)}
                     {planned && <span className="ml-1.5 text-[10px] font-medium">예정</span>}
                   </button>
                 )
@@ -623,7 +631,8 @@ export function UploadForm() {
             <Button
               type="button"
               size="sm"
-              disabled={ocrStatus === 'running'}
+              disabled={ocrStatus === 'running' || !isCertificate(documentType)}
+              title={isCertificate(documentType) ? undefined : '출하성적서 PDF만 자동 인식할 수 있습니다.'}
               onClick={runOcr}
               className="ml-auto h-8 gap-1.5"
             >

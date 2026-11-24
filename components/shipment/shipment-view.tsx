@@ -6,6 +6,7 @@ import {
   ArrowDown,
   ArrowUp,
   Calendar,
+  Check,
   ChevronDown,
   Download,
   Package,
@@ -37,6 +38,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { FilterChip, FilterSelect } from '@/components/shared/list-filters'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -56,6 +58,7 @@ import {
   buildLotFlow,
   buildStockGroups,
   collectMovements,
+  floor1InboundChoices,
   compactDate,
   displayDate,
   formatQuantity,
@@ -77,7 +80,7 @@ const FLOW_STAGE_LABELS: { key: FlowLot['stage']; label: string }[] = [
 ]
 
 const STOCK_TAB_ACCENT =
-  'bg-[oklch(0.58_0.20_18)] text-white shadow-sm dark:bg-[oklch(0.52_0.18_12)]'
+  'bg-teal-600 text-white shadow-sm dark:bg-teal-500'
 const isTabKey = (v: string | null): v is TabKey => v === 'flow' || v === 'stock' || v === 'in' || v === 'out' || v === 'work'
 type InventoryForm = {
   id?: string
@@ -163,6 +166,9 @@ export function ShipmentView() {
   const [markedLedgerKey, setMarkedLedgerKey] = useState('')
   const [previewDoc, setPreviewDoc] = useState<DocumentMetadata | null>(null)
   const [selectedLot, setSelectedLot] = useState<StockMovement | null>(null)
+  const [assigningKey, setAssigningKey] = useState('')
+  const [savingAssign, setSavingAssign] = useState(false)
+  const [assignPreview, setAssignPreview] = useState<{ row: StockMovement; inboundId: string } | null>(null)
 
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true)
@@ -273,23 +279,17 @@ export function ShipmentView() {
   }, [activeCompany, activeFloor, activeProduct, movements])
 
   const formCompanies = useMemo(
-    () =>
-      uniqueSorted(
-        movements
-          .filter((item) => !form.product || item.product === form.product)
-          .map((item) => item.company),
-      ),
-    [form.product, movements],
+    () => uniqueSorted(movements.map((item) => item.company)),
+    [movements],
   )
-  const formProducts = useMemo(
-    () =>
-      uniqueSorted(
-        movements
-          .filter((item) => !form.company || item.company === form.company)
-          .map((item) => item.product),
-      ),
-    [form.company, movements],
-  )
+  const formProducts = useMemo(() => {
+    const all = uniqueSorted(movements.map((item) => item.product))
+    if (!form.company) return all
+    const mine = uniqueSorted(
+      movements.filter((item) => item.company === form.company).map((item) => item.product),
+    )
+    return mine.length > 0 ? mine : all
+  }, [form.company, movements])
 
   useEffect(() => {
     if (companyFilter !== 'all' && !availableCompanies.includes(companyFilter)) {
@@ -333,13 +333,19 @@ export function ShipmentView() {
 
   const groups = useMemo(() => {
     const built = buildStockGroups(filteredMovements, startDate, endDate)
-    const logs = workLogs.filter((item) =>
-      (activeFloor === 'all' || String(item.floor ?? 3) === activeFloor) &&
-      (activeCompany === 'all' || item.company === activeCompany) &&
-      (activeProduct === 'all' || item.product === activeProduct),
-    )
+    const q = query.trim().toLocaleLowerCase('ko-KR')
+    const logs = workLogs.filter((item) => {
+      if (activeFloor !== 'all' && String(item.floor ?? 3) !== activeFloor) return false
+      if (activeCompany !== 'all' && item.company !== activeCompany) return false
+      if (activeProduct !== 'all' && item.product !== activeProduct) return false
+      if (!q) return true
+      return [item.company, item.product, String(item.floor ?? ''), item.unit]
+        .join(' ')
+        .toLocaleLowerCase('ko-KR')
+        .includes(q)
+    })
     return applyFloor3WorkLogs(built, logs, startDate, endDate)
-  }, [activeCompany, activeFloor, activeProduct, endDate, filteredMovements, startDate, workLogs])
+  }, [activeCompany, activeFloor, activeProduct, endDate, filteredMovements, query, startDate, workLogs])
 
   const inbound = useMemo(
     () =>
@@ -425,20 +431,49 @@ export function ShipmentView() {
     : '현재 보유 중인 재고 수량'
   const negativeForUnit = groups.filter((row) => row.unit === activeUnit && (floor3 ? row.finalStock : row.stock) < 0).length
 
+  const selectedMovements = useMemo(() => {
+    if (!selectedGroup) return []
+    return filteredMovements.filter(
+      (item) =>
+        item.company === selectedGroup.company &&
+        item.product === selectedGroup.product &&
+        item.floor === selectedGroup.floor &&
+        item.unit === selectedGroup.unit,
+    )
+  }, [filteredMovements, selectedGroup])
+  const inboundChoices = useMemo(
+    () => (selectedGroup?.floor === '1' ? floor1InboundChoices(selectedMovements) : []),
+    [selectedGroup?.floor, selectedMovements],
+  )
+  const assignPreviewView = useMemo(() => {
+    if (!assignPreview) return null
+    const next = selectedMovements.map((item) =>
+      item.id === assignPreview.row.id ? { ...item, consumedInboundId: assignPreview.inboundId } : item,
+    )
+    const afterById = new Map(floor1InboundChoices(next).map((item) => [item.id, item.remaining]))
+    const changes = inboundChoices.flatMap((item) => {
+      const after = afterById.get(item.id) ?? item.remaining
+      if (Math.abs(after - item.remaining) <= 0.0001) return []
+      return [{
+        id: item.id,
+        issueDate: item.issueDate,
+        quantity: item.quantity,
+        unit: item.unit,
+        before: item.remaining,
+        after,
+        target: item.id === assignPreview.inboundId,
+      }]
+    })
+    return {
+      row: assignPreview.row,
+      target: inboundChoices.find((item) => item.id === assignPreview.inboundId) ?? null,
+      changes,
+    }
+  }, [assignPreview, inboundChoices, selectedMovements])
   const selectedLedgerView = useMemo(() => {
     if (!selectedGroup) return { rows: [], openLots: [], segments: [] }
-    return buildLedger(
-      filteredMovements.filter(
-        (item) =>
-          item.company === selectedGroup.company &&
-          item.product === selectedGroup.product &&
-          item.floor === selectedGroup.floor &&
-          item.unit === selectedGroup.unit,
-      ),
-      startDate,
-      endDate,
-    )
-  }, [endDate, filteredMovements, selectedGroup, startDate])
+    return buildLedger(selectedMovements, startDate, endDate)
+  }, [endDate, selectedGroup, selectedMovements, startDate])
   const selectedLedger = selectedLedgerView.rows
   const ledgerRangeLabel = startDate || endDate
     ? `${formatDotDate(startDate, '처음')} ~ ${formatDotDate(endDate, '오늘')}`
@@ -588,6 +623,29 @@ export function ShipmentView() {
     }
   }
 
+  const assignOutbound = async (row: StockMovement, inboundId: string) => {
+    if (row.source !== 'document') return
+    setSavingAssign(true)
+    try {
+      const response = await fetch('/api/documents', {
+        method: 'PATCH',
+        headers: getJsonAuthHeaders(),
+        body: JSON.stringify({ id: row.id, consumedInboundId: inboundId }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || '차감 입고를 바꾸지 못했습니다.')
+      setDocuments((current) => current.map((doc) => (
+        doc.id === row.id ? { ...doc, consumedInboundId: inboundId || undefined } : doc
+      )))
+      setAssignPreview(null)
+      setAssigningKey('')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '차감 입고를 바꾸지 못했습니다.')
+    } finally {
+      setSavingAssign(false)
+    }
+  }
+
   const changedLedgerRows = () =>
     selectedLedger.filter((row) => {
       const next = editedQuantities[ledgerKey(row)]
@@ -705,7 +763,7 @@ export function ShipmentView() {
   return (
     <main className={PAGE_SHELL}>
       <PageHeader
-        tone="rose"
+        tone="teal"
         icon={Package}
         eyebrow="STOCK · 재고 관리"
         title="재고 관리"
@@ -1021,18 +1079,7 @@ export function ShipmentView() {
                 options={formCompanies}
                 recentOptions={formCompanies.slice(0, 8)}
                 value={form.company}
-                onChange={(value) => {
-                  const productsForCompany = uniqueSorted(
-                    movements.filter((item) => item.company === value).map((item) => item.product),
-                  )
-                  setForm({
-                    ...form,
-                    company: value,
-                    product: form.product && productsForCompany.includes(form.product)
-                      ? form.product
-                      : productsForCompany.length === 1 ? productsForCompany[0] : form.product,
-                  })
-                }}
+                onChange={(value) => setForm({ ...form, company: value })}
                 placeholder="업체 검색 또는 입력..."
                 className="h-10"
               />
@@ -1043,18 +1090,7 @@ export function ShipmentView() {
                 options={formProducts}
                 recentOptions={formProducts.slice(0, 8)}
                 value={form.product}
-                onChange={(value) => {
-                  const companiesForProduct = uniqueSorted(
-                    movements.filter((item) => item.product === value).map((item) => item.company),
-                  )
-                  setForm({
-                    ...form,
-                    product: value,
-                    company: form.company && companiesForProduct.includes(form.company)
-                      ? form.company
-                      : companiesForProduct.length === 1 ? companiesForProduct[0] : form.company,
-                  })
-                }}
+                onChange={(value) => setForm({ ...form, product: value })}
                 placeholder="품명 검색 또는 입력..."
                 className="h-10"
               />
@@ -1176,8 +1212,10 @@ export function ShipmentView() {
                       const index = selectedLedgerView.rows.indexOf(row)
                       const earlier = selectedLedgerView.rows.slice(0, index)
                       const firstInboundAfterEarlyOut = row.kind === '입고' && earlier.some((item) => item.beforeInbound) && earlier.every((item) => item.beforeInbound)
-                      const marked = ledgerKey(row) === markedLedgerKey
+                      const key = ledgerKey(row)
+                      const marked = key === markedLedgerKey
                       const inbound = row.kind === '입고'
+                      const assigning = assigningKey === key
                       return (
                         <div
                           key={ledgerKey(row)}
@@ -1227,6 +1265,67 @@ export function ShipmentView() {
                                 {depletionMark(lot)}
                               </span>
                             ))}
+                            {selectedGroup.floor === '1' && row.kind === '출고' && row.consumedFrom && (
+                              <span className="mt-1 block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                                {displayDate(row.consumedFrom.issueDate)} 입고 {formatQuantity(row.consumedFrom.quantity, row.consumedFrom.unit)}에서 차감
+                              </span>
+                            )}
+                            {selectedGroup.floor === '1' && row.kind === '출고' && row.source === 'document' && canEditMovement(row.floor) && (
+                              <span className="mt-1.5 block" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                                <Popover
+                                  open={assigning}
+                                  onOpenChange={(open) => {
+                                    if (savingAssign) return
+                                    setAssigningKey(open ? key : '')
+                                  }}
+                                >
+                                  <PopoverTrigger className="inline-flex h-7 items-center rounded-md border border-border bg-background px-2.5 text-[11px] font-semibold text-foreground hover:bg-muted">
+                                    다른 입고로 옮기기
+                                  </PopoverTrigger>
+                                  <PopoverContent align="start" className="w-[22rem] gap-0 overflow-hidden p-0">
+                                    <div className="grid grid-cols-[5.5rem_1fr_6.5rem] border-b border-border px-3 py-2 text-[11px] font-semibold text-muted-foreground">
+                                      <span>입고일</span>
+                                      <span>입고</span>
+                                      <span className="text-right">잔량</span>
+                                    </div>
+                                    <div className="max-h-64 overflow-y-auto py-1">
+                                      {inboundChoices.map((choice) => {
+                                        const selected = row.consumedFrom?.id === `inventory-${choice.id}` || row.consumedFrom?.id === `document-${choice.id}`
+                                        return (
+                                          <button
+                                            key={choice.id}
+                                            type="button"
+                                            disabled={savingAssign}
+                                            onClick={() => {
+                                              if (selected) {
+                                                setAssigningKey('')
+                                                return
+                                              }
+                                              setAssignPreview({ row, inboundId: choice.id })
+                                              setAssigningKey('')
+                                            }}
+                                            className={cn(
+                                              'grid w-full grid-cols-[5.5rem_1fr_6.5rem] items-center px-3 py-2 text-left text-xs hover:bg-muted disabled:opacity-60',
+                                              selected && 'bg-sky-50 dark:bg-sky-500/15',
+                                            )}
+                                          >
+                                            <span className="font-medium">{displayDate(choice.issueDate)}</span>
+                                            <span className="tabular-nums text-muted-foreground">{formatQuantity(choice.quantity, choice.unit)}</span>
+                                            <span className={cn(
+                                              'flex items-center justify-end gap-1 tabular-nums',
+                                              choice.remaining < 0 ? 'font-semibold text-destructive' : 'text-foreground',
+                                            )}>
+                                              {selected && <Check className="h-3.5 w-3.5 text-sky-700 dark:text-sky-300" />}
+                                              {formatQuantity(choice.remaining, choice.unit)}
+                                            </span>
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              </span>
+                            )}
                           </span>
                         </div>
                       )
@@ -1239,6 +1338,59 @@ export function ShipmentView() {
               }
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(assignPreviewView)}
+        onOpenChange={(open) => {
+          if (!open && !savingAssign) setAssignPreview(null)
+        }}
+      >
+        <DialogContent overlayClassName="!z-[100]" className="!z-[110] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>잔량 확인</DialogTitle>
+            <DialogDescription>
+              {assignPreviewView && (
+                <>
+                  {displayDate(assignPreviewView.row.issueDate)} 출고 {formatQuantity(assignPreviewView.row.quantity, assignPreviewView.row.unit)}를{' '}
+                  {assignPreviewView.target ? `${displayDate(assignPreviewView.target.issueDate)} 입고` : '선택한 입고'}로 옮깁니다.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            {assignPreviewView?.changes.map((item) => (
+              <div key={item.id} className="rounded-lg border border-border px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{displayDate(item.issueDate)} 입고 {formatQuantity(item.quantity, item.unit)}</span>
+                  <span className={cn('font-semibold', item.target ? 'text-sky-700 dark:text-sky-300' : 'text-foreground')}>
+                    {item.target ? '옮길 입고' : item.after > item.before ? '빠지는 입고' : '새로 붙는 입고'}
+                  </span>
+                </div>
+                <p className="mt-1.5 flex items-baseline gap-2 text-sm tabular-nums">
+                  <span className="text-muted-foreground">{formatQuantity(item.before, item.unit)}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className={cn('text-base font-bold', item.after < 0 ? 'text-destructive' : 'text-foreground')}>
+                    {formatQuantity(item.after, item.unit)}
+                  </span>
+                </p>
+              </div>
+            ))}
+            {assignPreviewView && assignPreviewView.changes.length === 0 && (
+              <p className="text-sm text-muted-foreground">잔량은 그대로입니다.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={savingAssign} onClick={() => setAssignPreview(null)}>취소</Button>
+            <Button
+              type="button"
+              disabled={savingAssign || !assignPreview}
+              onClick={() => assignPreview && void assignOutbound(assignPreview.row, assignPreview.inboundId)}
+            >
+              {savingAssign ? '옮기는 중...' : '옮기기'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

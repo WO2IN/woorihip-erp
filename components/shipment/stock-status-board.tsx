@@ -1,7 +1,9 @@
 'use client'
 
-import { useId, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Package, TrendingDown } from 'lucide-react'
+import { useId, useState, type ReactNode } from 'react'
+import { ArrowDown, ArrowUp, ChevronDown, Package, TrendingDown } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 import { Area, Bar, CartesianGrid, ComposedChart, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartContainer, type ChartConfig } from '@/components/ui/chart'
 import { LedgerEntry, displayDate, formatQuantity } from '@/lib/stock'
@@ -104,12 +106,49 @@ function axisNumber(value: number) {
   return Math.round(value).toLocaleString('ko-KR')
 }
 
-function axisDate(value: string, lastDate: string) {
-  const parts = value.split('.')
-  if (parts.length !== 3) return ''
-  const day = Number(parts[2])
-  if (value !== lastDate && day !== 1 && day !== 15) return ''
-  return `${Number(parts[1])}월 ${day}일`
+function monthStarts(days: StockDay[]) {
+  const marks = new Set<string>()
+  let month = ''
+  for (const day of days) {
+    const key = new Date(day.ts).toISOString().slice(0, 7)
+    if (key === month) continue
+    month = key
+    marks.add(day.fullDate)
+  }
+  return marks
+}
+
+function yearsOf<T extends StockDay>(days: T[]) {
+  const groups = new Map<string, T[]>()
+  for (const day of days) {
+    const year = String(new Date(day.ts).getUTCFullYear())
+    const list = groups.get(year)
+    if (list) list.push(day)
+    else groups.set(year, [day])
+  }
+  return [...groups.entries()]
+}
+
+function MonthTick({
+  x = 0,
+  y = 0,
+  payload,
+  marks,
+}: {
+  x?: number
+  y?: number
+  payload?: { value?: string }
+  marks: Set<string>
+}) {
+  const value = String(payload?.value ?? '')
+  if (!marks.has(value)) return null
+  const month = Number(value.split('.')[1])
+  if (!month) return null
+  return (
+    <text x={x} y={y} dy={14} textAnchor="middle" className="fill-muted-foreground" fontSize={11}>
+      {month}월
+    </text>
+  )
 }
 
 function StockTooltip({
@@ -217,10 +256,50 @@ function MixDonut({ inbound, outbound, unit }: { inbound: number; outbound: numb
   )
 }
 
-function MonthlyBars({ days, unit }: { days: StockDay[]; unit: string }) {
+function YearSelect({
+  years,
+  value,
+  onChange,
+}: {
+  years: string[]
+  value: string
+  onChange: (year: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  if (!value) return null
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="inline-flex h-8 items-center gap-1.5 rounded-full bg-sky-100 px-3 text-sm font-semibold text-sky-950 dark:bg-sky-500/20 dark:text-sky-100">
+        {value}년
+        <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-32 gap-0.5 p-1">
+        {years.map((year) => (
+          <button
+            key={year}
+            type="button"
+            onClick={() => {
+              onChange(year)
+              setOpen(false)
+            }}
+            className={cn(
+              'flex w-full rounded-md px-3 py-1.5 text-left text-sm',
+              year === value ? 'bg-sky-100 font-semibold text-sky-950 dark:bg-sky-500/20 dark:text-sky-100' : 'hover:bg-muted',
+            )}
+          >
+            {year}년
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function MonthlyBars({ days, unit, year }: { days: StockDay[]; unit: string; year: string }) {
   const months: Array<{ key: string; label: string; inbound: number; outbound: number }> = []
   for (const day of days) {
     const date = new Date(day.ts)
+    if (String(date.getUTCFullYear()) !== year) continue
     const key = `${date.getUTCFullYear()}-${date.getUTCMonth()}`
     const last = months[months.length - 1]
     if (!last || last.key !== key) months.push({ key, label: `${date.getUTCMonth() + 1}월`, inbound: day.inbound, outbound: day.outbound })
@@ -267,6 +346,58 @@ function MonthlyBars({ days, unit }: { days: StockDay[]; unit: string }) {
   )
 }
 
+function YearTrend({
+  days,
+  gradientId,
+  scale,
+  onSelect,
+}: {
+  days: Array<StockDay & { runningAbove: number; runningBelow: number }>
+  gradientId: string
+  scale: ReturnType<typeof niceAxis>
+  onSelect: (key: string) => void
+}) {
+  const marks = monthStarts(days)
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ChartContainer config={chartConfig} className="aspect-auto h-full min-h-0 w-full [&_.recharts-surface]:outline-none [&_svg]:outline-none">
+        <ComposedChart
+          data={days}
+          margin={{ top: 8, right: 8, left: 0, bottom: 4 }}
+          barGap={1}
+          barCategoryGap="28%"
+          accessibilityLayer={false}
+          onClick={(state) => {
+            const key = days[Number(state?.activeTooltipIndex)]?.rowKey
+            if (key) onSelect(key)
+          }}
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.03} />
+            </linearGradient>
+            <linearGradient id={`${gradientId}-neg`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#ef4444" stopOpacity={0.12} />
+              <stop offset="100%" stopColor="#ef4444" stopOpacity={0.38} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} strokeDasharray="3 3" />
+          <XAxis dataKey="fullDate" tickLine={false} axisLine={false} interval={0} height={28} tick={(props) => <MonthTick {...props} marks={marks} />} />
+          <YAxis yAxisId="stock" domain={[scale.min, scale.max]} ticks={scale.ticks} tickLine={false} axisLine={false} width={52} tick={{ fontSize: 11 }} tickFormatter={axisNumber} />
+          <YAxis yAxisId="qty" orientation="right" domain={[scale.min, scale.max]} ticks={scale.ticks} tickLine={false} axisLine={false} width={52} tick={{ fontSize: 11 }} tickFormatter={axisNumber} />
+          <Tooltip content={<StockTooltip />} cursor={{ stroke: '#cbd5e1' }} />
+          <Bar yAxisId="qty" dataKey="inbound" fill="#3b82f6" radius={[2, 2, 0, 0]} maxBarSize={10} isAnimationActive={false} />
+          <Bar yAxisId="qty" dataKey="outbound" fill="#fb923c" radius={[2, 2, 0, 0]} maxBarSize={10} isAnimationActive={false} />
+          <Area yAxisId="stock" dataKey="runningBelow" type="monotone" baseValue={0} stroke="none" fill={`url(#${gradientId}-neg)`} dot={false} activeDot={false} isAnimationActive={false} />
+          <Area yAxisId="stock" dataKey="runningAbove" type="monotone" baseValue={0} stroke="none" fill={`url(#${gradientId})`} dot={false} activeDot={false} isAnimationActive={false} />
+          <Area yAxisId="stock" dataKey="running" type="monotone" stroke="#2563eb" strokeWidth={2.5} fill="none" dot={false} activeDot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={false} />
+        </ComposedChart>
+      </ChartContainer>
+    </div>
+  )
+}
+
 export function StockDashboard({
   rows,
   rangeLabel,
@@ -299,13 +430,15 @@ export function StockDashboard({
     runningAbove: Math.max(day.running, 0),
     runningBelow: Math.min(day.running, 0),
   }))
-  const low = Math.min(0, ...chartDays.map((day) => day.running))
-  const high = Math.max(0, ...chartDays.map((day) => Math.max(day.running, day.inbound, day.outbound)))
+  const yearCharts = yearsOf(chartDays)
+  const years = yearCharts.map(([item]) => item)
+  const latestYear = years.at(-1) ?? ''
+  const [pickedYear, setPickedYear] = useState('')
+  const year = years.includes(pickedYear) ? pickedYear : latestYear
+  const yearDays = yearCharts.find(([item]) => item === year)?.[1] ?? []
+  const low = Math.min(0, ...yearDays.map((day) => day.running))
+  const high = Math.max(0, ...yearDays.map((day) => Math.max(day.running, day.inbound, day.outbound)))
   const scale = niceAxis(low, high || 1)
-  const handleClick = (state: { activeTooltipIndex?: number | string | null }) => {
-    const key = chartDays[Number(state.activeTooltipIndex)]?.rowKey
-    if (key) onSelect(key)
-  }
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.82fr)] lg:grid-rows-[auto_minmax(0,1fr)_minmax(190px,0.62fr)] lg:overflow-hidden">
@@ -363,48 +496,28 @@ export function StockDashboard({
               <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-orange-400" />출고 수량</span>
             </div>
           </div>
-          <span className="text-xs text-muted-foreground">거래 수량({unit})</span>
+          <div className="flex items-center gap-2">
+            <YearSelect years={years} value={year} onChange={setPickedYear} />
+            <span className="text-xs text-muted-foreground">거래 수량({unit})</span>
+          </div>
         </div>
         {floor3 && (
           <p className="mb-2 text-xs text-muted-foreground">
             최종 재고 {formatQuantity(finalStock, unit)} · 불량 {formatQuantity(defect, unit)} · 검사시료 {formatQuantity(sample, unit)}
           </p>
         )}
-        <div className="min-h-0 flex-1 select-none" onMouseDown={(event) => event.preventDefault()}>
-          {days.length === 0 ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-2 select-none" onMouseDown={(event) => event.preventDefault()}>
+          {yearDays.length === 0 ? (
             <p className="flex h-full items-center justify-center text-sm text-muted-foreground">기간 내 이동이 없습니다.</p>
           ) : (
-            <ChartContainer config={chartConfig} className="aspect-auto h-full w-full [&_.recharts-surface]:outline-none [&_svg]:outline-none">
-              <ComposedChart data={chartDays} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={1} barCategoryGap="28%" accessibilityLayer={false} onClick={handleClick}>
-                <defs>
-                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.03} />
-                  </linearGradient>
-                  <linearGradient id={`${gradientId}-neg`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#ef4444" stopOpacity={0.12} />
-                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0.38} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="fullDate" tickLine={false} axisLine={false} interval={0} minTickGap={0} tick={{ fontSize: 11 }} tickFormatter={(value) => axisDate(String(value), last?.fullDate || '')} />
-                <YAxis yAxisId="stock" domain={[scale.min, scale.max]} ticks={scale.ticks} tickLine={false} axisLine={false} width={52} tick={{ fontSize: 11 }} tickFormatter={axisNumber} />
-                <YAxis yAxisId="qty" orientation="right" domain={[scale.min, scale.max]} ticks={scale.ticks} tickLine={false} axisLine={false} width={52} tick={{ fontSize: 11 }} tickFormatter={axisNumber} />
-                <Tooltip content={<StockTooltip />} cursor={{ stroke: '#cbd5e1' }} />
-                <Bar yAxisId="qty" dataKey="inbound" fill="#3b82f6" radius={[2, 2, 0, 0]} maxBarSize={10} isAnimationActive={false} />
-                <Bar yAxisId="qty" dataKey="outbound" fill="#fb923c" radius={[2, 2, 0, 0]} maxBarSize={10} isAnimationActive={false} />
-                <Area yAxisId="stock" dataKey="runningBelow" type="monotone" baseValue={0} stroke="none" fill={`url(#${gradientId}-neg)`} dot={false} activeDot={false} isAnimationActive={false} />
-                <Area yAxisId="stock" dataKey="runningAbove" type="monotone" baseValue={0} stroke="none" fill={`url(#${gradientId})`} dot={false} activeDot={false} isAnimationActive={false} />
-                <Area yAxisId="stock" dataKey="running" type="monotone" stroke="#2563eb" strokeWidth={2.5} fill="none" dot={false} activeDot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={false} />
-              </ComposedChart>
-            </ChartContainer>
+            <YearTrend days={yearDays} gradientId={`${gradientId}-${year}`} scale={scale} onSelect={onSelect} />
           )}
         </div>
       </div>
       <div className="min-h-[280px] lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:min-h-0">{list}</div>
       <div className="grid gap-3 sm:grid-cols-2 lg:min-h-0">
         <MixDonut inbound={inbound} outbound={outbound} unit={unit} />
-        <MonthlyBars days={days} unit={unit} />
+        <MonthlyBars days={days} unit={unit} year={year} />
       </div>
     </div>
   )

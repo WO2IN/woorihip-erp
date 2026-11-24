@@ -13,6 +13,7 @@ import {
   emptyProcessNcActions,
   PROCESS_NC_ACTIONS,
   parseOccurrenceDate,
+  parseOptionalIsoDate,
   WORKFLOW_STATUS_ORDER,
   type WorkflowStatus,
 } from '@/lib/non-conformity'
@@ -40,6 +41,7 @@ function normalizeProcessRow(row: ProcessNonconformity): ProcessNonconformity {
   return {
     ...row,
     occurrenceDate: parseOccurrenceDate(row.occurrenceDate, row.createdAt),
+    responseDueDate: parseOptionalIsoDate(row.responseDueDate),
     processingResult: parseStatus(row.processingResult),
     actions: parseActions(row.actions),
   }
@@ -96,6 +98,7 @@ export async function POST(req: NextRequest) {
     defectQty,
     customerCompany,
     description,
+    responseDueDate: parseOptionalIsoDate(body.responseDueDate),
     actions: parseActions(body.actions),
     recurred: body.recurred === true,
     remarks: optionalText(body.remarks),
@@ -131,6 +134,7 @@ export async function PATCH(req: NextRequest) {
 
   const updates: Partial<ProcessNonconformity> = { updatedAt: new Date().toISOString() }
   if (body.occurrenceDate !== undefined) updates.occurrenceDate = parseOccurrenceDate(body.occurrenceDate)
+  if (body.responseDueDate !== undefined) updates.responseDueDate = parseOptionalIsoDate(body.responseDueDate)
   if (typeof body.occurrenceLine === 'string') updates.occurrenceLine = body.occurrenceLine.trim()
   if (body.lineName !== undefined) updates.lineName = optionalText(body.lineName)
   if (body.processName !== undefined) updates.processName = optionalText(body.processName)

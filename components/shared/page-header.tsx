@@ -21,7 +21,7 @@ const NAMED_PAGE_ICONS = {
 
 export type PageIconName = keyof typeof NAMED_PAGE_ICONS
 
-const BAND: Record<PageTone, string> = {
+export const PAGE_BAND_GRADIENT: Record<PageTone, string> = {
   blue: 'bg-[linear-gradient(135deg,oklch(0.58_0.16_230),oklch(0.44_0.14_236))]',
   indigo: 'bg-[linear-gradient(135deg,oklch(0.52_0.18_275),oklch(0.40_0.16_282))]',
   green: 'bg-[linear-gradient(135deg,oklch(0.60_0.14_155),oklch(0.46_0.12_162))]',
@@ -47,10 +47,11 @@ export const GROUP_TONE: Record<string, PageTone> = {
   대시보드: 'blue',
   고객관리: 'indigo',
   품질관리: 'green',
+  위험성평가: 'red',
   'KPI 관리': 'cyan',
   개발관리: 'green',
   공정관리: 'amber',
-  '재고 관리': 'rose',
+  '재고 관리': 'teal',
   설비관리: 'violet',
   '일일 점검': 'amber',
   전자결재: 'blue',
@@ -83,7 +84,7 @@ export function PageHeader({ tone, icon, eyebrow, title, description, stat, acti
   }, [tone])
 
   return (
-    <section className={cn('relative overflow-hidden rounded-2xl px-6 py-5 text-white shadow-sm', BAND[tone], className)}>
+    <section className={cn('relative overflow-hidden rounded-2xl px-6 py-5 text-white shadow-sm', PAGE_BAND_GRADIENT[tone], className)}>
       <span className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-white/10" />
       <span className="pointer-events-none absolute right-28 -bottom-24 h-40 w-40 rounded-full bg-white/5" />
       <div className="relative flex flex-wrap items-center justify-between gap-4">

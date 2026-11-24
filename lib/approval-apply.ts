@@ -112,7 +112,7 @@ export async function applyApprovalTarget(target: ApprovalTarget | undefined, si
     }
     return { ok: true }
   }
-  if (target.kind === 'lot-card') return { ok: true }
+  if (target.kind === 'lot-card' || target.kind === 'incoming-inspection' || target.kind === 'outgoing-report') return { ok: true }
 
   const rows = await readChangeRequests()
   const index = rows.findIndex((row) => row.id === target.requestId)

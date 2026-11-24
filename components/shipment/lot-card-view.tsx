@@ -1,17 +1,25 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Barcode, FileText, Plus, Printer, Search, Shuffle, Trash2 } from 'lucide-react'
+import { Barcode, Check, Copy, FileText, Plus, Printer, Search, Trash2 } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-context'
 import { StampApprovalButton } from '@/components/approvals/stamp-approval-button'
 import { Button } from '@/components/ui/button'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
+import { BarcodePicker } from '@/components/shared/barcode-picker'
+import { BarcodePrintButton } from '@/components/shared/barcode-print-button'
 import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { BAND_BUTTON, BAND_BUTTON_PRIMARY, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
+import { ShipmentDocFlowNav } from '@/components/shipment/shipment-doc-flow-nav'
 import { type ApprovalRequest, type ApprovalStep } from '@/lib/approval'
 import { code128Modules } from '@/lib/code128'
 import { getJsonAuthHeaders, getSession } from '@/lib/auth-client'
+import { isShipmentBundleLocked, withShipmentBundle } from '@/lib/shipment-bundle'
+import { removeSheetDocument, saveSheetDocument } from '@/lib/sheet-document'
+import { LOT_CARD_TYPE } from '@/lib/file-types'
+import { useEmbedPreview } from '@/hooks/use-embed-preview'
 import { cn } from '@/lib/utils'
 
 const STORAGE_KEY = 'woorihip-lot-card-draft'
@@ -30,11 +38,14 @@ type Measure = { left: string; right: string }
 type Card = {
   id: string
   floor: Floor
+  done: boolean
   createdAt: string
   updatedAt: string
   partner: string
   product: string
   spec: string
+  material: string
+  sourceIncomingId: string
   lotNo: string
   receivedAt: string
   seqNo: string
@@ -91,9 +102,10 @@ function emptyCard(): Card {
   return {
     id: crypto.randomUUID(),
     floor: '1',
+    done: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    partner: '', product: '', spec: '',
+    partner: '', product: '', spec: '', material: '', sourceIncomingId: '',
     lotNo: '', receivedAt: '', seqNo: '', rollCount: '', quantity: '', platedQuantity: '', materialVendor: '',
     barcode: '',
     incoming: [{ left: '', right: '' }, { left: '', right: '' }],
@@ -117,6 +129,7 @@ function normalizeCard(saved: (Partial<Card> & { rollSeq?: string }) | null, fal
     ...saved,
     id: saved?.id || base.id,
     floor,
+    done: saved?.done === true,
     createdAt: saved?.createdAt || saved?.updatedAt || base.createdAt,
     updatedAt: saved?.updatedAt || base.updatedAt,
     workDate: saved?.workDate || saved?.maskDate || saved?.niDate || saved?.auDate || saved?.snDate || saved?.shipDate || '',
@@ -126,6 +139,8 @@ function normalizeCard(saved: (Partial<Card> & { rollSeq?: string }) | null, fal
     auDate: saved?.auDate || saved?.workDate || '',
     snDate: saved?.snDate || saved?.workDate || '',
     shipDate: saved?.shipDate || saved?.workDate || '',
+    material: typeof saved?.material === 'string' ? saved.material : '',
+    sourceIncomingId: typeof saved?.sourceIncomingId === 'string' ? saved.sourceIncomingId : '',
     seqNo: saved?.seqNo ?? legacySeq ?? '',
     rollCount: saved?.rollCount ?? legacyRoll.join('/') ?? '',
     incoming: base.incoming.map((row, index) => ({ ...row, ...saved?.incoming?.[index] })),
@@ -160,7 +175,7 @@ function clearLocalCards() {
 function JudgeMark({ value, onChange, onlyOk = false }: { value: Judge; onChange: (value: Judge) => void; onlyOk?: boolean }) {
   const options: Judge[] = onlyOk ? ['OK'] : ['OK', 'NG', '특채']
   return (
-    <div className="flex overflow-hidden rounded border border-slate-300 bg-white">
+    <div className={cn('flex overflow-hidden rounded border border-slate-300 bg-white print:bg-transparent', value ? 'print:border-0' : 'print:hidden')}>
       {options.map((option) => {
         const selected = value === option
         return (
@@ -170,7 +185,7 @@ function JudgeMark({ value, onChange, onlyOk = false }: { value: Judge; onChange
             onClick={() => onChange(selected ? '' : option)}
             className={cn(
               'px-2 py-0.5 text-[12px] font-bold',
-              selected ? 'bg-slate-900 text-white' : 'text-slate-400',
+              selected ? 'bg-slate-900 text-white print:bg-transparent print:px-0 print:text-slate-900' : 'text-slate-400 print:hidden',
             )}
           >
             {option}
@@ -305,15 +320,6 @@ function CardMeta({ label, value, selected }: { label: string; value: string; se
   )
 }
 
-function randomBarcode() {
-  const bytes = new Uint8Array(6)
-  crypto.getRandomValues(bytes)
-  const now = new Date()
-  const stamp = `${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
-  const body = [...bytes].map((value) => String(value % 10)).join('')
-  return `WR${stamp}${body}`
-}
-
 function signStep(approval: ApprovalRequest | null, slot: '작성' | '검토' | '승인') {
   if (!approval) return undefined
   if (slot === '작성') return approval.steps.find((step) => !step.role) ?? approval.steps[0]
@@ -321,10 +327,15 @@ function signStep(approval: ApprovalRequest | null, slot: '작성' | '검토' | 
   return approval.steps.find((step) => step.role === 'approval')
 }
 
-function ApprovalBox({ approval }: { approval: ApprovalRequest | null }) {
+function ApprovalBox({ approval, request }: { approval: ApprovalRequest | null; request?: ReactNode }) {
   const slots = ['작성', '검토', '승인'] as const
+  const signedAny = slots.some((label) => {
+    const step = signStep(approval, label)
+    return step?.status === 'approved' && !!step.userId
+  })
   return (
-    <table className="h-full w-[78mm] shrink-0 border-collapse self-stretch text-center">
+    <div className="flex h-full w-[112mm] shrink-0 flex-col self-stretch">
+    <table className="h-full w-full border-collapse text-center">
       <tbody>
         <tr>
           <th rowSpan={3} className="w-8 border border-slate-400 bg-slate-100 px-0.5 text-[12px] font-extrabold tracking-[0.25em] text-slate-700 [writing-mode:vertical-rl]">
@@ -356,7 +367,7 @@ function ApprovalBox({ approval }: { approval: ApprovalRequest | null }) {
             const step = signStep(approval, label)
             const signed = step?.status === 'approved' && !!step.userId
             return (
-              <td key={`${label}-name`} className="border border-slate-400 bg-white py-1 text-[12px] font-semibold leading-none text-slate-800">
+              <td key={`${label}-name`} className="border border-slate-400 bg-white px-2 py-1.5 text-[13px] font-semibold leading-none whitespace-nowrap text-slate-800">
                 {signed ? step.name : ''}
               </td>
             )
@@ -364,6 +375,10 @@ function ApprovalBox({ approval }: { approval: ApprovalRequest | null }) {
         </tr>
       </tbody>
     </table>
+    {request && !signedAny && (
+      <div className="no-print flex justify-end pt-1">{request}</div>
+    )}
+    </div>
   )
 }
 
@@ -581,11 +596,13 @@ function LotCardCatalog({
   onOpen,
   onDelete,
   canDelete,
+  openLocked = false,
 }: {
   cards: Card[]
   onOpen: (card: Card) => void
   onDelete: (card: Card) => void
   canDelete: boolean
+  openLocked?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [floorFilter, setFloorFilter] = useState<'all' | Floor>('all')
@@ -632,7 +649,7 @@ function LotCardCatalog({
       {rows.length === 0 ? (
         <div className="flex h-56 flex-col items-center justify-center gap-3 text-slate-400">
           <FileText className="h-12 w-12 opacity-25" />
-          <p className="text-sm">{keyword || floorFilter !== 'all' ? '조건에 맞는 이력카드가 없습니다.' : '만든 이력카드가 없습니다.'}</p>
+          <p className="text-sm">{keyword || floorFilter !== 'all' ? '조건에 맞는 이력카드가 없습니다.' : '완료된 이력카드가 없습니다.'}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -647,8 +664,13 @@ function LotCardCatalog({
               <span />
             </div>
             {rows.map((item) => (
-              <div key={item.id} className="grid grid-cols-[1.2fr_1.3fr_1fr_0.9fr_0.5fr_1.3fr_4.5rem] items-center gap-3 border-b border-border/60 px-4 py-2.5 text-[15px] last:border-b-0 hover:bg-muted/40">
-                <button type="button" onClick={() => onOpen(item)} className="contents text-left">
+              <div key={item.id} className={cn('grid grid-cols-[1.2fr_1.3fr_1fr_0.9fr_0.5fr_1.3fr_4.5rem] items-center gap-3 border-b border-border/60 px-4 py-2.5 text-[15px] last:border-b-0', !openLocked && 'hover:bg-muted/40')}>
+                <button
+                  type="button"
+                  disabled={openLocked}
+                  onClick={() => { if (!openLocked) onOpen(item) }}
+                  className={cn('contents text-left', openLocked && 'cursor-default opacity-60')}
+                >
                   <span className="truncate font-semibold text-foreground">{item.partner || '업체 없음'}</span>
                   <span className="truncate text-foreground">{item.product || item.spec || '-'}</span>
                   <span className="truncate font-mono text-[15px] text-muted-foreground">{item.lotNo || '-'}</span>
@@ -672,6 +694,9 @@ function LotCardCatalog({
 }
 
 export function LotCardView() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const bundleLock = isShipmentBundleLocked(searchParams)
   const { user, loading: authLoading } = useAuth()
   const canWrite = user?.role === 'editor' || user?.role === 'admin'
   const [cards, setCards] = useState<Card[]>([])
@@ -680,13 +705,15 @@ export function LotCardView() {
   const [screen, setScreen] = useState<'edit' | 'list'>('edit')
   const [ready, setReady] = useState(false)
   const [companies, setCompanies] = useState<string[]>([])
-  const [products, setProducts] = useState<string[]>([])
-  const [specifications, setSpecifications] = useState<string[]>([])
   const [platingRows, setPlatingRows] = useState<{ company: string; product: string; gold: string; nickel: string }[]>([])
   const [approval, setApproval] = useState<ApprovalRequest | null>(null)
   const [approvalTick, setApprovalTick] = useState(0)
   const [pendingDelete, setPendingDelete] = useState<Card | null>(null)
+  const [moving, setMoving] = useState(false)
+  const openedQuery = useRef(false)
   const savedSnapshot = useRef<Map<string, string>>(new Map())
+  const articleRef = useRef<HTMLElement>(null)
+  const [finishing, setFinishing] = useState(false)
   const cardsRef = useRef(cards)
   const saveQueue = useRef(Promise.resolve())
   cardsRef.current = cards
@@ -699,10 +726,9 @@ export function LotCardView() {
       if (stop) return
       if (!response.ok || !Array.isArray(body?.data)) {
         const local = readLocalCards()
-        const loaded = local.length > 0 ? local : [normalizeCard(null)]
-        setCards(loaded)
-        setActiveId(loaded[0]?.id ?? '')
-        setFloor(loaded[0]?.floor ?? '1')
+        setCards(local)
+        setActiveId('')
+        setFloor('1')
         setReady(true)
         toast.error('이력카드를 데이터베이스에서 불러오지 못했습니다.')
         return
@@ -722,14 +748,13 @@ export function LotCardView() {
         if (migrated) merged = [...localOnly, ...loaded]
       }
       if (localOnly.length === 0 || migrated) clearLocalCards()
-      if (merged.length === 0) merged = [normalizeCard(null)]
       if (stop) return
       const confirmed = new Set(serverIds)
       if (migrated) for (const card of localOnly) confirmed.add(card.id)
       savedSnapshot.current = new Map(merged.filter((card) => confirmed.has(card.id)).map((card) => [card.id, JSON.stringify(card)]))
       setCards(merged)
-      setActiveId(merged[0]?.id ?? '')
-      setFloor(merged[0]?.floor ?? '1')
+      setActiveId('')
+      setFloor('1')
       setReady(true)
     }
     void loadCards()
@@ -737,18 +762,29 @@ export function LotCardView() {
   }, [])
 
   useEffect(() => {
+    if (!ready || openedQuery.current) return
+    const id = searchParams.get('open')
+    if (!id) {
+      openedQuery.current = true
+      return
+    }
+    const found = cards.find((item) => item.id === id)
+    if (!found) return
+    openedQuery.current = true
+    setActiveId(found.id)
+    setFloor(found.floor)
+    setScreen('edit')
+  }, [ready, cards, searchParams])
+
+  useEffect(() => {
     let stop = false
     async function loadLists() {
-      const [companyRes, productRes, specRes, platingRes] = await Promise.all([
+      const [companyRes, platingRes] = await Promise.all([
         fetch('/api/config?name=companies', { cache: 'no-store' }).then((response) => response.json()).catch(() => null),
-        fetch('/api/config?name=products', { cache: 'no-store' }).then((response) => response.json()).catch(() => null),
-        fetch('/api/config?name=specifications', { cache: 'no-store' }).then((response) => response.json()).catch(() => null),
         fetch('/api/plating-info', { cache: 'no-store' }).then((response) => response.json()).catch(() => null),
       ])
       if (stop) return
       setCompanies(Array.isArray(companyRes?.data) ? companyRes.data : [])
-      setProducts(Array.isArray(productRes?.data) ? productRes.data : [])
-      setSpecifications(Array.isArray(specRes?.data) ? specRes.data : [])
       setPlatingRows(Array.isArray(platingRes?.rows) ? platingRes.rows : [])
     }
     void loadLists()
@@ -766,24 +802,26 @@ export function LotCardView() {
   }, [])
 
   const card = cards.find((item) => item.id === activeId)
+  const embed = useEmbedPreview(searchParams, !!card)
   const floorCards = cards
-    .filter((item) => item.floor === floor)
+    .filter((item) => item.floor === floor && !item.done)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const doneCards = cards.filter((item) => item.done)
 
   useEffect(() => {
     if (!ready || !card?.id) return
     void loadApproval(card.id)
   }, [ready, card?.id, approvalTick, loadApproval])
 
-  const partnerOptions = [...new Set((card?.product
-    ? platingRows.filter((row) => row.product === card.product).map((row) => row.company)
+  const partnerOptions = [...new Set((card?.spec
+    ? platingRows.filter((row) => row.product === card.spec).map((row) => row.company)
     : companies
   ).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
   const productOptions = [...new Set((card?.partner
     ? platingRows.filter((row) => row.company === card.partner).map((row) => row.product)
     : platingRows.map((row) => row.product)
   ).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
-  const platingMatches = platingRows.filter((row) => row.company === card?.partner && row.product === card?.product)
+  const platingMatches = platingRows.filter((row) => row.company === card?.partner && row.product === card?.spec)
   const specFor = (metal: 'Ni' | 'Au' | 'Sn') => {
     const values = [...new Set(platingMatches.flatMap((row) => {
       const nickel = metalChunk(row.nickel, metal, metal === 'Ni')
@@ -803,10 +841,11 @@ export function LotCardView() {
     if (gold && card.auSpec !== gold) next.auSpec = gold
     if (tin && card.snSpec !== tin) next.snSpec = tin
     if (Object.keys(next).length > 0) patch(next)
-  }, [ready, card?.id, card?.partner, card?.product, nickel, gold, tin])
+  }, [ready, card?.id, card?.partner, card?.spec, nickel, gold, tin])
 
   useEffect(() => {
-    if (!ready || authLoading || !canWrite) return
+    // 미리보기(embed)는 보기만 한다. 열면서 자동으로 채워지는 값도 저장하지 않는다.
+    if (!ready || authLoading || !canWrite || embed) return
     const timer = window.setTimeout(() => {
       saveQueue.current = saveQueue.current.then(async () => {
         const current = cardsRef.current
@@ -838,7 +877,7 @@ export function LotCardView() {
       })
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [cards, ready, authLoading, canWrite])
+  }, [cards, ready, authLoading, canWrite, embed])
 
   useEffect(() => {
     const onBefore = () => document.body.classList.add('lot-card-print')
@@ -854,6 +893,44 @@ export function LotCardView() {
 
   function updateCard(recipe: (current: Card) => Card) {
     setCards((current) => current.map((item) => item.id === activeId ? recipe(item) : item))
+  }
+
+  /**
+   * 완료하면 서식을 PDF로 만들어 문서탐색기(이력카드)에 저장하고 목록으로 넘어간다.
+   * 완료를 취소하면 문서탐색기에 저장했던 문서도 지운다.
+   */
+  async function toggleDone() {
+    if (!card || finishing) return
+    setFinishing(true)
+    try {
+      if (card.done) {
+        patch({ done: false })
+        const removed = await removeSheetDocument(LOT_CARD_TYPE, card.id)
+        if (!removed.ok) toast.error(removed.error)
+        return
+      }
+      const saved = articleRef.current
+        ? await saveSheetDocument({
+            node: articleRef.current,
+            documentType: LOT_CARD_TYPE,
+            sourceSheetId: card.id,
+            company: card.partner,
+            product: card.product || card.spec,
+            lotStart: card.lotNo,
+            material: card.material,
+            issueDate: card.receivedAt || card.workDate || card.createdAt.slice(0, 10),
+            floor: card.floor,
+          })
+        : { ok: false as const, error: '이력카드 화면을 찾지 못해 문서탐색기에 저장하지 못했습니다.' }
+      patch({ done: true })
+      const sibling = cards.find((item) => item.id !== card.id && item.floor === card.floor && !item.done)
+      setActiveId(sibling?.id ?? '')
+      setScreen('list')
+      if (saved.ok) toast.success('문서탐색기에 이력카드로 저장했습니다.')
+      else toast.error(`${saved.error} 완료는 처리됐으니 완료 취소 후 다시 완료하면 다시 저장합니다.`)
+    } finally {
+      setFinishing(false)
+    }
   }
 
   function patch(partial: Partial<Card>) {
@@ -874,6 +951,27 @@ export function LotCardView() {
     setActiveId(next.id)
   }
 
+  function copyCard() {
+    if (!card) return
+    const now = new Date().toISOString()
+    const next: Card = {
+      ...card,
+      id: crypto.randomUUID(),
+      done: false,
+      createdAt: now,
+      updatedAt: now,
+      sourceIncomingId: '',
+      incoming: card.incoming.map((row) => ({ ...row })),
+      niBaths: card.niBaths.map((row) => ({ ...row })),
+      auBaths: card.auBaths.map((row) => ({ ...row })),
+      snBaths: card.snBaths.map((row) => ({ ...row })),
+    }
+    setCards((current) => [next, ...current])
+    setFloor(next.floor)
+    setActiveId(next.id)
+    setScreen('edit')
+  }
+
   function clearCard() {
     const next = { ...emptyCard(), floor, updatedAt: new Date().toISOString() }
     setCards((current) => current.map((item) => item.id === activeId ? next : item))
@@ -885,7 +983,7 @@ export function LotCardView() {
     const next = cards.filter((item) => item.id !== id)
     setCards(next)
     if (activeId === id) {
-      const sibling = next.find((item) => item.floor === removed?.floor) ?? next[0]
+      const sibling = next.find((item) => item.floor === removed?.floor && !item.done) ?? next.find((item) => !item.done) ?? next[0]
       setActiveId(sibling?.id ?? '')
       if (sibling) setFloor(sibling.floor)
     }
@@ -893,6 +991,7 @@ export function LotCardView() {
   }
 
   function openListed(item: Card) {
+    if (bundleLock) return
     setFloor(item.floor)
     setActiveId(item.id)
     setScreen('edit')
@@ -900,8 +999,57 @@ export function LotCardView() {
 
   function openFloor(nextFloor: Floor) {
     setFloor(nextFloor)
-    const onFloor = cards.filter((item) => item.floor === nextFloor).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    if (bundleLock) return
+    const onFloor = cards.filter((item) => item.floor === nextFloor && !item.done).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     setActiveId(onFloor[0]?.id ?? '')
+  }
+
+  async function goToOutgoing() {
+    if (!card || moving) return
+    const productName = card.product.trim() || card.spec.trim()
+    if (!card.partner.trim() || !productName) {
+      toast.error('업체와 규격을 먼저 확인합니다.')
+      return
+    }
+    setMoving(true)
+    try {
+      const [reportRes, platingRes] = await Promise.all([
+        fetch('/api/outgoing-reports', { cache: 'no-store' }),
+        fetch('/api/plating-info', { cache: 'no-store' }),
+      ])
+      const reportBody = await reportRes.json().catch(() => null)
+      const platingBody = await platingRes.json().catch(() => null)
+      if (!reportRes.ok || !Array.isArray(reportBody?.data)) throw new Error('load')
+      const rows = Array.isArray(platingBody?.rows) ? platingBody.rows as { company?: string; product?: string; material?: string; gold?: string; nickel?: string; specification?: string }[] : []
+      const matches = rows.filter((row) => row.company === card.partner && row.product === productName && (!card.material || row.material === card.material))
+      const platingSpec = [...new Set(matches.map((row) => (row.specification?.trim() || [row.gold, row.nickel].filter(Boolean).join(' / '))).filter(Boolean))][0] ?? ''
+      const existing = (reportBody.data as { sourceLotCardId?: string; id?: string; createdAt?: string; material?: string; platingSpec?: string; done?: boolean }[]).find((item) => item.sourceLotCardId === card.id)
+      const now = new Date().toISOString()
+      const report = {
+        ...(existing ?? {}),
+        id: existing?.id || crypto.randomUUID(),
+        floor: card.floor,
+        done: existing?.done === true,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        sourceLotCardId: card.id,
+        customer: card.partner,
+        product: productName,
+        spec: productName,
+        material: card.material || existing?.material || '',
+        platingSpec: platingSpec || existing?.platingSpec || '',
+      }
+      const saved = await fetch('/api/outgoing-reports', {
+        method: 'PUT',
+        headers: getJsonAuthHeaders(),
+        body: JSON.stringify(report),
+      })
+      if (!saved.ok) throw new Error('save')
+      router.push(withShipmentBundle(report.id, '/shipment/outgoing-report'))
+    } catch {
+      toast.error('출하성적서로 넘기지 못했습니다.')
+      setMoving(false)
+    }
   }
 
   const barcodeText = card?.barcode.trim() ?? ''
@@ -911,13 +1059,28 @@ export function LotCardView() {
     <div className={cn(PAGE_SHELL, 'lot-card-screen')}>
       <div className="no-print">
         <PageHeader
-          tone="rose"
+          tone="teal"
           icon={Barcode}
           eyebrow="재고 관리"
           title="LOT 이력카드"
-          description="목록에서 만든 이력카드를 고르거나, 작성 화면에서 칸을 채워 인쇄합니다."
+          description="작성 중인 이력카드를 고치고, 완료하면 목록으로 넘어갑니다."
           actions={screen === 'edit' ? (
             <>
+              {canWrite && (
+                <Button
+                  variant="outline"
+                  className={BAND_BUTTON}
+                  disabled={!card || finishing}
+                  onClick={() => void toggleDone()}
+                >
+                  <Check className="h-4 w-4" /> {finishing ? '저장 중…' : card?.done ? '완료 취소' : '완료'}
+                </Button>
+              )}
+              {canWrite && (
+                <Button variant="outline" className={BAND_BUTTON} disabled={!card} onClick={copyCard}>
+                  <Copy className="h-4 w-4" /> 복사
+                </Button>
+              )}
               {canWrite && (
                 <Button variant="outline" className={BAND_BUTTON} disabled={!card} onClick={clearCard}>
                   내용 지우기
@@ -929,6 +1092,13 @@ export function LotCardView() {
             </>
           ) : undefined}
         />
+        <ShipmentDocFlowNav
+          step="lot-card"
+          canWrite={canWrite}
+          onNext={screen === 'edit' ? () => { void goToOutgoing() } : undefined}
+          nextDisabled={!card}
+          nextLoading={moving}
+        />
         <div role="tablist" aria-label="이력카드 화면" className="mt-4">
           <div className="flex gap-1">
             {([['edit', '작성'], ['list', '목록']] as const).map(([id, label]) => (
@@ -937,8 +1107,11 @@ export function LotCardView() {
                 type="button"
                 role="tab"
                 aria-selected={screen === id}
-                onClick={() => setScreen(id)}
+                disabled={bundleLock && id === 'list'}
+                title={bundleLock && id === 'list' ? '이어쓰기 중에는 완료 목록을 열 수 없습니다' : undefined}
+                onClick={() => { if (bundleLock && id === 'list') return; setScreen(id) }}
                 className={cn(
+                  bundleLock && id === 'list' && 'cursor-not-allowed opacity-40',
                   'border-b-[3px] px-4 py-2.5 text-[15px] font-medium',
                   screen === id
                     ? 'border-slate-950 text-slate-950 dark:border-white dark:text-white'
@@ -946,7 +1119,7 @@ export function LotCardView() {
                 )}
               >
                 {label}
-                {id === 'list' && <span className="ml-2 text-xs tabular-nums text-slate-400">{cards.length}</span>}
+                {id === 'list' && <span className="ml-2 text-xs tabular-nums text-slate-400">{doneCards.length}</span>}
               </button>
             ))}
           </div>
@@ -954,7 +1127,7 @@ export function LotCardView() {
         </div>
       </div>
 
-      {screen === 'list' ? <LotCardCatalog cards={cards} onOpen={openListed} onDelete={setPendingDelete} canDelete={canWrite} /> : (
+      {screen === 'list' ? <LotCardCatalog cards={doneCards} onOpen={openListed} onDelete={setPendingDelete} canDelete={canWrite} openLocked={bundleLock} /> : (
       <div className="flex min-h-[calc(100vh-13rem)] items-stretch gap-4">
         <aside className="no-print flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
           <div className="grid grid-cols-3 gap-1 border-b p-2" role="tablist" aria-label="층">
@@ -984,13 +1157,18 @@ export function LotCardView() {
           )}
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {floorCards.length === 0 ? (
-              <p className="px-2 py-6 text-center text-[14px] text-slate-400">{floor}층 이력카드가 없습니다</p>
+              <p className="px-2 py-6 text-center text-[14px] text-slate-400">{floor}층에 작성 중인 이력카드가 없습니다</p>
             ) : floorCards.map((item) => {
               const selected = item.id === card?.id
               return (
-                <div key={item.id} className={cn('mb-1 flex items-stretch rounded-lg', selected ? 'bg-slate-900 text-white' : 'hover:bg-slate-100')}>
-                  <button type="button" onClick={() => setActiveId(item.id)} className="min-w-0 flex-1 px-2.5 py-2 text-left">
-                    <span className="block truncate text-[15px] font-semibold">{item.product || item.lotNo || '새 이력카드'}</span>
+                <div key={item.id} className={cn('mb-1 flex items-stretch rounded-lg', selected ? 'bg-slate-900 text-white' : !bundleLock && 'hover:bg-slate-100')}>
+                  <button
+                    type="button"
+                    disabled={bundleLock && !selected}
+                    onClick={() => { if (!bundleLock || selected) setActiveId(item.id) }}
+                    className={cn('min-w-0 flex-1 px-2.5 py-2 text-left', bundleLock && !selected && 'cursor-not-allowed opacity-50')}
+                  >
+                    <span className="block truncate text-[15px] font-semibold">{item.spec || item.product || item.lotNo || '새 이력카드'}</span>
                     <span className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[12px]">
                       <CardMeta label="업체" value={item.partner || '-'} selected={selected} />
                       <CardMeta label="작성" value={cardDate(item.createdAt)} selected={selected} />
@@ -1010,12 +1188,15 @@ export function LotCardView() {
         </aside>
         {card ? (
       <div className="flex min-w-0 flex-1 flex-col overflow-x-auto">
-        <article className={cn('lot-card-sheet flex min-h-full w-full flex-1 flex-col gap-2 bg-white px-[6mm] py-[5mm] text-slate-900 shadow-md ring-1 ring-black/10 print:shadow-none print:ring-0', !canWrite && '[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_button]:pointer-events-none [&_[role=button]]:pointer-events-none')}>
+        <article ref={articleRef} inert={embed} className={cn('lot-card-sheet flex min-h-full w-full flex-1 flex-col gap-2 bg-white px-[6mm] py-[5mm] text-slate-900 shadow-md ring-1 ring-black/10 print:shadow-none print:ring-0', !canWrite && '[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_button]:pointer-events-none [&_[role=button]]:pointer-events-none')}>
           <header className="flex items-stretch overflow-hidden rounded-md border border-slate-400">
             <div className="relative flex flex-1 items-center justify-center px-3 py-3">
               <img src="/logo.png" alt="WOORI" className="absolute left-3 top-1/2 h-11 w-auto -translate-y-1/2 object-contain" />
               <h2 className="text-center text-[22px] font-extrabold tracking-[0.16em] text-slate-900">LOT 이력카드</h2>
-              {canWrite && <div className="no-print absolute right-3 top-1/2 -translate-y-1/2">
+            </div>
+            <ApprovalBox
+              approval={approval}
+              request={canWrite ? (
                 <StampApprovalButton
                   target={{ kind: 'lot-card', cardId: card.id, label: card.lotNo || card.product || '이력카드' }}
                   title={`LOT 이력카드 ${card.lotNo || card.product || ''}`.trim().slice(0, 80)}
@@ -1032,11 +1213,10 @@ export function LotCardView() {
                   disabled={approval?.status === 'pending' || approval?.status === 'approved'}
                   hint={approval?.status === 'approved' ? '결재가 끝났습니다.' : '이미 결재 중입니다.'}
                   onSent={() => setApprovalTick((value) => value + 1)}
-                  className="text-[14px]"
+                  className="inline-flex h-7 items-center rounded-md border border-slate-300 bg-white px-2.5 text-[12px] font-semibold text-slate-800 shadow-sm hover:bg-slate-50 hover:text-slate-900 hover:no-underline"
                 />
-              </div>}
-            </div>
-            <ApprovalBox approval={approval} />
+              ) : null}
+            />
           </header>
 
           <div className="overflow-hidden rounded-md border border-slate-300">
@@ -1044,15 +1224,15 @@ export function LotCardView() {
               <div className="divide-y divide-slate-200">
                 <ListSlot label="협력 업체" configName="companies" options={partnerOptions} value={card.partner} onChange={(partner) => {
                   const names = [...new Set(platingRows.filter((row) => row.company === partner).map((row) => row.product).filter(Boolean))]
-                  const product = names.includes(card.product) ? card.product : names.length === 1 ? names[0] : ''
-                  patch({ partner, product })
-                }} onOptionsChange={setCompanies} creatable={!card.product} />
-                <ListSlot label="품명" configName="products" options={productOptions} value={card.product} onChange={(product) => {
-                  const names = [...new Set(platingRows.filter((row) => row.product === product).map((row) => row.company).filter(Boolean))]
+                  const spec = names.includes(card.spec) ? card.spec : names.length === 1 ? names[0] : ''
+                  patch({ partner, spec })
+                }} onOptionsChange={setCompanies} creatable={!card.spec} />
+                <Slot label="품명" value={card.product} onChange={(product) => patch({ product })} />
+                <ListSlot label="규격" configName="products" options={productOptions} value={card.spec} onChange={(spec) => {
+                  const names = [...new Set(platingRows.filter((row) => row.product === spec).map((row) => row.company).filter(Boolean))]
                   const partner = names.includes(card.partner) ? card.partner : names.length === 1 ? names[0] : ''
-                  patch({ product, partner })
-                }} onOptionsChange={setProducts} creatable={false} />
-                <ListSlot label="규격" configName="specifications" options={specifications} value={card.spec} onChange={(spec) => patch({ spec })} onOptionsChange={setSpecifications} />
+                  patch({ spec, partner })
+                }} onOptionsChange={() => undefined} creatable={false} />
                 <Slot label="LOT NO." value={card.lotNo} onChange={(lotNo) => patch({ lotNo })} />
               </div>
               <div className="divide-y divide-slate-200 border-l border-slate-300">
@@ -1135,23 +1315,33 @@ export function LotCardView() {
           <div className="overflow-hidden rounded-md border border-slate-300 px-2 py-2">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[12px] font-semibold text-slate-400">바코드</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="no-print h-7 px-2.5 text-[14px]"
-                onClick={() => patch({ barcode: randomBarcode() })}
-              >
-                <Shuffle className="h-3.5 w-3.5" />
-                생성
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <BarcodePrintButton
+                  className="h-7 px-2.5 text-[14px]"
+                  label={{ barcode: barcodeText, partner: card.partner, product: card.product, lotNo: card.lotNo, spec: card.spec, date: card.workDate || card.receivedAt }}
+                />
+                {canWrite && (
+                  <BarcodePicker
+                    company={card.partner}
+                    product={card.product}
+                    value={card.barcode}
+                    className="h-7 px-2.5 text-[14px]"
+                    onSelect={(barcode) => patch({ barcode })}
+                  />
+                )}
+                {canWrite && card.barcode && (
+                  <Button type="button" variant="ghost" size="sm" className="no-print h-7 px-2 text-[14px] text-slate-500" onClick={() => patch({ barcode: '' })}>
+                    해제
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="overflow-x-auto">
               <div className="flex min-w-max justify-center">
                 {barcodeReady ? <CodeBars value={barcodeText} /> : <span className="block h-24 w-40 rounded border border-dashed border-slate-300" />}
               </div>
             </div>
-            <input value={card.barcode} autoComplete="off" onChange={(event) => patch({ barcode: event.target.value })} className="mt-1 w-full bg-transparent text-center font-mono text-[15px] tracking-[0.12em] text-slate-900 outline-none" />
+            <input value={card.barcode} readOnly tabIndex={-1} placeholder="입고 바코드를 선택하세요" className="mt-1 w-full bg-transparent text-center font-mono text-[15px] tracking-[0.12em] text-slate-900 outline-none placeholder:text-[12px] placeholder:tracking-normal placeholder:text-slate-300" />
             {barcodeText && !barcodeReady && <span className="no-print block text-center text-[11px] text-red-600">영문·숫자만 표시됩니다</span>}
           </div>
 

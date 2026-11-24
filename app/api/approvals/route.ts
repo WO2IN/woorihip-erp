@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     data: mine,
     pendingCount,
     people,
-    teamReviewers: teamLeadReviewers(organization, accounts, user.displayName, user.id),
+    teamReviewers: teamLeadReviewers(organization, accounts, user.displayName),
     viewerJobTitle: user.jobTitle ?? '',
     viewerDepartment: departmentForPerson(organization, user.displayName),
     nextDocNo: nextApprovalDocNo(all),
@@ -114,9 +114,21 @@ export async function POST(request: NextRequest) {
     role: 'approval',
     status: 'pending',
   }
+  const selfReviews = isTeamLeadTitle(user.jobTitle ?? '')
   let steps: ApprovalStep[] = [finalStep]
-  if (!isTeamLeadTitle(finalTitle)) {
-    const reviewers = teamLeadReviewers(organization, await listUsers(), user.displayName, user.id)
+  if (selfReviews) {
+    steps = [
+      {
+        userId: user.id,
+        name: user.displayName,
+        jobTitle: user.jobTitle?.trim() || '직급 없음',
+        role: 'review',
+        status: 'approved',
+      },
+      { ...finalStep, status: 'pending' },
+    ]
+  } else if (!isTeamLeadTitle(finalTitle)) {
+    const reviewers = teamLeadReviewers(organization, await listUsers(), user.displayName)
     if (reviewers.length === 0) {
       return NextResponse.json({ error: '같은 팀에 검토할 차장·부장이 없습니다.' }, { status: 400 })
     }
@@ -167,7 +179,9 @@ export async function POST(request: NextRequest) {
       requesterName: user.displayName,
       createdAt: signedAt,
       status: 'pending',
-      steps: [writerStep, ...steps],
+      steps: [writerStep, ...steps.map((step) => (
+        step.role === 'review' && step.status === 'approved' ? { ...step, signedAt } : step
+      ))],
       ...(target ? { target } : {}),
       ...(draft ? { draft: { ...draft, docNo } } : {}),
       ...(files.length ? { files } : {}),

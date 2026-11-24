@@ -3,6 +3,7 @@ import { appendAuditLog, appendInventory, deleteInventory, readInventory, update
 import { canEdit, getUserFromHeaders } from '@/lib/auth'
 import { canOperateFloor } from '@/lib/access'
 import { normalizeIssueDate } from '@/lib/lot'
+import { issueTraceBarcode } from '@/lib/trace-barcode'
 import type { WorkStage } from '@/lib/stock'
 
 const STAGE_LABEL = { waiting: '입고 대기', working: '작업 중', ready: '출고 대기' } as const
@@ -189,8 +190,22 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : '입고일자가 올바르지 않습니다.' }, { status: 400 })
   }
+  const id = crypto.randomUUID()
+  // 입고등록 한 건마다 제품 바코드를 하나 만든다. 이후 이력카드·출하성적서는 이 바코드에 묶인다.
+  const traceBarcode = await issueTraceBarcode({
+    company: String(body.company),
+    product: String(body.product),
+    floor,
+    quantity: Number(body.quantity),
+    quantityUnit: body.quantityUnit || 'EA',
+    receivedAt: issueDate,
+    source: 'inbound',
+    inventoryId: id,
+    by: requestUser.displayName,
+  })
   const record = {
-    id: crypto.randomUUID(),
+    id,
+    barcode: traceBarcode.barcode,
     company: String(body.company).trim(),
     product: String(body.product).trim(),
     floor,
@@ -215,6 +230,7 @@ export async function POST(req: NextRequest) {
       `${record.floor}층 · ${record.quantity}${record.quantityUnit} · ${record.issueDate} 입고 등록${
         record.floor === 3 ? ` · 불량 ${defectQuantity} · 검사시료 ${sampleQuantity}` : ''
       }`,
+      `바코드 ${record.barcode} 발급`,
     ].join('\n'),
     userId: requestUser.id,
     userName: requestUser.displayName,

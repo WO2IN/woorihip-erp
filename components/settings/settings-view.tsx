@@ -34,7 +34,7 @@ const settingsItems: SettingsItem[] = [
   { key: 'companies', label: '업체 관리', description: '거래처 업체명 목록', icon: Building2, tone: 'blue', configName: 'companies', placeholder: '새 업체명 입력', unit: '곳' },
   { key: 'products', label: '품목 관리', description: '입출고·성적서에 쓰는 품목 목록', icon: Package, tone: 'rose', configName: 'products', placeholder: '새 품목 입력', unit: '종' },
   { key: 'plating-info', label: '도금 정보 관리', description: '업체·품목별 재질과 도금사양 CSV', icon: Table2, tone: 'cyan', configName: 'plating-info', placeholder: '', unit: '건' },
-  { key: 'document-types', label: '문서유형 관리', description: '성적서, 도면 등 문서 유형', icon: FileType, tone: 'violet', configName: 'document-types', placeholder: '새 문서유형 입력', unit: '개' },
+  { key: 'document-types', label: '문서유형 관리', description: '수입검사성적서, 이력카드, 출하성적서, 도면 등 문서 유형', icon: FileType, tone: 'violet', configName: 'document-types', placeholder: '새 문서유형 입력', unit: '개' },
   { key: 'materials', label: '재질 관리', description: '소재 재질 목록', icon: Layers, tone: 'green', configName: 'materials', placeholder: '새 재질 입력', unit: '개' },
   { key: 'specifications', label: '도금사양 관리', description: '도금사양 목록', icon: Tag, tone: 'amber', configName: 'specifications', placeholder: '새 도금사양 입력', unit: '개' },
   { key: 'shipment-categories', label: '도금 종류 관리', description: '판재, 커넥터, 랙 등 도금 종류', icon: Sparkles, tone: 'rose', configName: 'shipment-categories', placeholder: '새 도금 종류 입력', unit: '개' },
@@ -143,7 +143,7 @@ export function SettingsView() {
         <DialogContent className={cn(
           'z-[70] max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] overflow-hidden',
           active?.key === 'plating-info'
-            ? 'w-[calc(100vw-2rem)] sm:w-[1100px] sm:max-w-[1100px]'
+            ? 'w-[calc(100vw-2rem)] sm:w-[1320px] sm:max-w-[1320px]'
             : 'w-full sm:max-w-xl'
         )}>
           <DialogHeader>

@@ -82,6 +82,10 @@ function listSummary(fields: ProcessFieldSpec[]) {
   return extra > 0 ? `${shown.join(', ')} 외 ${extra}개` : shown.join(', ')
 }
 
+function parseText(value: unknown, max = 60) {
+  return String(value ?? '').trim().slice(0, max)
+}
+
 function templateLog(template: Pick<ProcessTemplate, 'floor' | 'name'>, lines: string[]) {
   return [`${template.floor}층 · ${template.name}`, ...lines].join('\n')
 }
@@ -89,6 +93,8 @@ function templateLog(template: Pick<ProcessTemplate, 'floor' | 'name'>, lines: s
 function diffTemplate(before: ProcessTemplate, after: ProcessTemplate) {
   const lines: string[] = []
   if (before.name !== after.name) lines.push(`이름: ${before.name} → ${after.name}`)
+  if ((before.department ?? '') !== (after.department ?? '')) lines.push(`부서: ${before.department || '-'} → ${after.department || '-'}`)
+  if ((before.inspector ?? '') !== (after.inspector ?? '')) lines.push(`점검자: ${before.inspector || '-'} → ${after.inspector || '-'}`)
   const beforeSections = sectionsOf(before)
   const afterSections = sectionsOf(after)
   const beforeSectionMap = new Map(beforeSections.map((section) => [section.id, section]))
@@ -183,6 +189,8 @@ export async function POST(req: NextRequest) {
     id: crypto.randomUUID(),
     floor,
     name,
+    department: parseText(body.department),
+    inspector: parseText(body.inspector),
     sections: parsed.sections,
     items: parsed.items,
     createdAt: new Date().toISOString(),
@@ -222,7 +230,9 @@ export async function PATCH(req: NextRequest) {
     ? { sections: previous.sections, items: previous.items }
     : parseSections(body.sections ?? [{ id: 'items', title: name, fields: body.items }])
   if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
-  all[index] = { ...all[index], name, sections: parsed.sections, items: parsed.items }
+  const department = body.department != null ? parseText(body.department) : previous.department ?? ''
+  const inspector = body.inspector != null ? parseText(body.inspector) : previous.inspector ?? ''
+  all[index] = { ...all[index], name, department, inspector, sections: parsed.sections, items: parsed.items }
   await writeProcessTemplates(all)
   await appendAuditLog({
     action: 'UPDATE',

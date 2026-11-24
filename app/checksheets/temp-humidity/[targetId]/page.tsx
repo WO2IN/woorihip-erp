@@ -8,6 +8,8 @@ import {
   toggleTempHumidityHoliday,
 } from '@/app/actions/temp-humidity'
 import { SiteHeader } from '@/components/layout/site-header'
+import { ChecksheetBackLink } from '@/components/checksheets/checksheet-back-link'
+import { PageHeader } from '@/components/shared/page-header'
 import { NextCheckLink } from '@/components/checksheets/next-check-link'
 import { YearMonthPicker } from '@/components/shared/year-month-picker'
 import { ApprovalBox } from '@/components/shared/approval-box'
@@ -20,8 +22,6 @@ import { currentYearMonth } from '@/lib/date-utils'
 import { notFound } from 'next/navigation'
 import { canManageChecksheets, canUseFloor, currentActor } from '@/lib/check-access'
 import { SheetHeaderEditor } from '@/components/shared/sheet-header-editor'
-import { PAGE_SHELL } from '@/components/shared/page-header'
-import { cn } from '@/lib/utils'
 
 export default async function TempHumidityPage({
   params,
@@ -75,9 +75,9 @@ export default async function TempHumidityPage({
         @media print {
           #temp-humidity-print-sheet { height: auto !important; min-height: 0 !important; max-height: none !important; gap: 4px !important; padding: 0 !important; }
           #temp-humidity-print-sheet .screen-only-chart { display: none !important; height: 0 !important; max-height: 0 !important; overflow: hidden !important; }
-          #temp-humidity-print-sheet .print-only-chart { display: block !important; width: 100% !important; height: 520px !important; max-height: 520px !important; overflow: hidden !important; }
+          #temp-humidity-print-sheet .print-only-chart { display: block !important; width: 100% !important; height: 480px !important; max-height: 480px !important; overflow: hidden !important; }
           #temp-humidity-print-sheet .print-only-chart .recharts-wrapper,
-          #temp-humidity-print-sheet .print-only-chart svg { width: 100% !important; height: 520px !important; max-height: 520px !important; }
+          #temp-humidity-print-sheet .print-only-chart svg { width: 100% !important; height: 480px !important; max-height: 480px !important; }
           #temp-humidity-print-sheet .temp-humidity-chart { height: auto !important; min-height: 0 !important; max-height: none !important; flex: none !important; padding: 2px 6px 2px !important; gap: 0 !important; }
           #temp-humidity-print-sheet .temp-humidity-chart h2 { font-size: 11px !important; margin: 0 !important; }
           #temp-humidity-print-sheet .temp-humidity-body { flex: none !important; height: auto !important; min-height: 0 !important; gap: 0 !important; }
@@ -96,15 +96,24 @@ export default async function TempHumidityPage({
       <SiteHeader />
       <main
         id="temp-humidity-print-sheet"
-        className={cn(PAGE_SHELL, 'print-page print:max-w-none print:h-auto print:min-h-0 print:gap-1 print:p-0')}
+        className="print-page mx-auto flex w-full max-w-[1500px] flex-col gap-5 p-4 sm:p-6 print:h-auto print:min-h-0 print:max-w-none print:gap-1 print:p-0"
       >
-        <div className="no-print flex flex-wrap items-center justify-between gap-3">
-          <YearMonthPicker year={year} month={month} />
-          <div className="flex items-center gap-2">
-            <PrintButton />
-            <NextCheckLink kind="temp" id={tId} floor={target.floor} name={target.name} />
-          </div>
-        </div>
+        <PageHeader
+          className="no-print"
+          tone="amber"
+          icon="thermometer"
+          eyebrow="온/습도 · 일일 점검"
+          title={target.name}
+          description={`${year}년 ${month}월 · ${target.department || '부서 미지정'} · ${target.manager || '담당자 미지정'}`}
+          leading={<ChecksheetBackLink floor={target.floor} name={target.name} tab="temp" />}
+          actions={
+            <>
+              <YearMonthPicker year={year} month={month} />
+              <PrintButton />
+              <NextCheckLink kind="temp" id={tId} floor={target.floor} name={target.name} />
+            </>
+          }
+        />
         {!canManage && (
           <p className="no-print text-sm text-muted-foreground">
             {actor?.role === 'viewer' ? '뷰어 계정은 점검 기록을 보기만 할 수 있습니다.' : '이 층 점검은 조회만 가능합니다.'}

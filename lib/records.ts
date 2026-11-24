@@ -440,6 +440,18 @@ export async function bulkWrite(
 
 // ─── Sequence ────────────────────────────────────────────────────────────────
 
+/** 같은 이름으로 호출할 때마다 1, 2, 3… 을 돌려준다. 동시에 눌러도 번호가 겹치지 않는다. */
+export async function nextSequence(name: string): Promise<number> {
+  await recordsReady()
+  const [row] = await query<{ value: string }>(
+    `INSERT INTO sequences (name, value) VALUES ($1, 1)
+     ON CONFLICT (name) DO UPDATE SET value = sequences.value + 1
+     RETURNING value`,
+    [name],
+  )
+  return Number(row.value)
+}
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {

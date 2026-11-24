@@ -18,6 +18,7 @@ export function ApprovalLinePicker({
   loading,
   drafterName,
   drafterTitle,
+  reviewNote,
 }: {
   people: ApprovalPerson[]
   reviewers: ApprovalCandidate[]
@@ -31,6 +32,7 @@ export function ApprovalLinePicker({
   loading: boolean
   drafterName: string
   drafterTitle: string
+  reviewNote?: string
 }) {
   const reviewLine = [...reviewers].sort((a, b) => jobRank(b.jobTitle) - jobRank(a.jobTitle) || a.name.localeCompare(b.name, 'ko'))
   const keyword = query.trim()
@@ -81,6 +83,7 @@ export function ApprovalLinePicker({
               <p className="text-sm text-rose-600">같은 팀에 검토할 차장·부장이 없습니다.</p>
             ) : (
               <div className="space-y-1.5">
+                {reviewNote ? <p className="px-1 pb-1 text-xs leading-5 text-slate-500">{reviewNote}</p> : null}
                 {reviewLine.map((person) => (
                   <PersonRow key={person.userId} name={person.name} title={person.jobTitle} />
                 ))}

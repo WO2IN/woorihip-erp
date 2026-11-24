@@ -233,11 +233,13 @@ function LotCard({
   onOpen: (movement: StockMovement) => void
 }) {
   const { inbound } = lot
+  const progressQty = Math.max(worked, lot.shipped)
   const pct = lot.stage === 'done'
     ? 100
-    : inbound.quantity > 0 ? Math.min(100, (worked / inbound.quantity) * 100) : 0
+    : inbound.quantity > 0 ? Math.min(100, (progressQty / inbound.quantity) * 100) : 0
   const age = daysSince(inbound.issueDate)
   const partial = lot.shipped > 0 && lot.stage !== 'done'
+  const workOnlyOnOtherLots = worked === 0 && lot.shipped === 0 && progressQty === 0
 
   return (
     <article className="rounded-xl border bg-card p-3 shadow-sm transition-shadow hover:shadow-md">
@@ -259,13 +261,20 @@ function LotCard({
           <span className="font-semibold tabular-nums">{formatQuantity(inbound.quantity, inbound.unit)}</span>
         </div>
         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-          <div className={cn('h-full rounded-full', pct >= 100 ? 'bg-emerald-500' : 'bg-amber-500')} style={{ width: `${pct}%` }} />
+          <div
+            className={cn('h-full rounded-full', lot.stage === 'done' || lot.shipped >= inbound.quantity - 0.0001 ? 'bg-emerald-500' : 'bg-amber-500')}
+            style={{ width: `${pct}%` }}
+          />
         </div>
         {lot.stage === 'done' ? (
           <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">출고 완료 · 마지막 출고 {displayDate(lot.lastShipDate)}</p>
-        ) : worked > 0 ? (
-          <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">작업 {formatQuantity(worked, inbound.unit)}</p>
-        ) : null}
+        ) : (
+          <p className="mt-1 space-y-0.5 text-[11px] text-muted-foreground tabular-nums">
+            {worked > 0 ? <span className="block">작업 {formatQuantity(worked, inbound.unit)}</span> : null}
+            {lot.shipped > 0 ? <span className="block">출고 {formatQuantity(lot.shipped, inbound.unit)} · 남음 {formatQuantity(lot.remaining, inbound.unit)}</span> : null}
+            {workOnlyOnOtherLots ? <span className="block text-[10px] leading-snug">작업일보는 앞선 입고에 먼저 배분됩니다</span> : null}
+          </p>
+        )}
       </button>
       {editable && lot.stage !== 'done' && (
         <div className="mt-2.5 flex gap-1.5 border-t pt-2.5">

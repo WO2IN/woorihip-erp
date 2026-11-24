@@ -13,6 +13,8 @@ export type ApprovalTarget =
   | { kind: 'exam'; examKind: 'auditor' | 'inspector'; recordId: string; examinee: string; step: (typeof EXAM_STEPS)[number] }
   | { kind: 'change-request'; requestId: string; docLabel: string; stamp: StampKey }
   | { kind: 'lot-card'; cardId: string; label: string }
+  | { kind: 'incoming-inspection'; sheetId: string; label: string }
+  | { kind: 'outgoing-report'; sheetId: string; label: string }
 
 const CHANGE_STAMP_LABEL: Record<StampKey, string> = {
   ourDraft: '우리하이피 · 입안',
@@ -67,6 +69,18 @@ export function readApprovalTarget(value: unknown): ApprovalTarget | undefined |
     if (!cardId) return { error: '이력카드 결재 대상이 올바르지 않습니다.' }
     return { kind: 'lot-card', cardId, label }
   }
+  if (raw.kind === 'incoming-inspection') {
+    const sheetId = clip(raw.sheetId, 80)
+    const label = clip(raw.label, 80) || '수입검사'
+    if (!sheetId) return { error: '수입검사 성적서 결재 대상이 올바르지 않습니다.' }
+    return { kind: 'incoming-inspection', sheetId, label }
+  }
+  if (raw.kind === 'outgoing-report') {
+    const sheetId = clip(raw.sheetId, 80)
+    const label = clip(raw.label, 80) || '출하성적서'
+    if (!sheetId) return { error: '출하성적서 결재 대상이 올바르지 않습니다.' }
+    return { kind: 'outgoing-report', sheetId, label }
+  }
   return { error: '결재 대상이 올바르지 않습니다.' }
 }
 
@@ -74,6 +88,8 @@ export function approvalTargetKey(target: ApprovalTarget) {
   if (target.kind === 'suitability') return `suitability:${target.personId}:${target.step}`
   if (target.kind === 'exam') return `exam:${target.examKind}:${target.recordId}:${target.step}`
   if (target.kind === 'lot-card') return `lot-card:${target.cardId}`
+  if (target.kind === 'incoming-inspection') return `incoming-inspection:${target.sheetId}`
+  if (target.kind === 'outgoing-report') return `outgoing-report:${target.sheetId}`
   return `change-request:${target.requestId}:${target.stamp}`
 }
 
@@ -223,6 +239,8 @@ export function nextApprovalDocNo(existing: { docNo?: string; draft?: { docNo?: 
 export function approvalTargetLabel(target: ApprovalTarget) {
   if (target.kind === 'suitability') return `적격성평가서 · ${target.personName} · ${target.step}`
   if (target.kind === 'lot-card') return `LOT 이력카드 · ${target.label}`
+  if (target.kind === 'incoming-inspection') return `수입검사 성적서 · ${target.label}`
+  if (target.kind === 'outgoing-report') return `출하성적서 · ${target.label}`
   if (target.kind === 'exam') {
     const exam = target.examKind === 'auditor' ? '내부심사원 평가' : '검사원 평가'
     return `${exam} · ${target.examinee} · ${target.step}`
@@ -317,12 +335,10 @@ export function teamLeadReviewers(
   organization: unknown,
   users: { id: string; displayName: string; jobTitle?: string | null; status?: string }[],
   requesterName: string,
-  requesterId: string,
 ): ApprovalCandidate[] {
   return users
     .filter((person) => (
-      person.id !== requesterId
-      && person.status !== 'pending'
+      person.status !== 'pending'
       && isTeamLeadTitle(person.jobTitle?.trim() ?? '')
       && sharesTeam(organization, requesterName, person.displayName)
     ))

@@ -9,12 +9,13 @@ import {
 } from '@/lib/storage'
 import { canManageQualityRecords, getUserFromHeaders } from '@/lib/auth'
 import type { CustomerNonconformity, WorkflowStatus } from '@/lib/non-conformity'
-import { parseOccurrenceDate, WORKFLOW_STATUS_ORDER } from '@/lib/non-conformity'
+import { parseOccurrenceDate, parseOptionalIsoDate, WORKFLOW_STATUS_ORDER } from '@/lib/non-conformity'
 
 function normalizeCustomerRow(row: CustomerNonconformity): CustomerNonconformity {
   return {
     ...row,
     occurrenceDate: parseOccurrenceDate(row.occurrenceDate, row.createdAt),
+    responseDueDate: parseOptionalIsoDate(row.responseDueDate),
     countermeasurePlan: parseStatus(row.countermeasurePlan),
     processingResult: parseStatus(row.processingResult),
     effectivenessVerification: parseStatus(row.effectivenessVerification),
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
     partNo: partNo || undefined,
     defectQty,
     description,
+    responseDueDate: parseOptionalIsoDate(body.responseDueDate),
     countermeasurePlan: parseStatus(body.countermeasurePlan),
     processingResult: parseStatus(body.processingResult),
     effectivenessVerification: parseStatus(body.effectivenessVerification),
@@ -104,6 +106,7 @@ export async function PATCH(req: NextRequest) {
 
   const updates: Partial<CustomerNonconformity> = { updatedAt: new Date().toISOString() }
   if (body.occurrenceDate !== undefined) updates.occurrenceDate = parseOccurrenceDate(body.occurrenceDate)
+  if (body.responseDueDate !== undefined) updates.responseDueDate = parseOptionalIsoDate(body.responseDueDate)
   if (typeof body.occurrenceCompany === 'string') updates.occurrenceCompany = body.occurrenceCompany.trim()
   if (body.defectType !== undefined) {
     updates.defectType = typeof body.defectType === 'string' ? body.defectType.trim() || undefined : undefined

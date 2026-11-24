@@ -8,6 +8,9 @@ export type PlatingInfo = {
   gold: string
   nickel: string
   material: string
+  fullWidth: string
+  gap: string
+  plateWidth: string
 }
 
 function parseCsvLine(line: string) {
@@ -52,6 +55,9 @@ function validateRows(rows: unknown): PlatingInfo[] {
       gold: String(item.gold ?? '').trim(),
       nickel: String(item.nickel ?? '').trim(),
       material: String(item.material ?? '').trim(),
+      fullWidth: String(item.fullWidth ?? '').trim(),
+      gap: String(item.gap ?? '').trim(),
+      plateWidth: String(item.plateWidth ?? '').trim(),
     }
     if (!normalized.company || !normalized.product) throw new Error('업체명과 품목은 필수입니다.')
     const key = [normalized.company, normalized.product, normalized.material, normalized.gold, normalized.nickel].join('\u0000')
@@ -63,8 +69,8 @@ function validateRows(rows: unknown): PlatingInfo[] {
 
 async function writePlatingInfo(rows: PlatingInfo[]) {
   const csv = [
-    '업체명,품목,재질,금도금,니켈도금',
-    ...rows.map(row => [row.company, row.product, row.material, row.gold, row.nickel].map(escapeCsv).join(',')),
+    '업체명,품목,재질,금도금,니켈도금,전폭,간격,도금폭',
+    ...rows.map(row => [row.company, row.product, row.material, row.gold, row.nickel, row.fullWidth, row.gap, row.plateWidth].map(escapeCsv).join(',')),
   ].join('\n') + '\n'
   await setSetting('platingInfoCsv', csv)
 }
@@ -84,6 +90,9 @@ async function readPlatingInfo(): Promise<PlatingInfo[]> {
       material: row[2],
       gold: row[3],
       nickel: row[4],
+      fullWidth: row[5] ?? '',
+      gap: row[6] ?? '',
+      plateWidth: row[7] ?? '',
     }))
 }
 
