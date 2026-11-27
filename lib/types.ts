@@ -28,6 +28,7 @@ export interface SessionUser {
   floor?: 1 | 2 | 3
   navOrder?: string[] | null
   hasSignature?: boolean
+  jobTitle?: string
 }
 
 export interface DocumentMetadata {

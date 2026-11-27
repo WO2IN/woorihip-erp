@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, ReferenceLine, XAxis, YAxis } from 'recharts'
+import { Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, ReferenceLine, XAxis, YAxis } from 'recharts'
 import { BarChart3, CheckCircle2, Package, Printer, Target, TriangleAlert, Trophy } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
@@ -239,66 +239,67 @@ export function KpiView({ kind = 'incoming' }: { kind?: KpiKind }) {
     setPrinting(true)
   }
 
+  const headerActions =
+    !loading && years.length > 0 ? (
+      <>
+        {derived ? (
+          <div
+            className="flex h-10 items-center gap-0.5 rounded-lg border border-border/80 bg-card p-1 shadow-sm"
+            role="tablist"
+            aria-label="층별 출하검사 KPI"
+          >
+            {(['all', ...FLOORS] as const).map((floor) => (
+              <button
+                key={floor}
+                type="button"
+                role="tab"
+                aria-selected={outgoingFloor === floor}
+                onClick={() => setOutgoingFloor(floor)}
+                className={cn(
+                  'h-full rounded-md px-3.5 text-sm font-semibold transition-colors',
+                  outgoingFloor === floor
+                    ? 'bg-cyan-600 text-white shadow-sm'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {floor === 'all' ? '전체' : `${floor}층`}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={printReport}
+            className="h-[38px] border-border/80 bg-white px-4 text-sm font-semibold text-foreground shadow-sm hover:bg-slate-50 dark:border-white/20 dark:bg-white dark:text-slate-900 dark:hover:bg-white/95"
+          >
+            <Printer className="h-[1.125rem] w-[1.125rem]" /> 출력
+          </Button>
+          <select
+            aria-label="연도"
+            value={year}
+            onChange={(event) => setYear(Number(event.target.value))}
+            className={`${FIELD} h-[38px]`}
+          >
+            {years.map((item) => (
+              <option key={item} value={item}>
+                {item}년
+              </option>
+            ))}
+          </select>
+        </div>
+      </>
+    ) : undefined
+
   return (
     <>
     {!printing && (
     <div className={cn(PAGE_SHELL, 'box-border min-w-0')}>
-        {!loading && years.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            {derived ? (
-              <div
-                className="flex h-10 items-center gap-0.5 rounded-lg border border-border/80 bg-card p-1 shadow-sm"
-                role="tablist"
-                aria-label="층별 출하검사 KPI"
-              >
-                {(['all', ...FLOORS] as const).map((floor) => (
-                  <button
-                    key={floor}
-                    type="button"
-                    role="tab"
-                    aria-selected={outgoingFloor === floor}
-                    onClick={() => setOutgoingFloor(floor)}
-                    className={cn(
-                      'h-full rounded-md px-3.5 text-sm font-semibold transition-colors',
-                      outgoingFloor === floor
-                        ? 'bg-cyan-600 text-white shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                    )}
-                  >
-                    {floor === 'all' ? '전체' : `${floor}층`}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <span />
-            )}
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={printReport}
-                className="h-[38px] border-border/80 bg-white px-4 text-sm font-semibold text-foreground shadow-sm hover:bg-slate-50 dark:border-white/20 dark:bg-white dark:text-slate-900 dark:hover:bg-white/95"
-              >
-                <Printer className="h-[1.125rem] w-[1.125rem]" /> 출력
-              </Button>
-              <select
-                aria-label="연도"
-                value={year}
-                onChange={(event) => setYear(Number(event.target.value))}
-                className={`${FIELD} h-[38px]`}
-              >
-                {years.map((item) => (
-                  <option key={item} value={item}>
-                    {item}년
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
         <PageHeader
           tone="cyan"
           icon={BarChart3}
+          actions={headerActions}
           eyebrow="KPI · KPI 관리"
           title={spec.title}
           description={spec.description}
@@ -751,7 +752,7 @@ function Overview({
         <Card
           className="flex h-full min-h-[18rem] flex-col xl:min-h-0"
           title={overviewChartTitle}
-          aside={<Legend items={certificates ? outgoingLegend : rateLegend} />}
+          aside={<Legend items={certificates ? outgoingLegend : customer ? [...rateLegend, ['bg-amber-500', '발생건수(접수)']] : rateLegend} />}
         >
           {certificates ? (
             <OutgoingKpiVisual year={year} months={months} shipped={shipped} target={total.target} className="min-h-0 flex-1" />
@@ -822,7 +823,7 @@ function Overview({
                 {customer ? (
                   <>
                     <SummaryRow label="회신율 목표" months={customerChart} cell={(month) => `${month.target}%`} total={`${total.target}%`} emphasis />
-                    <SummaryRow label="부적합건수" months={customerChart} cell={(month) => (month.inspected || month.received ? String(month.received) : '—')} total={String(received.length)} />
+                    <SummaryRow label="발생건수" months={customerChart} cell={(month) => (month.inspected || month.received ? String(month.received) : '—')} total={String(received.length)} />
                     <SummaryRow label="조치건수" months={customerChart} cell={(month) => (month.inspected || month.received ? String(month.closed) : '—')} total={String(replied)} />
                     <SummaryRow label="회신율(원본)" months={customerChart} cell={(month) => replyText(month.closed, month.received)} total={replyRate == null ? '—' : pct(replyRate)} />
                     <SummaryRow label="목표대비" months={customerChart} cell={(month) => <ReplyGap rate={replyOf(month.closed, month.received)} target={month.target} />} total={replyRate == null ? '—' : <ReplyGap rate={replyRate} target={total.target} />} />
@@ -1588,7 +1589,7 @@ function KpiRateBarChart({ months, target, customer = false, process = false, de
   )
   return (
     <ChartContainer config={{ rate: { label: '실적', color: '#2563eb' } }} className={KPI_RATE_BAR_CHART_CLASS}>
-      <BarChart data={chartData} barCategoryGap="24%" margin={{ top: 28, right: 8, left: 0, bottom: 0 }}>
+      <ComposedChart data={chartData} barCategoryGap="24%" margin={{ top: 28, right: customer ? 0 : 8, left: 0, bottom: 0 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} height={20} />
         <YAxis
@@ -1601,6 +1602,19 @@ function KpiRateBarChart({ months, target, customer = false, process = false, de
           tick={{ fontSize: 11 }}
           tickFormatter={(value) => `${value}%`}
         />
+        {customer && (
+          <YAxis
+            yAxisId="count"
+            orientation="right"
+            domain={[0, 'auto']}
+            allowDecimals={false}
+            tickLine={false}
+            axisLine={false}
+            width={40}
+            tick={{ fontSize: 11 }}
+            tickFormatter={(value) => `${value}건`}
+          />
+        )}
         <ReferenceLine y={target} stroke="#94a3b8" strokeDasharray="5 5" strokeWidth={1.5} />
         <ChartTooltip
           cursor={{ fill: 'rgba(37, 99, 235, 0.06)' }}
@@ -1637,7 +1651,20 @@ function KpiRateBarChart({ months, target, customer = false, process = false, de
             }}
           />
         </Bar>
-      </BarChart>
+        {customer && (
+          <Line
+            yAxisId="count"
+            type="monotone"
+            dataKey="inspected"
+            name="count"
+            stroke="#f59e0b"
+            strokeWidth={2.5}
+            dot={{ r: 4, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }}
+            activeDot={{ r: 6 }}
+            isAnimationActive={false}
+          />
+        )}
+      </ComposedChart>
     </ChartContainer>
   )
 }
@@ -1902,9 +1929,20 @@ function OutgoingKpiVisual({ year, months, shipped, target, className }: {
   )
 }
 
-function RateBars({ months, target, min, max, ticks }: { months: PeriodStat[]; target: number; min: number; max: number; ticks: number[] }) {
+function RateBars({ months, target, min, max, ticks, countLine = false }: { months: PeriodStat[]; target: number; min: number; max: number; ticks: number[]; countLine?: boolean }) {
   const span = max - min || 1
   const level = (value: number) => `${Math.min(100, Math.max(0, ((value - min) / span) * 100))}%`
+  /** 고객부적합 발생건수(접수) 꺾은선: 우측 건수 축 (0 · step · 2step · 3step · 4step) */
+  const countMax = Math.max(0, ...months.map((month) => month.inspected))
+  const countStep = Math.max(1, Math.ceil(countMax / 4))
+  const countSpan = countStep * 4
+  const countTicks = [0, 1, 2, 3, 4].map((index) => index * countStep)
+  const countRatio = (value: number) => Math.min(1, Math.max(0, value / countSpan))
+  const countPoints = months.map((month, index) => ({
+    x: ((index + 0.5) / months.length) * 100,
+    y: countRatio(month.inspected) * 100,
+    value: month.inspected,
+  }))
   return (
     <div className="kpi-close-chart flex min-h-[220px] flex-1 gap-2 text-[10px] text-muted-foreground print:min-h-0 print:flex-none">
       <div className="relative w-8 shrink-0 pb-4">
@@ -1920,6 +1958,34 @@ function RateBars({ months, target, min, max, ticks }: { months: PeriodStat[]; t
             <span key={tick} className="absolute inset-x-0 border-t border-dashed border-slate-200" style={{ bottom: level(tick) }} />
           ))}
           <span className="absolute inset-x-0 z-10 border-t-[1.5px] border-dashed border-slate-500" style={{ bottom: level(Math.min(max, Math.max(min, target))) }} />
+          {countLine && (
+            <>
+              <svg
+                className="pointer-events-none absolute z-20"
+                style={{ left: '0.25rem', top: 0, width: 'calc(100% - 0.5rem)', height: '100%' }}
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                <polyline
+                  points={countPoints.map((point) => `${point.x},${100 - point.y}`).join(' ')}
+                  fill="none"
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+              {countPoints.map((point, index) => (
+                <span
+                  key={months[index].key}
+                  className="absolute z-30 h-2.5 w-2.5 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white bg-amber-500 shadow-sm"
+                  style={{ left: `calc(0.25rem + (100% - 0.5rem) * ${point.x / 100})`, bottom: `${point.y}%` }}
+                  title={`${months[index].label} 접수 ${point.value}건`}
+                />
+              ))}
+            </>
+          )}
           <div className="absolute inset-0 grid grid-cols-12 items-end gap-1 px-1">
             {months.map((month) => (
               <div key={month.key} className="flex h-full flex-col items-center justify-end">
@@ -1942,6 +2008,15 @@ function RateBars({ months, target, min, max, ticks }: { months: PeriodStat[]; t
           {months.map((month) => <span key={month.key} className="text-center leading-4">{month.label}</span>)}
         </div>
       </div>
+      {countLine && (
+        <div className="relative w-8 shrink-0 pb-4 text-amber-600">
+          {countTicks.map((tick) => (
+            <span key={tick} className="absolute right-0 translate-y-1/2 tabular-nums" style={{ bottom: `calc(1rem + (100% - 1rem) * ${countRatio(tick)})` }}>
+              {tick}건
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -1977,7 +2052,7 @@ function StandardCloseReport({ year, data, monthlyOnly = false }: {
   const labels = variant === 'customer'
     ? {
       chart: '월별 회신율 추이',
-      chartNote: `점선: 목표 ${total.target}% 이상 · 초록 달성 · 빨강 미달`,
+      chartNote: `막대: 회신율 · 점선: 목표 ${total.target}% 이상 · 초록 달성 · 빨강 미달 · 주황 꺾은선: 발생건수(접수, 우측 축)`,
       periodTitle: '분기 · 반기 회신율',
       heads: ['접수', '조치', '회신율'],
       colA: '접수',
@@ -2176,7 +2251,7 @@ function StandardCloseReport({ year, data, monthlyOnly = false }: {
           {certificates && shipped ? (
             <OutgoingKpiVisual year={year} months={months} shipped={shipped} target={total.target} />
           ) : (
-            <RateBars months={months} target={total.target} min={rateAxis.min} max={rateAxis.max} ticks={rateAxis.ticks} />
+            <RateBars months={months} target={total.target} min={rateAxis.min} max={rateAxis.max} ticks={rateAxis.ticks} countLine={variant === 'customer'} />
           )}
           <p className="kpi-close-chart-note mt-2 text-[11px] text-muted-foreground">{labels.chartNote}</p>
         </article>
@@ -2444,23 +2519,21 @@ function CloseStatRange({ label, high, low }: {
 }) {
   const hasData = Boolean(high && low)
   return (
-    <div className="min-w-0 rounded-xl border bg-card px-3 py-2.5 print:px-2 print:py-2">
-      <p className="text-[10px] font-medium leading-snug text-muted-foreground">{label}</p>
+    <div className="kpi-close-stat-range min-w-0 rounded-xl border bg-card px-4 py-3 print:px-2 print:py-2">
+      <p className="text-xs font-medium leading-snug text-muted-foreground">{label}</p>
       {hasData ? (
-        <div className="mt-1.5 grid grid-cols-2 gap-2 text-center">
-          <div>
-            <p className="text-[9px] text-muted-foreground">최고</p>
-            <p className="text-sm font-bold tabular-nums text-rose-600">{high?.value}</p>
-            <p className="text-[9px] text-muted-foreground">{high?.meta}</p>
+        <>
+          <div className="mt-1 flex items-baseline gap-1.5 whitespace-nowrap text-sm font-bold leading-snug tabular-nums">
+            <span className="text-rose-600">{high?.value}</span>
+            <span className="text-xs font-semibold text-muted-foreground">/</span>
+            <span className="text-emerald-600">{low?.value}</span>
           </div>
-          <div>
-            <p className="text-[9px] text-muted-foreground">최저</p>
-            <p className="text-sm font-bold tabular-nums text-emerald-600">{low?.value}</p>
-            <p className="text-[9px] text-muted-foreground">{low?.meta}</p>
+          <div className="text-[11px] leading-snug text-muted-foreground">
+            최고 {high?.meta} · 최저 {low?.meta}
           </div>
-        </div>
+        </>
       ) : (
-        <p className="mt-1 text-sm font-bold">—</p>
+        <div className="mt-1 text-sm font-bold leading-snug">—</div>
       )}
     </div>
   )
@@ -2795,6 +2868,14 @@ function MonthTip({ active, row, customer = false, process = false, delivery = f
   if (customer) {
     const received = row.received ?? row.inspected ?? 0
     const closed = row.closed ?? row.defect ?? 0
+    if (!received || row.rate == null) {
+      return (
+        <div className="rounded-xl border bg-card px-3 py-2 text-xs shadow-lg">
+          <p className="font-semibold">{row.label}</p>
+          <p className="mt-1 text-muted-foreground">접수 0건</p>
+        </div>
+      )
+    }
     return (
       <div className="rounded-xl border bg-card px-3 py-2 text-xs shadow-lg">
         <p className="font-semibold">{row.label}</p>

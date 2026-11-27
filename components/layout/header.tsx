@@ -34,10 +34,10 @@ export function Header({ currentPage, onMenuToggle }: HeaderProps) {
   }
 
   return (
-    <header className="no-print h-14 bg-card border-b border-border flex items-center px-4 gap-3 sticky top-0 z-40 shadow-sm">
+    <header className="no-print h-14 bg-card border-b border-border flex items-center px-3 gap-2 sm:px-4 sm:gap-3 sticky top-0 z-40 shadow-sm">
       <button
         onClick={onMenuToggle}
-        className="lg:hidden p-1.5 rounded-md hover:bg-muted transition-colors"
+        className="lg:hidden shrink-0 p-1.5 rounded-md hover:bg-muted transition-colors"
         aria-label="메뉴 열기"
       >
         <Menu className="w-5 h-5 text-muted-foreground" />
@@ -46,10 +46,10 @@ export function Header({ currentPage, onMenuToggle }: HeaderProps) {
       {/* Logo */}
       <button
         onClick={() => router.push('/')}
-        className="flex items-center gap-3 mr-0 cursor-pointer lg:hidden"
+        className="flex shrink-0 items-center gap-3 mr-0 cursor-pointer lg:hidden"
         aria-label="대시보드로 이동"
       >
-        <div className="w-[95px] h-[50px] flex items-center justify-center flex-shrink-0">
+        <div className="w-[76px] h-[44px] sm:w-[95px] sm:h-[50px] flex items-center justify-center flex-shrink-0">
           <Image
             src={dark ? "/logo-dark.png" : "/logo.png"}
             width={120}
@@ -77,7 +77,7 @@ export function Header({ currentPage, onMenuToggle }: HeaderProps) {
         variant="ghost"
         size="icon"
         onClick={toggleDark}
-        className="text-muted-foreground hover:text-foreground w-8 h-8"
+        className="shrink-0 text-muted-foreground hover:text-foreground w-8 h-8"
         aria-label={dark ? '라이트 모드로 전환' : '다크 모드로 전환'}
       >
         {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

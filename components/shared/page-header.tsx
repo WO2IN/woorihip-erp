@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect } from 'react'
 import { ClipboardCheckIcon, ThermometerIcon, WrenchIcon, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -21,27 +20,12 @@ const NAMED_PAGE_ICONS = {
 
 export type PageIconName = keyof typeof NAMED_PAGE_ICONS
 
-export const PAGE_BAND_GRADIENT: Record<PageTone, string> = {
-  blue: 'bg-[linear-gradient(135deg,oklch(0.58_0.16_230),oklch(0.44_0.14_236))]',
-  indigo: 'bg-[linear-gradient(135deg,oklch(0.52_0.18_275),oklch(0.40_0.16_282))]',
-  green: 'bg-[linear-gradient(135deg,oklch(0.60_0.14_155),oklch(0.46_0.12_162))]',
-  cyan: 'bg-[linear-gradient(135deg,oklch(0.62_0.12_210),oklch(0.46_0.11_216))]',
-  amber: 'bg-[linear-gradient(135deg,oklch(0.74_0.16_68),oklch(0.60_0.16_48))]',
-  rose: 'bg-[linear-gradient(135deg,oklch(0.64_0.20_18),oklch(0.50_0.18_12))]',
-  violet: 'bg-[linear-gradient(135deg,oklch(0.56_0.18_300),oklch(0.44_0.17_308))]',
-  teal: 'bg-[linear-gradient(135deg,oklch(0.58_0.11_185),oklch(0.42_0.09_192))]',
-  orange: 'bg-[linear-gradient(135deg,oklch(0.64_0.17_42),oklch(0.50_0.16_32))]',
-  red: 'bg-[linear-gradient(135deg,oklch(0.50_0.14_27),oklch(0.38_0.12_24))]',
-  slate: 'bg-[linear-gradient(135deg,oklch(0.48_0.03_250),oklch(0.34_0.03_255))]',
-  steel: 'bg-[linear-gradient(135deg,oklch(0.46_0.06_250),oklch(0.32_0.05_262))]',
-}
-
-/** 머리글 띠 위에 올리는 보조 버튼 */
+/** 머리글 오른쪽에 두는 보조 버튼 */
 export const BAND_BUTTON =
-  'border border-white/30 bg-white/15 text-white shadow-none hover:bg-white/25 hover:text-white dark:border-white/30 dark:bg-white/15 dark:hover:bg-white/25 disabled:opacity-60'
-/** 머리글 띠 위에 올리는 주 버튼 */
+  'border border-border bg-card text-foreground shadow-xs hover:bg-muted hover:text-foreground disabled:opacity-60'
+/** 머리글 오른쪽에 두는 주 버튼 */
 export const BAND_BUTTON_PRIMARY =
-  'border border-white bg-white text-[oklch(0.25_0.04_262)] shadow-sm hover:bg-white/90 hover:text-[oklch(0.25_0.04_262)] dark:bg-white dark:hover:bg-white/90 disabled:opacity-60'
+  'border border-transparent bg-slate-800 text-white shadow-xs hover:bg-slate-700 hover:text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:hover:text-slate-900 disabled:opacity-60'
 
 export const GROUP_TONE: Record<string, PageTone> = {
   대시보드: 'blue',
@@ -72,48 +56,29 @@ interface PageHeaderProps {
   className?: string
 }
 
-export function PageHeader({ tone, icon, eyebrow, title, description, stat, actions, leading, className }: PageHeaderProps) {
+/** 페이지 머리글: 위치 표시(eyebrow)와 제목만 보여준다. description·stat은 호출부 호환용으로 받기만 하고 그리지 않는다. */
+export function PageHeader({ icon, eyebrow, title, actions, leading, className }: PageHeaderProps) {
   const Icon = typeof icon === 'string' ? NAMED_PAGE_ICONS[icon] : icon
-  useEffect(() => {
-    const main = document.querySelector('.app-shell-main')
-    if (!(main instanceof HTMLElement)) return
-    main.dataset.pageTone = tone
-    return () => {
-      if (main.dataset.pageTone === tone) delete main.dataset.pageTone
-    }
-  }, [tone])
 
   return (
-    <section className={cn('relative overflow-hidden rounded-2xl px-6 py-5 text-white shadow-sm', PAGE_BAND_GRADIENT[tone], className)}>
-      <span className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-white/10" />
-      <span className="pointer-events-none absolute right-28 -bottom-24 h-40 w-40 rounded-full bg-white/5" />
-      <div className="relative flex flex-wrap items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          {leading}
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.18em] text-white/75">
-              <Icon className="h-4 w-4" /> {eyebrow}
-            </p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-[26px]">{title}</h1>
-            {description && <p className="mt-1 text-sm text-white/80">{description}</p>}
-          </div>
+    <header
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border pb-4',
+        className,
+      )}
+    >
+      {/* 굵은 강조선은 아이콘·글자 너비만큼만 구분선 위에 얹는다 */}
+      <div className="relative flex min-w-0 items-center gap-3.5 self-stretch after:absolute after:inset-x-0 after:-bottom-[17px] after:h-[3px] after:rounded-full after:bg-slate-600 dark:after:bg-slate-300">
+        {leading}
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-card text-slate-600 shadow-sm ring-1 ring-border dark:text-slate-300">
+          <Icon className="size-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">{eyebrow}</p>
+          <h1 className="mt-0.5 text-2xl font-extrabold tracking-tight text-foreground sm:text-[26px]">{title}</h1>
         </div>
-        {(stat || actions) && (
-          <div className="flex flex-wrap items-center gap-5">
-            {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-            {stat && (
-              <div className="text-right">
-                <p className="text-sm font-semibold text-white/80">{stat.label}</p>
-                <p className="text-[36px] font-extrabold leading-none tabular-nums">
-                  {stat.value}
-                  {stat.unit && <span className="ml-1 text-lg font-bold text-white/80">{stat.unit}</span>}
-                </p>
-                {stat.sub && <p className="mt-1 text-xs text-white/80">{stat.sub}</p>}
-              </div>
-            )}
-          </div>
-        )}
       </div>
-    </section>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </header>
   )
 }

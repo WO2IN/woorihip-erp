@@ -8,6 +8,24 @@ import { chosungSearch } from '@/lib/korean'
 import { toast } from 'sonner'
 import { notifyDataChanged } from '@/lib/data-events'
 import { getJsonAuthHeaders } from '@/lib/auth-client'
+import { confirmModal } from '@/components/shared/confirm-modal'
+
+/** 확인 모달에 보여 줄 설정 목록 이름 */
+const CONFIG_LABELS: Record<string, string> = {
+  companies: '업체',
+  products: '품명',
+  materials: '재질',
+  specifications: '도금사양',
+  departments: '부서',
+  owners: '담당자',
+  'document-types': '문서유형',
+  'shipment-categories': '도금 종류',
+  'shipment-category': '도금 종류',
+  'shipment-floor': '층',
+  'mtbf-category': '설비분류',
+  'mtbf-equipment': '설비번호',
+  'mtbf-line': '라인',
+}
 
 interface SearchableComboboxProps {
   configName: string
@@ -100,6 +118,15 @@ export function SearchableCombobox({
   const handleCreate = async () => {
     if (!trimmed || adding) return
 
+    const listName = CONFIG_LABELS[configName]
+    setOpen(false)
+    const ok = await confirmModal({
+      title: `"${trimmed}"을(를) 추가하시겠습니까?`,
+      description: `추가하면 ${listName ? `${listName} ` : ''}설정 목록에도 저장되어, 다른 화면과 다른 사용자의 선택 목록에도 나타납니다.`,
+      confirmLabel: '추가',
+    })
+    if (!ok) return
+
     setAdding(true)
     try {
       const response = await fetch('/api/config', {
@@ -114,7 +141,8 @@ export function SearchableCombobox({
       }
 
       onOptionsChange?.(data.data || [trimmed, ...options])
-      onChange(trimmed)
+      // 서버가 값을 다듬어 저장했을 수 있다 (품목 0.15x91 → 0.15*91). 저장된 값으로 고른다.
+      onChange(Array.isArray(data.data) && typeof data.data[0] === 'string' ? data.data[0] : trimmed)
       notifyDataChanged('config')
       setOpen(false)
       toast.success(`"${trimmed}"이(가) 추가되었습니다.`)

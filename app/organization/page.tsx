@@ -6,6 +6,8 @@ import { useAuth } from "@/components/auth/auth-context"
 import { BAND_BUTTON, BAND_BUTTON_PRIMARY, PAGE_SHELL, PageHeader } from "@/components/shared/page-header"
 import { getJsonAuthHeaders } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
+import { confirmModal } from '@/components/shared/confirm-modal'
+import { toast } from 'sonner'
 
 type Person = { label: string; kind: "person" | "group" | "floor" }
 type Department = { name: string; color: "blue" | "orange"; people: Person[] }
@@ -47,7 +49,7 @@ export default function OrganizationPage() {
 
   const saveOrganization = async () => {
     if (!user) {
-      window.alert('로그인 정보를 확인한 뒤 다시 시도해주세요.')
+      toast.error('로그인 정보를 확인한 뒤 다시 시도해주세요.')
       return
     }
     setSaving(true)
@@ -59,7 +61,7 @@ export default function OrganizationPage() {
       })
       if (!response.ok) throw new Error('저장하지 못했습니다.')
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : '조직도 저장에 실패했습니다.')
+      toast.error(error instanceof Error ? error.message : '조직도 저장에 실패했습니다.')
     } finally {
       setSaving(false)
     }
@@ -102,9 +104,9 @@ export default function OrganizationPage() {
     setDepartments(current => [...current, { name: '새 팀', color: current.length % 2 ? 'orange' : 'blue', people: [] }])
   }
 
-  const removeDepartment = (departmentIndex: number) => {
+  const removeDepartment = async (departmentIndex: number) => {
     const name = departments[departmentIndex]?.name || '이 팀'
-    if (!window.confirm(`‘${name}’을(를) 조직도에서 빼시겠습니까?`)) return
+    if (!(await confirmModal({ title: `‘${name}’을(를) 조직도에서 뺄까요?`, confirmLabel: '빼기', destructive: true }))) return
     setDepartments(current => current.filter((_, index) => index !== departmentIndex))
   }
 

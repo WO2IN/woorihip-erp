@@ -1,0 +1,38 @@
+# 의존성·빌드 결과물 (package.json 기준으로 다시 생성 가능)
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+
+# 캐시·임시 파일
+.cache/
+coverage/
+.tmp/
+*.log
+
+# 대용량 데이터·덤프·압축 파일
+*.csv
+*.sql
+*.dump
+*.gz
+*.zip
+
+# 운영 데이터 (사용자·문서·감사 로그·백업)와 비밀값
+data/
+backups/
+public/storage/
+public/uploads/
+.env
+.env*.local
+
+# 이미지·OCR 데이터·PDF 등 바이너리 (코드는 참조하지만 AI가 읽을 필요 없음)
+tessdata/
+*.traineddata
+*.pdf
+public/**/*.jpg
+public/**/*.jpeg
+public/**/*.webp
+public/**/*.gif
+
+# 잠금 파일 (의존성은 package.json 기준)
+package-lock.json
+pnpm-lock.yaml

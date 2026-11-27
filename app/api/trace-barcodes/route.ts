@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { canOperateFloor } from '@/lib/access'
+import { normalizeProductName } from '@/lib/product-name'
 import { canEdit, getUserFromHeaders } from '@/lib/auth'
-import { listRecords } from '@/lib/records'
+import { deleteRecordsWhere, listRecords } from '@/lib/records'
 import { appendAuditLog, readInventory, updateInventory } from '@/lib/storage'
-import { findTraceBarcode, issueTraceBarcode, TRACE_BARCODE_COLLECTION } from '@/lib/trace-barcode'
+import { canIssueTraceBarcode, findTraceBarcode, issueTraceBarcode, TRACE_BARCODE_COLLECTION } from '@/lib/trace-barcode'
 import type { TraceBarcode, TraceBarcodeOption } from '@/lib/trace'
 
 export const dynamic = 'force-dynamic'
@@ -17,16 +18,20 @@ export async function GET(request: NextRequest) {
 
   const company = str(request.nextUrl.searchParams.get('company'))
   const product = str(request.nextUrl.searchParams.get('product'))
-  const [rows, cards] = await Promise.all([
+  const [rows, cards, inventory] = await Promise.all([
     listRecords<TraceBarcode>(TRACE_BARCODE_COLLECTION),
     listRecords<{ barcode?: string }>('lot-cards'),
+    readInventory(),
   ])
+  // 입고로 발급된 바코드인데 그 입고가 지워졌으면 목록에서 뺀다.
+  const inventoryIds = new Set(inventory.map((item) => item.id))
   const cardCount = new Map<string, number>()
   for (const card of cards) {
     const key = str(card.barcode).toUpperCase()
     if (key) cardCount.set(key, (cardCount.get(key) ?? 0) + 1)
   }
   const data: TraceBarcodeOption[] = rows
+    .filter((row) => !(row.source === 'inbound' && row.inventoryId && !inventoryIds.has(row.inventoryId)))
     .filter((row) => (!company || row.company === company) && (!product || row.product === product))
     .map((row) => ({ ...row, cardCount: cardCount.get(row.barcode.toUpperCase()) ?? 0 }))
   return NextResponse.json({ data })
@@ -41,6 +46,9 @@ export async function POST(request: NextRequest) {
   const user = await getUserFromHeaders(request.headers)
   if (!user || !canEdit(user.role)) {
     return NextResponse.json({ error: '바코드를 만들 권한이 없습니다.' }, { status: 403 })
+  }
+  if (!canIssueTraceBarcode(user)) {
+    return NextResponse.json({ error: '테스트 단계라 지정된 계정만 바코드를 만들 수 있습니다.' }, { status: 403 })
   }
   const body = await request.json().catch(() => ({}))
 
@@ -76,7 +84,7 @@ export async function POST(request: NextRequest) {
   }
 
   const company = str(body.company)
-  const product = str(body.product)
+  const product = normalizeProductName(str(body.product))
   if (!company || !product) {
     return NextResponse.json({ error: '업체명과 품명을 입력해 주세요.' }, { status: 400 })
   }
@@ -111,4 +119,43 @@ export async function POST(request: NextRequest) {
     userName: user.displayName,
   })
   return NextResponse.json({ data: record })
+}
+
+/**
+ * 입고 한 건의 바코드를 없앤다. 입고 기록은 남고 바코드만 빠진다.
+ * 그 바코드로 쓴 수입검사·이력카드·출하성적서가 있으면 막는다.
+ */
+export async function DELETE(request: NextRequest) {
+  const user = await getUserFromHeaders(request.headers)
+  if (!user || !canEdit(user.role)) {
+    return NextResponse.json({ error: '바코드를 제거할 권한이 없습니다.' }, { status: 403 })
+  }
+  const body = await request.json().catch(() => ({}))
+  const inventoryId = str(body.inventoryId)
+  const inbound = (await readInventory()).find((item) => item.id === inventoryId)
+  if (!inbound) return NextResponse.json({ error: '입고 내역을 찾을 수 없습니다.' }, { status: 404 })
+  if (!canOperateFloor(user, inbound.floor)) {
+    return NextResponse.json({ error: '다른 층 입고의 바코드는 제거할 수 없습니다.' }, { status: 403 })
+  }
+  const barcode = str((inbound as { barcode?: string }).barcode)
+  if (!barcode) return NextResponse.json({ error: '바코드가 없는 입고입니다.' }, { status: 400 })
+
+  const upper = barcode.toUpperCase()
+  const linked = (
+    await Promise.all(['incoming-inspections', 'lot-cards', 'outgoing-reports'].map((name) => listRecords<{ barcode?: string }>(name)))
+  ).flat().some((doc) => str(doc.barcode).toUpperCase() === upper)
+  if (linked) {
+    return NextResponse.json({ error: '이 바코드로 작성한 서류가 있어 제거할 수 없습니다. 서류를 먼저 지우세요.' }, { status: 409 })
+  }
+
+  await deleteRecordsWhere<TraceBarcode>(TRACE_BARCODE_COLLECTION, (row) => row.barcode.toUpperCase() === upper)
+  await updateInventory(inbound.id, { barcode: '', flow: false } as Record<string, unknown>)
+  await appendAuditLog({
+    action: 'DELETE',
+    target: 'trace-barcode',
+    detail: [`${inbound.company} · ${inbound.product}`, `${barcode} 바코드 제거 (입고 ${inbound.issueDate})`].join('\n'),
+    userId: user.id,
+    userName: user.displayName,
+  })
+  return NextResponse.json({ success: true })
 }

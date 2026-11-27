@@ -1,13 +1,15 @@
 /**
  * 제품 바코드의 진행 상태. 입고등록에서 바코드가 만들어지고, 현장에서 스캔 모드를 골라 찍을 때마다 바뀐다.
- *   입고 → 작업중 → 작업완료 → 출하대기 → 출하완료
+ *   입고 → 작업중 ⇄ 대기 → 작업완료 → 출하대기 → 출하완료
+ * 대기: 이력카드(롤) 몇 개는 작업을 마쳤는데 다음 롤 작업을 아직 시작하지 않은 상태.
  */
-export const BARCODE_STATUSES = ['received', 'working', 'done', 'shipReady', 'shipped'] as const
+export const BARCODE_STATUSES = ['received', 'working', 'paused', 'done', 'shipReady', 'shipped'] as const
 export type BarcodeStatus = (typeof BARCODE_STATUSES)[number]
 
 export const BARCODE_STATUS_LABEL: Record<BarcodeStatus, string> = {
   received: '입고',
   working: '작업중',
+  paused: '대기',
   done: '작업완료',
   shipReady: '출하대기',
   shipped: '출하완료',

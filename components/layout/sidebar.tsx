@@ -1,7 +1,9 @@
 'use client'
 
 import { Suspense, useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
+import { createPortal } from 'react-dom'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { BarChart3, ChevronDown, GripVertical, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { toast } from 'sonner'
@@ -151,8 +153,9 @@ export function Sidebar({ open, onClose, collapsed, setCollapsed }: SidebarProps
           onClick={onClose}
           className={cn('flex items-center gap-3 border-b border-slate-200 dark:border-white/10 py-5', collapsed ? 'justify-center px-0' : 'px-5')}
         >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[oklch(0.52_0.19_258)] bg-[linear-gradient(135deg,oklch(0.58_0.19_255),oklch(0.45_0.19_262))] text-lg font-black text-white shadow-[0_4px_12px_oklch(0.52_0.19_258/0.3)] dark:border-[oklch(0.78_0.14_220/0.7)] dark:bg-none dark:bg-[oklch(0.3_0.07_245)] dark:shadow-[0_0_14px_oklch(0.78_0.14_220/0.35)]">
-            W
+<span className={cn('flex shrink-0 items-center', collapsed ? 'h-11' : 'h-14')}>
+            <Image src="/logo.png" alt="WOORI 로고" width={213} height={127} priority className={cn('w-auto object-contain dark:hidden', collapsed ? 'h-11' : 'h-14')} />
+            <Image src="/logo-dark.png" alt="WOORI 로고" width={213} height={127} priority className={cn('hidden w-auto object-contain dark:block', collapsed ? 'h-11' : 'h-14')} />
           </span>
           {!collapsed && (
             <span className="min-w-0">
@@ -163,8 +166,8 @@ export function Sidebar({ open, onClose, collapsed, setCollapsed }: SidebarProps
         </Link>
 
         <ScrollArea className="min-h-0 flex-1 py-4">
-          <Suspense fallback={<NavList collapsed={collapsed} onClose={onClose} onExpand={() => setCollapsed(false)} tab={null} />}>
-            <NavWithParams collapsed={collapsed} onClose={onClose} onExpand={() => setCollapsed(false)} />
+          <Suspense fallback={<NavList collapsed={collapsed} onClose={onClose} tab={null} />}>
+            <NavWithParams collapsed={collapsed} onClose={onClose} />
           </Suspense>
         </ScrollArea>
 
@@ -176,15 +179,20 @@ export function Sidebar({ open, onClose, collapsed, setCollapsed }: SidebarProps
   )
 }
 
-function NavWithParams(props: { collapsed: boolean; onClose: () => void; onExpand: () => void }) {
+function NavWithParams(props: { collapsed: boolean; onClose: () => void }) {
   const tab = useSearchParams().get('tab')
   return <NavList {...props} tab={tab} />
 }
 
-function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; onClose: () => void; onExpand: () => void; tab: string | null }) {
+function NavList({ collapsed, onClose, tab }: { collapsed: boolean; onClose: () => void; tab: string | null }) {
   const { user, replaceUser } = useAuth()
   const pathname = usePathname()
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
+  // 접힌 사이드바에서 그룹을 누르면 오른쪽에 뜨는 하위 메뉴 목록
+  const [flyoutId, setFlyoutId] = useState<string | null>(null)
+  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null)
+  const buttonRefs = useRef(new Map<string, HTMLButtonElement>())
+  const flyoutRef = useRef<HTMLDivElement>(null)
   const [reordering, setReordering] = useState(false)
   const [saving, setSaving] = useState(false)
   const [draft, setDraft] = useState<string[] | null>(null)
@@ -203,6 +211,37 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
     return openSections[section.label] ?? items.some((item) => containsActive(item, pathname, tab))
   }
   const anyOpen = collapsible.some(isSectionOpen)
+
+  const flyoutSection = flyoutId ? sections.find((section) => section.id === flyoutId) : undefined
+
+  const toggleFlyout = (id: string) => {
+    if (flyoutId === id) {
+      setFlyoutId(null)
+      return
+    }
+    const rect = buttonRefs.current.get(id)?.getBoundingClientRect()
+    if (!rect) return
+    setFlyoutPos({ top: rect.top, left: rect.right + 10 })
+    setFlyoutId(id)
+  }
+
+  useEffect(() => {
+    if (!flyoutId) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (flyoutRef.current?.contains(target) || buttonRefs.current.get(flyoutId)?.contains(target)) return
+      setFlyoutId(null)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFlyoutId(null)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [flyoutId])
   const setAll = (open: boolean) => {
     setOpenSections(Object.fromEntries(collapsible.map((section) => [section.label, open])))
   }
@@ -386,12 +425,16 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
           <div key={section.id}>
             <button
               type="button"
-              aria-expanded={expanded}
+              ref={(node) => {
+                if (node) buttonRefs.current.set(section.id, node)
+                else buttonRefs.current.delete(section.id)
+              }}
+              aria-expanded={collapsed ? flyoutId === section.id : expanded}
+              aria-haspopup={collapsed ? 'menu' : undefined}
               title={collapsed ? section.label : undefined}
               onClick={() => {
                 if (collapsed) {
-                  onExpand()
-                  setOpenSections((prev) => ({ ...prev, [section.label]: true }))
+                  toggleFlyout(section.id)
                 } else {
                   setOpenSections((prev) => ({ ...prev, [section.label]: !expanded }))
                 }
@@ -473,6 +516,122 @@ function NavList({ collapsed, onClose, onExpand, tab }: { collapsed: boolean; on
           </div>
         )
       })}
+      {collapsed && flyoutSection && flyoutPos && createPortal(
+        <CollapsedFlyout
+          section={flyoutSection}
+          items={flyoutSection.children?.filter((item) => allowed(item.minRole)) ?? []}
+          allowed={allowed}
+          pos={flyoutPos}
+          pathname={pathname}
+          tab={tab}
+          accent={sectionAccent(flyoutSection.id)}
+          panelRef={flyoutRef}
+          onNavigate={() => {
+            setFlyoutId(null)
+            onClose()
+          }}
+        />,
+        document.body,
+      )}
     </nav>
+  )
+}
+
+function CollapsedFlyout({
+  section,
+  items,
+  allowed,
+  pos,
+  pathname,
+  tab,
+  accent,
+  panelRef,
+  onNavigate,
+}: {
+  section: NavSection
+  items: NavItem[]
+  allowed: (role?: Role) => boolean
+  pos: { top: number; left: number }
+  pathname: string
+  tab: string | null
+  accent: { icon: string; child: string; dot: string }
+  panelRef: React.RefObject<HTMLDivElement | null>
+  onNavigate: () => void
+}) {
+  const Icon = section.icon
+  return (
+    <div
+      ref={panelRef}
+      role="menu"
+      aria-label={section.label}
+      style={{ top: pos.top, left: pos.left, maxHeight: `calc(100vh - ${pos.top + 16}px)` }}
+      className="fixed z-[70] w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-white/10 dark:bg-[oklch(0.25_0.04_255)]"
+    >
+      <div className="flex h-9 items-center gap-2 px-2 text-[15px] font-bold text-slate-900 dark:text-white">
+        <Icon className={cn('h-[18px] w-[18px] shrink-0', accent.icon)} />
+        <span className="truncate">{section.label}</span>
+      </div>
+      <div className="my-1 h-px bg-slate-200 dark:bg-white/10" />
+      <div className="space-y-1">
+        {items.map((item) =>
+          item.children?.length ? (
+            <div key={item.label} className="rounded-lg bg-slate-100/80 px-1.5 py-1.5 dark:bg-white/[0.06]">
+              <div className="flex h-7 items-center gap-2 px-1 text-[13.5px] font-semibold text-slate-900 dark:text-white">
+                <BarChart3 className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-white/70" />
+                <span className="truncate">{item.label}</span>
+                {item.testing && (
+                  <span className="ml-auto shrink-0 rounded-full bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/15 dark:text-sky-300">개발 중</span>
+                )}
+              </div>
+              <div className="space-y-px">
+                {item.children.filter((child) => allowed(child.minRole)).map((child) => {
+                  const active = isActive(child.href, pathname, tab)
+                  return (
+                    <Link
+                      key={child.href}
+                      href={child.href ?? '#'}
+                      onClick={onNavigate}
+                      role="menuitem"
+                      className={cn(
+                        'flex h-8 items-center gap-2 rounded-md px-1.5 text-[13.5px] transition-colors',
+                        active
+                          ? cn('bg-white dark:bg-white/10', accent.child)
+                          : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950 dark:text-white/80 dark:hover:bg-white/5 dark:hover:text-white',
+                      )}
+                    >
+                      <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? accent.dot : 'bg-slate-400 dark:bg-white/45')} />
+                      <span className="truncate">{child.label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <Link
+              key={item.label}
+              href={item.href ?? '#'}
+              onClick={onNavigate}
+              role="menuitem"
+              className={cn(
+                'flex min-h-9 items-center gap-2 rounded-md px-2.5 py-1.5 text-[14.5px] leading-snug transition-colors',
+                isActive(item.href, pathname, tab)
+                  ? accent.child
+                  : item.soon
+                    ? 'text-slate-700 hover:bg-slate-100 dark:text-white/70 dark:hover:bg-white/5'
+                    : 'text-slate-800 hover:bg-slate-100 hover:text-slate-950 dark:text-white/90 dark:hover:bg-white/5 dark:hover:text-white',
+              )}
+            >
+              <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>
+              {item.soon && (
+                <span className="shrink-0 rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-700 dark:bg-white/5 dark:text-white/40">예정</span>
+              )}
+              {item.testing && (
+                <span className="shrink-0 rounded bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 dark:bg-sky-400/10 dark:text-sky-300">개발 중</span>
+              )}
+            </Link>
+          ),
+        )}
+      </div>
+    </div>
   )
 }

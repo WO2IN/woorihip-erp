@@ -186,10 +186,10 @@ export function LotFlowBoard({
           return (
             <section
               key={stage.key}
-              className={cn('flex min-h-0 flex-col rounded-2xl border bg-muted/30', mobileStage !== stage.key && 'hidden lg:flex')}
+              className={cn('flex min-h-[calc(100dvh-9rem)] flex-col rounded-2xl border border-border/70 bg-muted shadow-[inset_0_1px_0_oklch(1_0_0/0.85),0_1px_2px_oklch(0_0_0/0.06),0_10px_24px_-12px_oklch(0_0_0/0.25)] lg:min-h-0', mobileStage !== stage.key && 'hidden lg:flex')}
             >
-              <header className="flex items-center gap-2 border-b px-4 py-3">
-                <span className={cn('flex size-8 items-center justify-center rounded-lg ring-1', stage.tone)}>
+              <header className="flex items-center gap-2 rounded-t-2xl border-b bg-card px-4 py-3 shadow-[inset_0_1px_0_oklch(1_0_0/0.9),0_1px_2px_oklch(0_0_0/0.04)]">
+                <span className={cn('flex size-8 items-center justify-center rounded-lg ring-1 shadow-[0_3px_6px_-2px_oklch(0_0_0/0.25),inset_0_1px_0_oklch(1_0_0/0.7)]', stage.tone)}>
                   <Icon className="size-4" />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -198,7 +198,7 @@ export function LotFlowBoard({
                     {stage.key === 'done' && !start && !end ? `최근 ${DONE_DAYS}일 · ` : ''}{stage.hint}
                   </span>
                 </span>
-                <span className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-border">{lots.length}</span>
+                <span className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-border shadow-[0_1px_2px_oklch(0_0_0/0.12)]">{lots.length}</span>
               </header>
               <div className="flex max-h-[min(70vh,44rem)] flex-col gap-2 overflow-y-auto p-2">
                 {lots.length === 0 ? (
@@ -242,7 +242,7 @@ function LotCard({
   const workOnlyOnOtherLots = worked === 0 && lot.shipped === 0 && progressQty === 0
 
   return (
-    <article className="rounded-xl border bg-card p-3 shadow-sm transition-shadow hover:shadow-md">
+    <article className="rounded-xl border border-border/60 bg-gradient-to-b from-card to-card/95 p-3 shadow-[inset_0_1px_0_oklch(1_0_0/0.9),0_1px_2px_oklch(0_0_0/0.08),0_4px_10px_-4px_oklch(0_0_0/0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_oklch(1_0_0/0.9),0_2px_4px_oklch(0_0_0/0.08),0_14px_24px_-10px_oklch(0_0_0/0.3)]">
       <button type="button" onClick={() => onOpen(inbound)} className="block w-full text-left">
         <div className="flex items-start gap-2">
           <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', dot)} />
@@ -260,7 +260,7 @@ function LotCard({
           </span>
           <span className="font-semibold tabular-nums">{formatQuantity(inbound.quantity, inbound.unit)}</span>
         </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted shadow-[inset_0_1px_2px_oklch(0_0_0/0.14)]">
           <div
             className={cn('h-full rounded-full', lot.stage === 'done' || lot.shipped >= inbound.quantity - 0.0001 ? 'bg-emerald-500' : 'bg-amber-500')}
             style={{ width: `${pct}%` }}

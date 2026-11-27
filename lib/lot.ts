@@ -53,3 +53,9 @@ export function buildLotEnd(start: string, endSuffix: string): string {
 
   return `${prefix}-${suffix}`
 }
+
+/** 새 이력카드의 기본 LOT 번호. 오늘 날짜(한국 시간) + '-01'. 예) 20261127-01 */
+export function defaultLotNo(now = new Date()): string {
+  const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(now).replace(/-/g, '')
+  return `${day}-01`
+}

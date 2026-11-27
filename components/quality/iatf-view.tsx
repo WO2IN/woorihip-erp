@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { BadgeCheck, CalendarRange, ClipboardList, Files, LayoutDashboard, MessagesSquare, ScanSearch, ShieldCheck } from 'lucide-react'
+import { BadgeCheck, CalendarRange, ClipboardList, Files, LayoutDashboard, MessagesSquare, ShieldCheck } from 'lucide-react'
 import { CertificationPanel, DocumentPanel, FindingsPanel, SchedulePanel, SketchPanel, YearlyPanel } from '@/components/quality/iatf/panels'
 import { PAGE_SHELL_RELATIVE, PageHeader } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
@@ -14,7 +14,6 @@ const GROUPS = {
       { key: 'yearly', label: '연도별 현황', nav: '지적 6건 · 완료 67%', hint: '2026년 2차 사후관리심사 기준 지적사항과 처리 현황입니다.', icon: LayoutDashboard },
       { key: 'findings', label: '지적사항 관리', nav: '개선 진행 2건', hint: '조항·관련 문서·시정조치 진행 상태를 관리합니다.', icon: ClipboardList },
       { key: 'schedule', label: '심사 일정 · 이력', nav: '다음 재인증 2027', hint: 'IATF 3년 인증 주기와 실시 이력입니다.', icon: CalendarRange },
-      { key: 'internal', label: '내부심사', nav: '시스템 · 공정 · 제품', hint: '시스템 · 공정 · 제품 내부심사 계획과 결과입니다.', icon: ScanSearch },
     ],
   },
   system: {
@@ -152,9 +151,6 @@ export function IatfView() {
           {group === 'audit' && tab === 'yearly' ? <YearlyPanel /> : null}
           {group === 'audit' && tab === 'findings' ? <FindingsPanel /> : null}
           {group === 'audit' && tab === 'schedule' ? <SchedulePanel /> : null}
-          {group === 'audit' && tab === 'internal' ? (
-            <SketchPanel title="내부심사 (시스템 · 공정 · 제품)" lines={['시스템 심사', '공정 심사', '제품 심사']} />
-          ) : null}
           {group === 'system' && tab === 'certification' ? <CertificationPanel /> : null}
           {group === 'system' && tab === 'doc-history' ? <DocumentPanel /> : null}
           {group === 'system' && tab === 'management-review' ? (

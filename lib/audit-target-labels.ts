@@ -15,6 +15,11 @@ const AUDIT_TARGET_LABELS: Record<string, string> = {
   'qualification-ledger': '자격인증 대장',
   'suitability-sheet': '적격성평가서',
   'customer-audits': '고객 심사',
+  'lot-card': '이력카드',
+  'trace-barcode': '바코드',
+  approval: '결재',
+  'inspector-exam': '검사원 평가',
+  'internal-auditor-exam': '내부심사원 평가',
 }
 
 const KPI_TARGET_LABELS = Object.fromEntries(

@@ -20,6 +20,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { scrollToTodayColumn } from '@/components/checksheets/scroll-to-today'
 
 interface TempHumidityEntry {
   day: number
@@ -307,8 +308,8 @@ export function TempHumidityTable({
         </p>
       )}
 
-      <div className="print-sheet overflow-x-auto border border-border">
-        <table className="no-print min-w-[900px] w-full border-collapse text-xs">
+      <div ref={scrollToTodayColumn} className="print-sheet overflow-x-auto border border-border">
+        <table className="checksheet-table no-print min-w-[900px] w-full border-collapse text-xs">
           <thead>
             <tr>
               <th className="w-20 border-r border-b border-border bg-muted p-1.5 text-left text-xs font-medium">구분</th>

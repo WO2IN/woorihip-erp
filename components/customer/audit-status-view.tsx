@@ -249,7 +249,7 @@ export function AuditStatusView() {
         title="고객심사현황"
         description="고객심사(QSA · QPA) 지적사항 관리 대시보드 · Customer Audit Status Board"
         stat={{ label: '기간', value: String(year), unit: '년', sub: `${year}.01.01 ~ ${year}.12.31` }}
-        className="print:rounded-lg print:px-4 print:py-2 print:shadow-none print:[&_h1]:mt-0 print:[&_h1]:text-[17px] print:[&_p]:text-[10px] print:[&_.text-\[36px\]]:text-[22px]"
+        className="print:rounded-lg print:px-4 print:py-2 print:shadow-none print:[&_h1]:mt-0 print:[&_h1]:text-[17px] print:[&_p]:text-[10px] print:[&_.text-\[28px\]]:text-[22px]"
         actions={
           <div className="no-print">
             <Button variant="outline" className={BAND_BUTTON} onClick={() => window.print()}>

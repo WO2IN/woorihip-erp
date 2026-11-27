@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { canEdit, getUserFromHeaders } from '@/lib/auth'
 import { getSetting, setSetting } from '@/lib/records'
+import { normalizeProductName } from '@/lib/product-name'
 
 export type PlatingInfo = {
   company: string
@@ -51,7 +52,7 @@ function validateRows(rows: unknown): PlatingInfo[] {
     const item = row as Record<string, unknown>
     const normalized = {
       company: String(item.company ?? '').trim(),
-      product: String(item.product ?? '').trim(),
+      product: normalizeProductName(String(item.product ?? '')),
       gold: String(item.gold ?? '').trim(),
       nickel: String(item.nickel ?? '').trim(),
       material: String(item.material ?? '').trim(),

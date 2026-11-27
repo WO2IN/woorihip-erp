@@ -25,6 +25,7 @@ import {
   type SubmissionValue,
 } from '@/lib/change-request'
 import { cn } from '@/lib/utils'
+import { confirmModal } from '@/components/shared/confirm-modal'
 
 const API = '/api/development/change-requests'
 
@@ -142,9 +143,9 @@ export function ChangeRequestView({
     setFileKey((key) => key + 1)
   }
 
-  const resetForm = () => {
+  const resetForm = async () => {
     const filled = form.docNo || form.title || form.reason || form.before || form.after || form.reasons.length || form.contents.length
-    if (filled && !window.confirm('작성 중인 내용을 지우고 새로 작성할까요?')) return false
+    if (filled && !(await confirmModal({ title: '작성 중인 내용을 지우고 새로 작성할까요?', confirmLabel: '새로 작성' }))) return false
     applyRow(emptyChangeRequest())
     return true
   }

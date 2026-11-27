@@ -8,6 +8,7 @@ import { describeAuditDetail } from '@/lib/audit-detail'
 import { getAuditTargetLabel } from '@/lib/audit-target-labels'
 import { AuditLogEntry } from '@/lib/storage'
 import { BAND_BUTTON, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
+import { confirmModal } from '@/components/shared/confirm-modal'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('ko-KR', {
@@ -83,7 +84,7 @@ export default function SystemLogsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function handleDelete(id: string) {
-    if (!window.confirm('이 시스템 로그를 삭제하시겠습니까? 삭제한 기록은 복구할 수 없습니다.')) return
+    if (!(await confirmModal({ title: '이 시스템 로그를 삭제할까요?', description: '삭제한 기록은 복구할 수 없습니다.', confirmLabel: '삭제', destructive: true }))) return
     setDeletingId(id)
     setError('')
     try {

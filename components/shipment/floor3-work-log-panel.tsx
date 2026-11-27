@@ -27,6 +27,7 @@ import {
 } from '@/lib/process-checklist'
 import { displayDate, formatQuantity } from '@/lib/stock'
 import { cn } from '@/lib/utils'
+import { confirmModal } from '@/components/shared/confirm-modal'
 
 const emptyForm = (company: string, product: string, unit: string, floor: 1 | 2 | 3) => ({
   id: '',
@@ -244,7 +245,7 @@ export function Floor3WorkLogPanel({
   }
 
   const remove = async (row: Floor3WorkLog) => {
-    if (!window.confirm(`${displayDate(row.workDate)} ${row.product} 작업일보를 삭제하시겠습니까?`)) return
+    if (!(await confirmModal({ title: '작업일보를 삭제할까요?', description: `${displayDate(row.workDate)} ${row.product}`, confirmLabel: '삭제', destructive: true }))) return
     try {
       const response = await fetch('/api/floor3-work-logs', {
         method: 'DELETE',

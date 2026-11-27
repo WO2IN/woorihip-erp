@@ -46,7 +46,7 @@ export function UserMenu() {
     <>
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="inline-flex items-center gap-2 h-8 px-2.5 text-sm font-medium hover:bg-muted rounded-lg outline-none"
+        className="inline-flex shrink-0 items-center gap-2 h-8 px-1.5 sm:px-2.5 text-sm font-medium hover:bg-muted rounded-lg outline-none"
         aria-label="사용자 메뉴"
       >
         <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">

@@ -2,85 +2,41 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Check, ChevronDown, FileCheck, FileText, Info, Plus, Printer, Save, Search, Table2, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Copy, FileCheck, FileText, Info, Plus, Printer, Save, Search, Table2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-context'
 import { type ApprovalRequest } from '@/lib/approval'
 import { ConfirmDeleteDialog } from '@/components/shared/confirm-delete-dialog'
 import { BAND_BUTTON, BAND_BUTTON_PRIMARY, PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
+import { DocFormSelect } from '@/components/shipment/doc-form-select'
 import { ShipmentDocFlowNav } from '@/components/shipment/shipment-doc-flow-nav'
+import { ShipmentTabNav } from '@/components/shipment/shipment-tab-nav'
+import { DocSiblingList } from '@/components/shipment/doc-sibling-list'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { getJsonAuthHeaders } from '@/lib/auth-client'
-import { isShipmentBundleLocked } from '@/lib/shipment-bundle'
-import { removeSheetDocument, saveSheetDocument } from '@/lib/sheet-document'
+import { saveSheetDocument } from '@/lib/sheet-document'
 import { CERTIFICATE_TYPE } from '@/lib/file-types'
 import { useEmbedPreview } from '@/hooks/use-embed-preview'
 import { cn } from '@/lib/utils'
+import {
+  splitLotRange,
+  type DimRow,
+  type Floor,
+  type Form2Item,
+  type Form2Row,
+  type Mark,
+  type PlatingLink,
+  type Report,
+} from '@/components/shipment/outgoing-forms/sheet-parts'
+import { OutgoingFormBasic } from '@/components/shipment/outgoing-forms/basic-form'
+import { form2ItemsOf, form2RowsOf, OutgoingForm2, platingParts } from '@/components/shipment/outgoing-forms/form-2'
 
-type Floor = '1' | '2' | '3'
-type Mark = '' | 'OK' | 'NG'
-type Judgment = '' | '합격' | '불합격'
 const FLOORS = ['1', '2', '3'] as const
 
-const VISUAL_ITEMS = [
-  ['1', 'DISCOLORATION(변색)'],
-  ['2', 'STAIN(얼룩)'],
-  ['3', 'RUST(부식)'],
-  ['4', 'CONTAMINATION(오염)'],
-  ['5', 'BENT(변형)'],
-  ['6', 'NO PLATING(미도금)'],
-  ['7', 'LUMP(도금뭉침)'],
-  ['8', 'CAMBER(휨)'],
-  ['9', 'PLATING BURR(도금버)'],
-  ['10', 'SCRATCH(스크래치)'],
-] as const
-
 const ADHESION_SPEC = '1.제품은 스카치 Tape에 완전\n밀착후 45도 각도로 순간적으로\n떼어낸다.(돌림 및 벗겨짐)\n2.테이프 시험이 안되는 제품은\n니퍼로 90도로 상,하측으로 도금면을\n깎아 벗겨짐이 없을것.'
-
-type DimRow = {
-  name: string
-  spec: string
-  lower: string
-  upper: string
-  cycle: string
-  our1: string
-  our2: string
-  qty: string
-  cust1: string
-  cust2: string
-  judge: Mark
-}
-
-type Report = {
-  id: string
-  floor: Floor
-  done: boolean
-  createdAt: string
-  updatedAt: string
-  customer: string
-  product: string
-  lotNo: string
-  lotRange: string
-  issuedOn: string
-  spec: string
-  material: string
-  platingSpec: string
-  sourceLotCardId: string
-  lotSize: string
-  visual: Mark[]
-  dimensions: DimRow[]
-  platingResult: Mark
-  adhesionSpec: string
-  adhesionResult: Mark
-  ourWriter: string
-  ourApprover: string
-  customerWriter: string
-  customerApprover: string
-  judgment: Judgment
-}
 
 function todayKey() {
   const now = new Date()
@@ -89,46 +45,27 @@ function todayKey() {
   return `${now.getFullYear()}-${month}-${day}`
 }
 
-function koDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}/.test(value)) return ''
-  const [year, month, day] = value.slice(0, 10).split('-')
-  return `${year}년${month}월${day}일`
-}
-
-function JudgmentStamp({ judgment, date }: { judgment: string; date: string }) {
-  const fail = judgment === '불합격'
-  const color = fail ? '#e11d48' : '#1d4ed8'
-  return (
-    <svg viewBox="0 0 120 120" className="h-[24mm] w-[24mm]" aria-label={`${fail ? '불합격' : '합격'} 도장`}>
-      <circle cx="60" cy="60" r="56" fill="none" stroke={color} strokeWidth="4" />
-      <circle cx="60" cy="60" r="49" fill="none" stroke={color} strokeWidth="1.1" />
-      <text x="60" y="44" textAnchor="middle" fontSize={fail ? 15 : 20} fontWeight="800" fill={color} letterSpacing={fail ? 1 : 2}>{fail ? '불합격' : '합격'}</text>
-      <text x="60" y="64" textAnchor="middle" fontSize="11" fontWeight="700" fill={color}>{date}</text>
-      <text x="60" y="80" textAnchor="middle" fontSize="10" fontWeight="700" fill={color}>우리하이피(주)</text>
-      <text x="60" y="96" textAnchor="middle" fontSize="11" fontWeight="800" fill={color} letterSpacing="1">Q.C</text>
-    </svg>
-  )
-}
-
 function emptyDim(): DimRow[] {
-  const names = ['전폭', '간격', '도금폭']
+  // 보통 전폭만 측정한다. 간격·도금폭은 필요할 때 치수검사 창에서 고른다.
+  const names = ['전폭']
   return Array.from({ length: 15 }, (_, index) => ({
     name: names[index] ?? '',
     spec: '',
     lower: '',
     upper: '',
     cycle: names[index] ? 'Reel/Lot' : '',
-    our1: '',
-    our2: '',
+    lotNo: '',
     qty: '',
-    cust1: '',
-    cust2: '',
-    judge: '',
+    our: '',
+    ourJudge: '',
+    cust: '',
+    custJudge: '',
   }))
 }
 
-function dimJudge(spec: string, current: Mark): Mark {
-  if (!spec.trim()) return ''
+/** DATA 를 적으면 판정은 OK 로 시작한다(NG 로 바꿀 수 있다). DATA 가 비면 판정도 비운다. */
+function dimJudge(data: string, current: Mark): Mark {
+  if (!data.trim()) return ''
   return current === 'NG' ? 'NG' : 'OK'
 }
 
@@ -137,7 +74,14 @@ function normalizeDim(value: unknown): DimRow[] {
   return emptyDim().map((base, index) => {
     const row = rows[index]
     if (!row || typeof row !== 'object') return base
-    const item = row as Partial<DimRow>
+    // 예전 양식(우리 1·2차, 고객 1·2차, 판정 하나)은 1차 값과 판정을 새 칸으로 옮긴다.
+    const item = row as Partial<DimRow> & { our1?: string; our2?: string; cust1?: string; cust2?: string; judge?: Mark }
+    const text = (value: unknown) => (typeof value === 'string' ? value : '')
+    const mark = (value: unknown): Mark => (value === 'NG' ? 'NG' : value === 'OK' ? 'OK' : '')
+    // 예전에 자동으로 넣던 간격·도금폭 줄은, 직접 적은 값이 없으면 비운다. (이제 전폭만 기본으로 넣는다)
+    const autoFilled = index > 0 && (item.name === '간격' || item.name === '도금폭')
+      && ![item.lower, item.upper, item.lotNo, item.qty, item.our ?? item.our1, item.our2, item.cust ?? item.cust1, item.cust2].some((v) => text(v).trim())
+    if (autoFilled) return base
     return {
       ...base,
       name: typeof item.name === 'string' ? item.name : base.name,
@@ -145,12 +89,12 @@ function normalizeDim(value: unknown): DimRow[] {
       lower: typeof item.lower === 'string' ? item.lower : '',
       upper: typeof item.upper === 'string' ? item.upper : '',
       cycle: typeof item.cycle === 'string' ? item.cycle : base.cycle,
-      our1: typeof item.our1 === 'string' ? item.our1 : '',
-      our2: typeof item.our2 === 'string' ? item.our2 : '',
-      qty: typeof item.qty === 'string' ? item.qty : '',
-      cust1: typeof item.cust1 === 'string' ? item.cust1 : '',
-      cust2: typeof item.cust2 === 'string' ? item.cust2 : '',
-      judge: dimJudge(typeof item.spec === 'string' ? item.spec : '', item.judge === 'NG' ? 'NG' : item.judge === 'OK' ? 'OK' : ''),
+      lotNo: text(item.lotNo),
+      qty: text(item.qty),
+      our: text(item.our ?? item.our1),
+      ourJudge: dimJudge(text(item.our ?? item.our1), mark(item.ourJudge ?? item.judge)),
+      cust: text(item.cust ?? item.cust1),
+      custJudge: dimJudge(text(item.cust ?? item.cust1), mark(item.custJudge)),
     }
   })
 }
@@ -172,6 +116,7 @@ function emptyReport(): Report {
     material: '',
     platingSpec: '',
     sourceLotCardId: '',
+    barcode: '',
     lotSize: '',
     visual: Array.from({ length: 10 }, () => 'OK'),
     dimensions: emptyDim(),
@@ -203,22 +148,8 @@ function normalizeReport(saved: Partial<Report> | null): Report {
     adhesionResult: saved.adhesionResult === 'NG' ? 'NG' : 'OK',
     adhesionSpec: saved.adhesionSpec || ADHESION_SPEC,
     sourceLotCardId: typeof saved.sourceLotCardId === 'string' ? saved.sourceLotCardId : '',
+    barcode: typeof saved.barcode === 'string' ? saved.barcode : '',
   }
-}
-
-function signStep(approval: ApprovalRequest | null, slot: '작성' | '승인') {
-  if (!approval) return undefined
-  if (slot === '작성') return approval.steps.find((step) => !step.role) ?? approval.steps[0]
-  return approval.steps.find((step) => step.role === 'approval')
-}
-
-function splitLotRange(lotRange: string) {
-  const trimmed = lotRange.trim()
-  const pair = trimmed.match(/^-?(\d+)\s*[~～\-]\s*(\d+)$/)
-  if (pair) return { start: pair[1], end: pair[2] }
-  const single = trimmed.match(/^-?(\d+)$/)
-  if (single) return { start: single[1], end: '' }
-  return { start: trimmed, end: '' }
 }
 
 function joinLotRange(start: string, end: string) {
@@ -226,14 +157,6 @@ function joinLotRange(start: string, end: string) {
   const to = end.trim()
   if (from && to) return `${from}~${to}`
   return from || to
-}
-
-function formatLot(lotNo: string, lotRange: string) {
-  const date = lotNo.trim()
-  const { start, end } = splitLotRange(lotRange)
-  if (!start) return date
-  const head = date ? `${date}-${start}` : start
-  return end ? `${head} ~ ${end}` : head
 }
 
 function uniqueNames(values: string[]) {
@@ -251,20 +174,6 @@ function sortDimensions(values: string[]) {
     }
     return a.localeCompare(b, 'ko')
   })
-}
-
-type PlatingLink = { company: string; product: string; material: string; specification: string; fullWidth: string; gap: string; plateWidth: string }
-
-function matchedPlating(links: PlatingLink[], report: Pick<Report, 'customer' | 'product' | 'spec' | 'material' | 'platingSpec'>) {
-  const product = report.product || report.spec
-  const rows = links.filter((row) => (!report.customer || row.company === report.customer) && (!product || row.product === product) && (!report.material || row.material === report.material))
-  return rows.find((row) => !report.platingSpec || row.specification === report.platingSpec) ?? rows[0] ?? null
-}
-
-function positiveMeasure(value: string) {
-  const match = value.replace(/,/g, '').match(/\d+(?:\.\d+)?/)
-  const number = match ? Number(match[0]) : 0
-  return Number.isFinite(number) && number > 0 ? number : 0
 }
 
 function parseSizeSpec(spec: string) {
@@ -312,19 +221,14 @@ function CatalogField({
   )
 }
 
-function CellText({ value, className }: { value: string; className?: string }) {
-  return <span className={cn('block px-0.5 text-center leading-tight', className)}>{value}</span>
-}
-
-const DIM_TEXT_FIELDS = [
+const DIM_SPEC_FIELDS = [
   ['spec', '규격'],
   ['lower', '하한'],
   ['upper', '상한'],
-  ['our1', '우리 1차'],
-  ['our2', '우리 2차'],
+] as const
+const DIM_LOT_FIELDS = [
+  ['lotNo', 'LOT No.'],
   ['qty', '수량'],
-  ['cust1', '고객 1차'],
-  ['cust2', '고객 2차'],
 ] as const
 
 const DIM_HEAD_CLASS = '!rounded-lg !border-0 !bg-slate-200 !px-1 !py-2 !text-[13px] !font-semibold !normal-case !tracking-normal !text-slate-900'
@@ -374,6 +278,206 @@ function SoftSelect({
   )
 }
 
+const FIXED_FORM2_ITEMS = ['전폭', '두께']
+const CIRCLED_NO = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧']
+
+/** 양식 2 치수 항목 편집: 기본은 전폭·두께, 간격·도금폭·직접 입력 항목을 더하고 뺄 수 있다. */
+function Form2ItemsEditor({
+  items,
+  disabled,
+  onChange,
+  platingSpec,
+}: {
+  items: Form2Item[]
+  disabled: boolean
+  /** removed: 지운 항목 자리 (그 열의 측정값도 함께 지운다) */
+  onChange: (items: Form2Item[], removed?: number) => void
+  /** 도금 정보의 n번째 간격·도금폭 값 */
+  platingSpec: (kind: 'gap' | 'plateWidth', index: number) => string
+}) {
+  const edit = (index: number, partial: Partial<Form2Item>) => onChange(items.map((item, i) => (i === index ? { ...item, ...partial } : item)))
+  // 간격·도금폭이 두 개 이상이면 간격 ①, 간격 ② 처럼 번호를 붙이고, 하나만 남으면 번호를 뗀다.
+  const renumber = (list: Form2Item[]) => {
+    let next = list
+    for (const base of ['간격', '도금폭']) {
+      const same = (name: string) => new RegExp(`^${base}(?: [①-⑧])?$`).test(name)
+      const count = next.filter((item) => same(item.name)).length
+      let no = 0
+      next = next.map((item) => (same(item.name) ? { ...item, name: count > 1 ? `${base} ${CIRCLED_NO[(no += 1) - 1]}` : base } : item))
+    }
+    return next
+  }
+  const add = (name: string, kind?: 'gap' | 'plateWidth') => {
+    const nth = items.filter((item) => new RegExp(`^${name}(?: [①-⑧])?$`).test(item.name)).length
+    onChange(renumber([...items, { name, spec: kind ? platingSpec(kind, nth) : '' }]))
+  }
+  return (
+    <div className="flex flex-col gap-1.5 text-sm font-medium">
+      치수 항목
+      {items.map((item, index) => {
+        // 전폭·두께는 기본 항목이라 이름을 바꾸거나 지울 수 없다 (규격만 고친다).
+        const fixed = FIXED_FORM2_ITEMS.includes(item.name)
+        return (
+        <div key={index} className="flex items-center gap-1">
+          <Input value={item.name} disabled={disabled || fixed} onChange={(event) => edit(index, { name: event.target.value })} placeholder="항목" className="h-9 w-[4.5rem] px-2" />
+          <Input value={item.spec} disabled={disabled} onChange={(event) => edit(index, { spec: event.target.value })} placeholder="규격" className="h-9 min-w-0 flex-1 px-2" />
+          <Input value={item.tol ?? ''} disabled={disabled} onChange={(event) => edit(index, { tol: event.target.value })} placeholder="범위" className="h-9 w-16 px-2" />
+          <button
+            type="button"
+            disabled={disabled || fixed}
+            onClick={() => onChange(renumber(items.filter((_, i) => i !== index)), index)}
+            aria-label={`${item.name || '항목'} 삭제`}
+            className={cn('shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:pointer-events-none disabled:opacity-30', fixed && 'invisible')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        )
+      })}
+      <div className="flex gap-1">
+        {([['간격', 'gap'], ['도금폭', 'plateWidth'], ['직접 입력', undefined]] as const).map(([label, kind]) => (
+          <Button key={label} type="button" variant="outline" size="sm" className="h-8 flex-1 px-1 text-xs" disabled={disabled || items.length >= 8} onClick={() => add(kind ? label : '', kind)}>
+            <Plus className="h-3.5 w-3.5" />{label}
+          </Button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** 판정 자동: 측정값이 하나라도 있으면 OK (NG로 고른 것은 그대로), 모두 비면 비운다. */
+function groupJudge(values: string[], current: Mark): Mark {
+  return dimJudge(values.join(''), current)
+}
+
+/** 양식 2 치수 표 입력 창: NO · (LOT No.) · 우리하이피 항목들 · 수량 · 판정. 고객 칸은 고객이 적으므로 여기서 받지 않는다. */
+function Form2DataDialog({
+  items,
+  rows,
+  showLot,
+  onClose,
+  onSave,
+}: {
+  items: Form2Item[]
+  rows: Form2Row[]
+  showLot: boolean
+  onClose: () => void
+  onSave: (rows: Form2Row[]) => void
+}) {
+  const [draft, setDraft] = useState(rows)
+
+  function update(index: number, change: (row: Form2Row) => Form2Row) {
+    setDraft((current) => current.map((row, rowIndex) => (rowIndex === index ? change(row) : row)))
+  }
+
+  // 측정값이 하나라도 들어가면 판정을 OK로 채운다 (NG로 고른 것은 그대로).
+  function setValue(index: number, item: number, value: string) {
+    update(index, (row) => {
+      const our = Array.from({ length: items.length }, (_, i) => row.our[i] ?? '')
+      our[item] = value
+      return { ...row, our, ourJudge: groupJudge(our, row.ourJudge) }
+    })
+  }
+
+  // 칸 번호: 0 LOT, 1.. 우리 항목, 수량, 판정
+  const ourCol = (item: number) => 1 + item
+  const qtyCol = 1 + items.length
+  const judgeCol = qtyCol + 1
+
+  function textInput(index: number, col: number, value: string, onChange: (value: string) => void) {
+    return (
+      <input
+        data-dim-cell={`${index}-${col}`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={(event) => event.currentTarget.select()}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+          event.preventDefault()
+          focusDimCell(event.shiftKey ? index - 1 : index + 1, col)
+        }}
+        className={DIM_FIELD_CLASS}
+      />
+    )
+  }
+
+  const itemHead = (item: Form2Item) => (
+    <span className="block leading-tight">
+      {item.name}
+      {(item.spec.trim() || item.tol?.trim()) && (
+        <span className="mt-0.5 block text-[11px] font-medium text-slate-600">
+          {[item.spec.trim(), item.tol?.trim() && `(${item.tol.trim()})`].filter(Boolean).join(' ')}
+        </span>
+      )}
+    </span>
+  )
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent overlayClassName="z-[80]" className="z-[80] flex max-h-[90dvh] w-[min(96vw,84rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+        <DialogHeader className="flex-row items-center gap-2.5 border-b border-slate-100 px-5 py-4">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+            <Table2 className="size-4" />
+          </span>
+          <DialogTitle className="text-base font-bold text-slate-900">치수검사</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+          <table className="w-full border-separate border-spacing-x-1.5 border-spacing-y-1.5 text-center" style={{ minWidth: `${(showLot ? 220 : 100) + items.length * 92 + 180}px` }}>
+            <thead className="sticky top-0 z-10 bg-white">
+              <tr>
+                <th rowSpan={2} className={cn('w-10', DIM_HEAD_CLASS)}>NO</th>
+                {showLot && <th rowSpan={2} className={cn('w-[8.5rem]', DIM_HEAD_CLASS)}>LOT No.</th>}
+                <th colSpan={items.length} className={DIM_HEAD_CLASS}>우리하이피</th>
+                <th rowSpan={2} className={cn('w-20', DIM_HEAD_CLASS)}>수량</th>
+                <th rowSpan={2} className={cn('w-[4.5rem]', DIM_HEAD_CLASS)}>판정</th>
+              </tr>
+              <tr>
+                {items.map((item, index) => (
+                  <th key={index} className={cn('min-w-[5rem]', DIM_HEAD_CLASS)}>{itemHead(item)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {draft.map((row, index) => (
+                <tr key={index}>
+                  <td className="text-sm font-semibold text-slate-600">{index + 1}</td>
+                  {showLot && <td>{textInput(index, 0, row.lotNo, (lotNo) => update(index, (current) => ({ ...current, lotNo })))}</td>}
+                  {items.map((_, item) => (
+                    <td key={item}>{textInput(index, ourCol(item), row.our[item] ?? '', (value) => setValue(index, item, value))}</td>
+                  ))}
+                  <td>{textInput(index, qtyCol, row.qty, (qty) => update(index, (current) => ({ ...current, qty })))}</td>
+                  <td>
+                    <SoftSelect
+                      cell={`${index}-${judgeCol}`}
+                      value={row.ourJudge}
+                      options={['OK', 'NG']}
+                      placeholder="-"
+                      onChange={(value) => update(index, (current) => ({ ...current, ourJudge: value as Mark }))}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+          <p className="flex items-center gap-1.5 text-xs text-slate-400">
+            <Info className="size-3.5 shrink-0" />
+            LOT마다 우리하이피 측정값을 입력합니다. 측정값을 하나라도 넣으면 판정이 OK로 채워집니다. Enter는 다음 행, Shift+Enter는 이전 행입니다.
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={onClose}>취소</Button>
+            <Button type="button" className="h-9 rounded-lg bg-blue-600 px-4 text-white hover:bg-blue-700" onClick={() => onSave(draft)}>
+              <Save className="size-4" />
+              저장
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DimensionDialog({
   rows,
   onClose,
@@ -390,7 +494,8 @@ function DimensionDialog({
       if (rowIndex !== index) return row
       const next = { ...row, [key]: value }
       if (key === 'name' && value && !next.cycle) next.cycle = 'Reel/Lot'
-      if (key === 'spec') next.judge = value.trim() ? (row.judge || 'OK') : ''
+      if (key === 'our') next.ourJudge = dimJudge(value, row.ourJudge)
+      if (key === 'cust') next.custJudge = dimJudge(value, row.custJudge)
       return next
     }))
   }
@@ -416,73 +521,74 @@ function DimensionDialog({
               <tr>
                 <th className={cn('w-10', DIM_HEAD_CLASS)}>NO</th>
                 <th className={cn('w-[7.5rem]', DIM_HEAD_CLASS)}>항목</th>
-                {DIM_TEXT_FIELDS.slice(0, 3).map(([, label]) => (
+                {DIM_SPEC_FIELDS.map(([, label]) => (
                   <th key={label} className={DIM_HEAD_CLASS}>{label}</th>
                 ))}
                 <th className={cn('w-[7.5rem]', DIM_HEAD_CLASS)}>주기</th>
-                {DIM_TEXT_FIELDS.slice(3).map(([, label]) => (
+                {DIM_LOT_FIELDS.map(([, label]) => (
                   <th key={label} className={DIM_HEAD_CLASS}>{label}</th>
                 ))}
+                <th className={DIM_HEAD_CLASS}>우리하이피 DATA</th>
+                <th className={cn('w-[4.5rem]', DIM_HEAD_CLASS)}>판정</th>
+                <th className={DIM_HEAD_CLASS}>고객 DATA</th>
                 <th className={cn('w-[4.5rem]', DIM_HEAD_CLASS)}>판정</th>
               </tr>
             </thead>
             <tbody>
-              {draft.map((row, index) => (
-                <tr key={index}>
-                  <td className="text-sm font-semibold text-slate-600">{index + 1}</td>
-                  <td>
-                    <SoftSelect
-                      cell={`${index}-0`}
-                      value={row.name}
-                      options={DIM_NAMES}
-                      placeholder="선택"
-                      onChange={(name) => update(index, 'name', name)}
+              {draft.map((row, index) => {
+                const textCell = (key: 'spec' | 'lower' | 'upper' | 'lotNo' | 'qty' | 'our' | 'cust', col: number) => (
+                  <td key={key}>
+                    <input
+                      data-dim-cell={`${index}-${col}`}
+                      value={row[key]}
+                      onChange={(event) => update(index, key, event.target.value)}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onKeyDown={(event) => onTextKeyDown(event, index, col)}
+                      className={DIM_FIELD_CLASS}
                     />
                   </td>
-                  {DIM_TEXT_FIELDS.slice(0, 3).map(([key], fieldIndex) => (
-                    <td key={key}>
-                      <input
-                        data-dim-cell={`${index}-${fieldIndex + 1}`}
-                        value={row[key]}
-                        onChange={(event) => update(index, key, event.target.value)}
-                        onFocus={(event) => event.currentTarget.select()}
-                        onKeyDown={(event) => onTextKeyDown(event, index, fieldIndex + 1)}
-                        className={DIM_FIELD_CLASS}
-                      />
-                    </td>
-                  ))}
+                )
+                const judgeCell = (key: 'ourJudge' | 'custJudge', col: number) => (
                   <td>
                     <SoftSelect
-                      cell={`${index}-4`}
-                      value={row.cycle}
-                      options={DIM_CYCLES}
-                      placeholder="선택"
-                      onChange={(cycle) => update(index, 'cycle', cycle)}
-                    />
-                  </td>
-                  {DIM_TEXT_FIELDS.slice(3).map(([key], fieldIndex) => (
-                    <td key={key}>
-                      <input
-                        data-dim-cell={`${index}-${fieldIndex + 5}`}
-                        value={row[key]}
-                        onChange={(event) => update(index, key, event.target.value)}
-                        onFocus={(event) => event.currentTarget.select()}
-                        onKeyDown={(event) => onTextKeyDown(event, index, fieldIndex + 5)}
-                        className={DIM_FIELD_CLASS}
-                      />
-                    </td>
-                  ))}
-                  <td>
-                    <SoftSelect
-                      cell={`${index}-10`}
-                      value={row.judge}
+                      cell={`${index}-${col}`}
+                      value={row[key]}
                       options={['OK', 'NG']}
                       placeholder="-"
-                      onChange={(judge) => update(index, 'judge', judge)}
+                      onChange={(value) => update(index, key, value)}
                     />
                   </td>
-                </tr>
-              ))}
+                )
+                return (
+                  <tr key={index}>
+                    <td className="text-sm font-semibold text-slate-600">{index + 1}</td>
+                    <td>
+                      <SoftSelect
+                        cell={`${index}-0`}
+                        value={row.name}
+                        options={DIM_NAMES}
+                        placeholder="선택"
+                        onChange={(name) => update(index, 'name', name)}
+                      />
+                    </td>
+                    {DIM_SPEC_FIELDS.map(([key], fieldIndex) => textCell(key, fieldIndex + 1))}
+                    <td>
+                      <SoftSelect
+                        cell={`${index}-4`}
+                        value={row.cycle}
+                        options={DIM_CYCLES}
+                        placeholder="선택"
+                        onChange={(cycle) => update(index, 'cycle', cycle)}
+                      />
+                    </td>
+                    {DIM_LOT_FIELDS.map(([key], fieldIndex) => textCell(key, fieldIndex + 5))}
+                    {textCell('our', 7)}
+                    {judgeCell('ourJudge', 8)}
+                    {textCell('cust', 9)}
+                    {judgeCell('custJudge', 10)}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -504,231 +610,32 @@ function DimensionDialog({
   )
 }
 
-function MarkText({ value }: { value: Mark }) {
-  return <span className="text-[8px] font-bold print:text-[10px]">{value}</span>
+/**
+ * 이력카드 LOT 번호들을 출하성적서 로트번호·범위로 묶는다.
+ * 20261127-01 ~ 04 처럼 앞부분이 같으면 { lotNo: '20261127', lotRange: '01~04' }, 한 장뿐이면 그 번호 그대로.
+ * 앞부분이 서로 다르면 묶지 않는다.
+ */
+function lotSpanOf(lots: string[]): { lotNo: string; lotRange: string } | null {
+  const values = [...new Set(lots.map((lot) => lot.trim()).filter(Boolean))]
+  if (values.length === 0) return null
+  if (values.length === 1) return { lotNo: values[0], lotRange: '' }
+  const parts = values.map((lot) => lot.match(/^(.*)-(\d+)$/))
+  if (parts.some((part) => !part)) return null
+  const base = parts[0]![1]
+  if (parts.some((part) => part![1] !== base)) return null
+  const numbers = parts.map((part) => part![2]).sort((a, b) => Number(a) - Number(b))
+  return { lotNo: base, lotRange: `${numbers[0]}~${numbers[numbers.length - 1]}` }
 }
 
-function ReportCatalog({
-  reports,
-  onOpen,
-  onDelete,
-  canDelete,
-  openLocked = false,
-}: {
-  reports: Report[]
-  onOpen: (report: Report) => void
-  onDelete: (report: Report) => void
-  canDelete: boolean
-  openLocked?: boolean
-}) {
-  const [query, setQuery] = useState('')
-  const [floorFilter, setFloorFilter] = useState<'all' | Floor>('all')
-  const keyword = query.trim().toLowerCase()
-  const rows = reports
-    .filter((item) => floorFilter === 'all' || item.floor === floorFilter)
-    .filter((item) => {
-      if (!keyword) return true
-      return [item.customer, item.product, item.spec, item.lotNo, koDate(item.issuedOn)].some((value) => value.toLowerCase().includes(keyword))
-    })
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-        <div className="flex h-9 items-center gap-0.5 rounded-lg border bg-muted/30 p-1" role="tablist" aria-label="목록 층">
-          {(['all', ...FLOORS] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              aria-selected={floorFilter === item}
-              onClick={() => setFloorFilter(item)}
-              className={cn('h-full rounded-md px-3 text-[15px] font-semibold', floorFilter === item ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-card')}
-            >
-              {item === 'all' ? '전체' : `${item}층`}
-            </button>
-          ))}
-        </div>
-        <label className="relative min-w-56 flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="고객, 품명, 규격, LOT 검색"
-            className="h-9 w-full rounded-lg border border-input bg-background pr-3 pl-9 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </label>
-      </div>
-      {rows.length === 0 ? (
-        <div className="flex h-56 flex-col items-center justify-center gap-3 text-slate-400">
-          <FileText className="h-12 w-12 opacity-25" />
-          <p className="text-sm">{keyword || floorFilter !== 'all' ? '조건에 맞는 출하성적서가 없습니다.' : '완료된 출하성적서가 없습니다.'}</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <div className="min-w-[760px]">
-            <div className="grid grid-cols-[1.2fr_1.2fr_1fr_1fr_0.8fr_0.5fr_4.5rem] gap-3 border-b bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground">
-              <span>고객</span>
-              <span>품명</span>
-              <span>규격</span>
-              <span>LOT</span>
-              <span>발행일</span>
-              <span>층</span>
-              <span />
-            </div>
-            {rows.map((item) => (
-              <div key={item.id} className={cn('grid grid-cols-[1.2fr_1.2fr_1fr_1fr_0.8fr_0.5fr_4.5rem] items-center gap-3 border-b border-border/60 px-4 py-2.5 text-[15px] last:border-b-0', !openLocked && 'hover:bg-muted/40')}>
-                <button
-                  type="button"
-                  disabled={openLocked}
-                  onClick={() => { if (!openLocked) onOpen(item) }}
-                  className={cn('contents text-left', openLocked && 'cursor-default opacity-60')}
-                >
-                  <span className="truncate font-semibold text-foreground">{item.customer || '출하성적서'}</span>
-                  <span className="truncate text-foreground">{item.product || '-'}</span>
-                  <span className="truncate text-muted-foreground">{item.spec || '-'}</span>
-                  <span className="truncate text-muted-foreground">{formatLot(item.lotNo, item.lotRange) || '-'}</span>
-                  <span className="text-muted-foreground">{koDate(item.issuedOn) || '-'}</span>
-                  <span className="font-semibold text-foreground">{item.floor}층</span>
-                </button>
-                {canDelete ? (
-                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[14px]" onClick={() => onDelete(item)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                    삭제
-                  </Button>
-                ) : <span />}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ProductDrawing({ spec, platingSpec, fullWidth, gap, plateWidth, className }: { spec: string; platingSpec: string; fullWidth: string; gap: string; plateWidth: string; className?: string }) {
-  const match = spec.trim().match(/^(\d+(?:\.\d+)?)\s*[*x×X]\s*(\d+(?:\.\d+)?)/)
-  const thickness = match?.[1] ?? ''
-  const width = fullWidth || match?.[2] || ''
-  if (/Au|금/.test(platingSpec) || gap || plateWidth) {
-    return <GoldDrawing spec={spec} fullWidth={width} gap={gap} plateWidth={plateWidth} className={className} />
-  }
-  return <StripDrawing spec={spec} thickness={thickness} width={width} className={className} />
-}
-
-function StripDrawing({ spec, thickness, width, className }: { spec: string; thickness: string; width: string; className?: string }) {
-  const x = 52
-  const y = 26
-  const face = 58
-  const height = 52
-  const dx = 6
-  const dy = -4
-  const right = x + face
-  const bottom = y + height
-  const edgeX = right + dx
-  const edgeTop = y + dy
-  const edgeBottom = bottom + dy
-  const thickY = y + dy / 2
-  const dimX = edgeX + 5
-  const topFace = `${x},${y} ${x + dx},${edgeTop} ${edgeX},${edgeTop} ${right},${y}`
-  const side = `${right},${y} ${edgeX},${edgeTop} ${edgeX},${edgeBottom} ${right},${bottom}`
-  return (
-    <svg viewBox="0 0 168 96" preserveAspectRatio="xMidYMid meet" className={cn('mx-auto block h-[98%] w-full min-h-[30mm]', className)} fontFamily="ui-sans-serif, system-ui, sans-serif">
-      {spec && <text x={x + (face + dx) / 2} y="12" textAnchor="middle" fontSize="8" fill="#1e40af">{spec}</text>}
-      <polygon points={topFace} fill="#dbeafe" stroke="#1e3a8a" strokeWidth="1.1" strokeLinejoin="miter" />
-      <polygon points={side} fill="#bfdbfe" stroke="#1e3a8a" strokeWidth="1.1" strokeLinejoin="miter" />
-      <rect x={x} y={y} width={face} height={height} fill="#ffffff" stroke="#1e3a8a" strokeWidth="1.1" />
-      {thickness && (
-        <text x={x - 3} y={thickY} textAnchor="end" dominantBaseline="middle" fontSize="8" fill="#1e3a8a">{thickness}</text>
-      )}
-      {width && (
-        <g stroke="#c2410c" fill="#c2410c">
-          <line x1={edgeX} y1={edgeTop} x2={dimX} y2={edgeTop} strokeWidth="0.45" />
-          <line x1={edgeX} y1={edgeBottom} x2={dimX} y2={edgeBottom} strokeWidth="0.45" />
-          <line x1={dimX} y1={edgeTop} x2={dimX} y2={edgeBottom} strokeWidth="0.55" />
-          <text x={dimX + 2.5} y={(edgeTop + edgeBottom) / 2} fontSize="8" stroke="none" dominantBaseline="middle">{width}</text>
-        </g>
-      )}
-    </svg>
-  )
-}
-
-function GoldDrawing({ spec, fullWidth, gap, plateWidth, className }: { spec: string; fullWidth: string; gap: string; plateWidth: string; className?: string }) {
-  const total = positiveMeasure(fullWidth)
-  const band = positiveMeasure(plateWidth)
-  const space = positiveMeasure(gap)
-  const top = 10
-  const height = 72
-  const left = 20
-  const boxWidth = 64
-  const bottom = top + height
-  const basis = total || band + space
-  let bandHeight = 12
-  let gapHeight = 16
-  if (basis > 0 && (band > 0 || space > 0)) {
-    bandHeight = band > 0 ? (band / basis) * height : 12
-    gapHeight = space > 0 ? (space / basis) * height : 16
-    const limit = height - 12
-    if (bandHeight + gapHeight > limit) {
-      const scale = limit / (bandHeight + gapHeight)
-      bandHeight *= scale
-      gapHeight *= scale
-    }
-    bandHeight = Math.max(band > 0 ? 10 : 0, bandHeight)
-  }
-  const bandBottom = bottom - gapHeight
-  const bandTop = bandBottom - bandHeight
-  const bodyHeight = Math.max(8, bandTop - top)
-  const labelY = top + bodyHeight / 2 + 2
-  const boxRight = left + boxWidth
-  return (
-    <svg viewBox="0 0 168 94" preserveAspectRatio="xMidYMid meet" className={cn('mx-auto block h-[98%] w-full min-h-[30mm]', className)} fontFamily="ui-sans-serif, system-ui, sans-serif">
-      <defs>
-        <linearGradient id="gold-band-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fef3c7" />
-          <stop offset="100%" stopColor="#facc15" />
-        </linearGradient>
-      </defs>
-      <rect x={left} y={top} width={boxWidth} height={height} fill="#ffffff" stroke="#1e40af" strokeWidth="1" />
-      <rect x={left + 1} y={top + 1} width={boxWidth - 2} height={bodyHeight - 1} fill="#f8fafc" />
-      {bandHeight > 0 && (
-        <rect x={left + 1} y={bandTop} width={boxWidth - 2} height={bandHeight} fill="url(#gold-band-fill)" stroke="#d97706" strokeWidth="0.5" />
-      )}
-      {gapHeight > 0.5 && (
-        <rect x={left + 1} y={bandBottom} width={boxWidth - 2} height={gapHeight - 1} fill="#f1f5f9" />
-      )}
-      {spec && <text x={left + boxWidth / 2} y={labelY} textAnchor="middle" fontSize="8" fill="#1e3a8a">{spec}</text>}
-      {plateWidth && bandHeight > 0 && <DimensionSpan boxRight={boxRight} x={boxRight + 5} y1={bandTop} y2={bandBottom} label={plateWidth} />}
-      {gap && gapHeight > 0.5 && <DimensionSpan boxRight={boxRight} x={boxRight + 13} y1={bandBottom} y2={bottom} label={gap} />}
-      {fullWidth && <DimensionSpan boxRight={boxRight} x={boxRight + 21} y1={top} y2={bottom} label={fullWidth} />}
-    </svg>
-  )
-}
-
-function DimensionSpan({ boxRight, x, y1, y2, label }: { boxRight: number; x: number; y1: number; y2: number; label: string }) {
-  if (!label || y2 - y1 < 0.5) return null
-  const mid = (y1 + y2) / 2
-  const span = y2 - y1
-  const fontSize = span < 11 ? 7 : 7.6
-  const textY = span < 11 ? y1 - 1.5 : mid
-  return (
-    <g stroke="#c2410c" fill="none">
-      <line x1={boxRight} y1={y1} x2={x} y2={y1} strokeWidth="0.45" />
-      <line x1={boxRight} y1={y2} x2={x} y2={y2} strokeWidth="0.45" />
-      <line x1={x} y1={y1} x2={x} y2={y2} strokeWidth="0.55" />
-      <text x={x + 2.5} y={textY} fontSize={fontSize} fill="#c2410c" stroke="none" dominantBaseline={span < 11 ? 'auto' : 'middle'}>{label}</text>
-    </g>
-  )
-}
+/** 배율 표시는 실제 배율보다 이만큼 낮춰 보여 준다 (실제 110% = 표시 100%). */
+const ZOOM_LABEL_OFFSET = 10
 
 export function OutgoingReportView() {
   const searchParams = useSearchParams()
-  const bundleLock = isShipmentBundleLocked(searchParams)
   const { user, loading: authLoading } = useAuth()
   const canWrite = user?.role === 'editor' || user?.role === 'admin'
   const [reports, setReports] = useState<Report[]>([])
   const [activeId, setActiveId] = useState('')
-  const [screen, setScreen] = useState<'edit' | 'list'>('edit')
   const [floor, setFloor] = useState<Floor>('1')
   const [ready, setReady] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<Report | null>(null)
@@ -736,7 +643,8 @@ export function OutgoingReportView() {
   const [approvalTick, setApprovalTick] = useState(0)
   const [companies, setCompanies] = useState<string[]>([])
   const [links, setLinks] = useState<PlatingLink[]>([])
-  const [previewZoom, setPreviewZoom] = useState(100)
+  // 실제 배율 110%를 기본으로 하되 화면 표시는 100%로 보이게 한다.
+  const [previewZoom, setPreviewZoom] = useState(110)
   const [dimensionOpen, setDimensionOpen] = useState(false)
   const previewDrag = useRef<{ x: number; y: number; left: number; top: number; pointerId: number } | null>(null)
   const savedSnapshot = useRef<Map<string, string>>(new Map())
@@ -746,6 +654,14 @@ export function OutgoingReportView() {
   const saveQueue = useRef(Promise.resolve())
   reportsRef.current = reports
   const report = reports.find((item) => item.id === activeId) ?? null
+  // 같은 입고 바코드(없으면 같은 이력카드)로 만든 출하성적서들. 나눠 출하하면 여러 장일 수 있다.
+  const siblings = report
+    ? reports
+      .filter((item) => item.id === report.id
+        || (report.barcode && item.barcode.toUpperCase() === report.barcode.toUpperCase())
+        || (!report.barcode && report.sourceLotCardId && item.sourceLotCardId === report.sourceLotCardId))
+      .sort((a, b) => (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity) || a.createdAt.localeCompare(b.createdAt))
+    : []
   const embed = useEmbedPreview(searchParams, !!report)
 
   useEffect(() => {
@@ -781,7 +697,6 @@ export function OutgoingReportView() {
     openedQuery.current = true
     setActiveId(found.id)
     setFloor(found.floor)
-    setScreen('edit')
   }, [ready, reports, searchParams])
 
   useEffect(() => {
@@ -894,58 +809,75 @@ export function OutgoingReportView() {
     return () => { stop = true }
   }, [ready, report?.id, approvalTick])
 
+  // 로트 범위가 비어 있으면 같은 입고의 이력카드 LOT 번호들로 채운다.
+  // 예) 이력카드 20261127-01 ~ 04 → 로트번호 20261127, 범위 01~04 → 머리칸 '20261127-01 ~ 04'
+  useEffect(() => {
+    if (!ready || !canWrite || !activeId) return
+    const current = reportsRef.current.find((item) => item.id === activeId)
+    if (!current || current.done || current.lotRange.trim()) return
+    let stop = false
+    void fetch('/api/lot-cards', { cache: 'no-store' })
+      .then((response) => response.json())
+      .then((body) => {
+        if (stop || !Array.isArray(body?.data)) return
+        const cards = body.data as { id?: string; barcode?: string; sourceIncomingId?: string; lotNo?: string }[]
+        const code = current.barcode.trim().toUpperCase()
+        const source = cards.find((card) => card.id === current.sourceLotCardId)
+        const group = cards.filter((card) => (code && card.barcode?.trim().toUpperCase() === code)
+          || card.id === current.sourceLotCardId
+          || (!!source?.sourceIncomingId && card.sourceIncomingId === source.sourceIncomingId))
+        const next = lotSpanOf(group.map((card) => card.lotNo ?? ''))
+        if (!next) return
+        const latest = reportsRef.current.find((item) => item.id === activeId)
+        if (!latest || latest.lotRange.trim() || (latest.lotNo === next.lotNo && !next.lotRange)) return
+        patch(next)
+      })
+      .catch(() => undefined)
+    return () => { stop = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, canWrite, activeId])
+
   useEffect(() => {
     if (!ready || !activeId) return
     const current = reportsRef.current.find((item) => item.id === activeId)
     if (!current) return
-    const link = matchedPlating(links, current)
-    const parsed = parseSizeSpec(current.product || current.spec)
-    const specs = link
-      ? [link.fullWidth || parsed.fullWidth, link.gap, link.plateWidth]
-      : [parsed.fullWidth, '', '']
-    const nextDimensions = current.dimensions.map((row, index) => {
-      const spec = index < 3 ? specs[index] ?? '' : row.spec
-      return { ...row, spec, judge: dimJudge(spec, row.judge) }
-    })
-    const unchanged = nextDimensions.every((row, index) => row.spec === current.dimensions[index]?.spec && row.judge === current.dimensions[index]?.judge)
+    // 치수검사 1번 줄(전폭) 규격은 품목 규격(0.3*68 → 68)에서 가져온다.
+    const fullWidth = parseSizeSpec(current.product || current.spec).fullWidth
+    const nextDimensions = current.dimensions.map((row, index) => (index === 0 ? { ...row, spec: fullWidth } : row))
+    const unchanged = nextDimensions[0]?.spec === current.dimensions[0]?.spec
     if (unchanged) return
     patch({ dimensions: nextDimensions })
   }, [ready, activeId, links, report?.customer, report?.product, report?.spec, report?.material, report?.platingSpec])
 
-  /**
-   * 완료하면 서식을 PDF로 만들어 문서탐색기(출하성적서)에 저장하고 목록으로 넘어간다.
-   * 완료를 취소하면 문서탐색기에 저장했던 문서도 지운다.
-   */
-  async function toggleDone() {
+  /** 완료는 상태(작성중 ↔ 완료)만 바꾼다. 문서탐색기 저장은 '저장' 버튼으로 따로 한다. */
+  function toggleDone() {
+    if (!report) return
+    patch({ done: !report.done })
+  }
+
+  /** 지금 서식을 PDF로 만들어 문서탐색기(출하성적서)에 저장한다. 다시 저장하면 이전 문서를 새 것으로 바꾼다. */
+  async function saveToExplorer() {
     if (!report || finishing) return
+    if (!articleRef.current) {
+      toast.error('출하성적서 화면을 찾지 못해 문서탐색기에 저장하지 못했습니다.')
+      return
+    }
     setFinishing(true)
     try {
-      if (report.done) {
-        patch({ done: false })
-        const removed = await removeSheetDocument(CERTIFICATE_TYPE, report.id)
-        if (!removed.ok) toast.error(removed.error)
-        return
-      }
-      const saved = articleRef.current
-        ? await saveSheetDocument({
-            node: articleRef.current,
-            documentType: CERTIFICATE_TYPE,
-            sourceSheetId: report.id,
-            company: report.customer,
-            product: report.product || report.spec,
-            lotStart: report.lotNo,
-            material: report.material,
-            specification: report.platingSpec,
-            issueDate: report.issuedOn,
-            floor: report.floor,
-          })
-        : { ok: false as const, error: '출하성적서 화면을 찾지 못해 문서탐색기에 저장하지 못했습니다.' }
-      patch({ done: true })
-      const sibling = reports.find((item) => item.id !== report.id && item.floor === report.floor && !item.done)
-      setActiveId(sibling?.id ?? '')
-      setScreen('list')
+      const saved = await saveSheetDocument({
+        node: articleRef.current,
+        documentType: CERTIFICATE_TYPE,
+        sourceSheetId: report.id,
+        company: report.customer,
+        product: report.product || report.spec,
+        lotStart: report.lotNo,
+        material: report.material,
+        specification: report.platingSpec,
+        issueDate: report.issuedOn,
+        floor: report.floor,
+      })
       if (saved.ok) toast.success('문서탐색기에 출하성적서로 저장했습니다.')
-      else toast.error(`${saved.error} 완료는 처리됐으니 완료 취소 후 다시 완료하면 다시 저장합니다.`)
+      else toast.error(saved.error)
     } finally {
       setFinishing(false)
     }
@@ -1003,8 +935,6 @@ export function OutgoingReportView() {
   const materialOptions = uniqueNames(itemRows.map((row) => row.material))
   const platingOptions = uniqueNames(itemRows.filter((row) => !report?.material || row.material === report.material).map((row) => row.specification))
 
-  const floorReports = reports.filter((item) => item.floor === floor && !item.done).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  const doneReports = reports.filter((item) => item.done)
   function startPreviewDrag(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return
     const target = event.target as HTMLElement
@@ -1031,24 +961,24 @@ export function OutgoingReportView() {
 
   const locked = !canWrite
 
-  function createReport() {
-    const next = { ...emptyReport(), floor, issuedOn: todayKey() }
+  /** 같은 입고로 출하성적서를 한 장 더 만든다. 수량(LOT Size)과 로트 범위는 비워 둔다. */
+  function copyReport() {
+    if (!report) return
+    const now = new Date().toISOString()
+    const next: Report = {
+      ...report,
+      id: crypto.randomUUID(),
+      done: false,
+      sortOrder: undefined,
+      createdAt: now,
+      updatedAt: now,
+      lotSize: '',
+      lotRange: '',
+      visual: [...report.visual],
+      dimensions: report.dimensions.map((row) => ({ ...row })),
+    }
     setReports((current) => [next, ...current])
     setActiveId(next.id)
-  }
-
-  function openListed(item: Report) {
-    if (bundleLock) return
-    setFloor(item.floor)
-    setActiveId(item.id)
-    setScreen('edit')
-  }
-
-  function openFloor(nextFloor: Floor) {
-    setFloor(nextFloor)
-    if (bundleLock) return
-    const onFloor = reports.filter((item) => item.floor === nextFloor && !item.done).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    setActiveId(onFloor[0]?.id ?? '')
   }
 
   function removeReport() {
@@ -1056,173 +986,140 @@ export function OutgoingReportView() {
     const next = reports.filter((item) => item.id !== pendingDelete.id)
     setReports(next)
     if (activeId === pendingDelete.id) {
-      const sibling = next.find((item) => item.floor === pendingDelete.floor && !item.done) ?? next.find((item) => !item.done) ?? next[0]
+      const sibling = siblings.find((item) => item.id !== pendingDelete.id) ?? next.find((item) => item.floor === pendingDelete.floor && !item.done) ?? next.find((item) => !item.done) ?? next[0]
       setActiveId(sibling?.id ?? '')
       if (sibling) setFloor(sibling.floor)
     }
     setPendingDelete(null)
   }
 
-  const leftVisual = VISUAL_ITEMS.slice(0, 5)
-  const rightVisual = VISUAL_ITEMS.slice(5)
 
   return (
     <div className={cn(PAGE_SHELL, 'outgoing-report-screen')}>
-      <div className="no-print">
+      <div className="no-print contents">
         <PageHeader
           tone="teal"
           icon={FileCheck}
           eyebrow="재고 관리"
           title="출하성적서"
-          description="고객명, 품명, 로트번호를 적으면 오른쪽 미리보기에 들어갑니다. 완료하면 목록으로 넘어갑니다."
-          actions={screen === 'edit' ? (
+          description="고객명, 품명, 로트번호를 적으면 오른쪽 미리보기에 들어갑니다. 완료·인쇄는 위 흐름 바에서 합니다."
+          actions={(
             <>
+              <DocFormSelect kind="outgoing" value={report?.formId} onChange={(formId) => patch({ formId })} disabled={!canWrite || !report} />
               {canWrite && (
-                <Button
-                  variant="outline"
-                  className={BAND_BUTTON}
-                  disabled={!report || finishing}
-                  onClick={() => void toggleDone()}
-                >
-                  <Check className="h-4 w-4" /> {finishing ? '저장 중…' : report?.done ? '완료 취소' : '완료'}
+                <Button variant="outline" className={BAND_BUTTON} disabled={!report} onClick={toggleDone}>
+                  <Check className="h-4 w-4" /> {report?.done ? '완료 취소' : '완료'}
+                </Button>
+              )}
+              {canWrite && (
+                <Button variant="outline" className={BAND_BUTTON} disabled={!report || finishing} onClick={() => void saveToExplorer()}>
+                  <Save className="h-4 w-4" /> {finishing ? '저장 중…' : '저장'}
+                </Button>
+              )}
+              {canWrite && (
+                <Button variant="outline" className={BAND_BUTTON} disabled={!report} onClick={copyReport}>
+                  <Copy className="h-4 w-4" /> 복사
                 </Button>
               )}
               <Button className={BAND_BUTTON_PRIMARY} disabled={!report} onClick={() => window.print()}>
                 <Printer className="h-4 w-4" /> 인쇄
               </Button>
             </>
-          ) : undefined}
+          )}
         />
-        <ShipmentDocFlowNav step="outgoing" />
-        <div role="tablist" aria-label="출하성적서 화면" className="mt-4">
-          <div className="flex gap-1">
-            {([['edit', '작성'], ['list', '목록']] as const).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={screen === id}
-                disabled={bundleLock && id === 'list'}
-                title={bundleLock && id === 'list' ? '이어쓰기 중에는 완료 목록을 열 수 없습니다' : undefined}
-                onClick={() => { if (bundleLock && id === 'list') return; setScreen(id) }}
-                className={cn(
-                  bundleLock && id === 'list' && 'cursor-not-allowed opacity-40',
-                  'border-b-[3px] px-4 py-2.5 text-[15px] font-medium',
-                  screen === id
-                    ? 'border-slate-950 text-slate-950 dark:border-white dark:text-white'
-                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100',
-                )}
-              >
-                {label}
-                {id === 'list' && <span className="ml-2 text-xs tabular-nums text-slate-400">{doneReports.length}</span>}
-              </button>
-            ))}
-          </div>
-          <div className="h-[2px] bg-slate-700 dark:bg-white/70" />
-        </div>
+        {!embed && <ShipmentTabNav />}
+        <ShipmentDocFlowNav
+          step="outgoing"
+          currentId={report?.id}
+        />
       </div>
 
-      {screen === 'list' ? (
-        <ReportCatalog reports={doneReports} onOpen={openListed} onDelete={setPendingDelete} canDelete={canWrite} openLocked={bundleLock} />
-      ) : (
         <div className="outgoing-report-work flex min-h-[calc(100vh-13rem)] items-stretch gap-4">
-          <aside className="no-print flex min-h-0 w-80 shrink-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="grid grid-cols-3 gap-1 border-b p-2" role="tablist" aria-label="층">
-              {FLOORS.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  role="tab"
-                  aria-selected={floor === item}
-                  onClick={() => openFloor(item)}
-                  className={cn('h-8 rounded-md text-[15px] font-semibold', floor === item ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100')}
-                >
-                  {item}층
-                </button>
-              ))}
-            </div>
-            {canWrite && (
-              <div className="border-b p-2">
-                <Button type="button" variant="outline" className="h-8 w-full text-[14px]" onClick={createReport}>
-                  <Plus className="h-3.5 w-3.5" />
-                  {floor}층 출하성적서 추가
-                </Button>
-              </div>
-            )}
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {floorReports.length === 0 ? (
-                <p className="px-2 py-6 text-center text-[14px] text-slate-400">{floor}층에 작성 중인 출하성적서가 없습니다</p>
-              ) : floorReports.map((item) => {
-                const selected = item.id === report?.id
-                return (
-                  <div key={item.id} className={cn('mb-1 flex items-stretch rounded-lg', selected ? 'bg-slate-900 text-white' : !bundleLock && 'hover:bg-slate-100')}>
-                    <button
-                      type="button"
-                      disabled={bundleLock && !selected}
-                      onClick={() => { if (!bundleLock || selected) setActiveId(item.id) }}
-                      className={cn('min-w-0 flex-1 px-2.5 py-2 text-left', bundleLock && !selected && 'cursor-not-allowed opacity-50')}
-                    >
-                      <span className="block truncate text-[15px] font-semibold">{item.customer || item.product || '출하성적서'}</span>
-                      <span className={cn('mt-1 block text-[12px]', selected ? 'text-white/70' : 'text-slate-400')}>
-                        {[item.spec, koDate(item.issuedOn) || '발행일 없음'].filter(Boolean).join(' · ')}
-                      </span>
-                    </button>
-                    {canWrite && (
-                      <button type="button" aria-label="삭제" onClick={() => setPendingDelete(item)} className={cn('px-2', selected ? 'text-white/80 hover:text-white' : 'text-slate-400 hover:text-red-600')}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </aside>
 
           {!report && (
             <div className="no-print flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
-              왼쪽에서 출하성적서를 고르거나 새로 추가합니다
+              이력카드에서 '출하성적서로 이어쓰기'를 눌러 성적서를 엽니다
             </div>
           )}
 
           {report && (
             <div className="outgoing-report-preview flex min-h-0 min-w-0 flex-1 items-start gap-4">
-              <section className="no-print w-72 shrink-0 self-start rounded-xl border bg-card p-4 shadow-sm">
-                <h2 className="text-sm font-bold text-slate-900">성적서 정보</h2>
-                <p className="mt-1 text-xs text-slate-500">고객명을 고르면 그 업체의 품명, 재질, 도금스펙만 나옵니다.</p>
-                <div className="mt-4 flex flex-col gap-3">
-                  <CatalogField label="고객명" configName="companies" options={companies} value={report.customer} onChange={chooseCustomer} disabled={locked} />
-                  <CatalogField label="품명" configName="products" options={productOptions} value={report.product || report.spec} onChange={chooseProduct} disabled={locked} />
-                  <label className="flex flex-col gap-1.5 text-sm font-medium">
-                    로트번호
-                    <div className="flex items-center gap-1">
-                      <Input value={report.lotNo} disabled={locked} onChange={(event) => patch({ lotNo: event.target.value })} placeholder="20261119" className="h-10 min-w-0 flex-1" />
-                      <span className="text-slate-400">-</span>
-                      <Input value={splitLotRange(report.lotRange).start} disabled={locked} inputMode="numeric" onChange={(event) => patch({ lotRange: joinLotRange(event.target.value, splitLotRange(report.lotRange).end) })} placeholder="1" className="h-10 w-12 px-1 text-center" />
-                      <span className="text-slate-400">~</span>
-                      <Input value={splitLotRange(report.lotRange).end} disabled={locked} inputMode="numeric" onChange={(event) => patch({ lotRange: joinLotRange(splitLotRange(report.lotRange).start, event.target.value) })} placeholder="9" className="h-10 w-12 px-1 text-center" />
-                    </div>
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-sm font-medium">
-                    발행일자
-                    <Input type="date" value={report.issuedOn} disabled={locked} onChange={(event) => patch({ issuedOn: event.target.value })} className="h-10" />
-                  </label>
-                  <CatalogField label="재질" configName="materials" options={materialOptions} value={report.material} onChange={chooseMaterial} disabled={locked} />
-                  <CatalogField label="도금스펙" configName="specifications" options={platingOptions} value={report.platingSpec} onChange={(platingSpec) => patch({ platingSpec })} disabled={locked} />
-                  <label className="flex flex-col gap-1.5 text-sm font-medium">
-                    수량
-                    <Input value={report.lotSize} disabled={locked} onChange={(event) => patch({ lotSize: event.target.value })} className="h-10" />
-                  </label>
-                  <Button type="button" variant="outline" className="h-10" disabled={locked} onClick={() => setDimensionOpen(true)}>
-                    치수검사 수정
-                  </Button>
-                </div>
-              </section>
+              {/* 목록과 입력 칸은 따로 둔다. 둘 다 스크롤을 내리면 위 흐름 바 아래에 붙어 화면을 따라 움직인다.
+                  목록 카드·입력 칸·서식 종이의 윗선을 맞춘다: 서식 위 배율 줄(36px) = 목록 제목 줄(24px) + pt-3, 입력 칸은 pt-9. */}
+              <aside className="no-print sticky top-20 w-64 shrink-0 self-start pt-3">
+                <DocSiblingList
+                  noun="출하성적서"
+                  barcode={report.barcode}
+                  items={siblings.map((item) => ({
+                    id: item.id,
+                    done: item.done,
+                    title: item.lotNo,
+                    chips: [['로트', item.lotRange], ['LOT Size', item.lotSize], ['발행일', item.issuedOn]],
+                  }))}
+                  activeId={report.id}
+                  canWrite={canWrite}
+                  onSelect={setActiveId}
+                  onDelete={(id) => setPendingDelete(siblings.find((item) => item.id === id) ?? null)}
+                  onReorder={(order) => setReports((current) => current.map((item) => {
+                    const index = order.indexOf(item.id)
+                    return index < 0 || item.sortOrder === index ? item : { ...item, sortOrder: index }
+                  }))}
+                />
+              </aside>
+              <div className="no-print sticky top-20 w-72 shrink-0 self-start pt-9">
+                <section className="rounded-xl border bg-card p-4 shadow-sm">
+                  <h2 className="text-sm font-bold text-slate-900">성적서 정보</h2>
+                  <div className="mt-4 flex flex-col gap-3">
+                    <CatalogField label="고객명" configName="companies" options={companies} value={report.customer} onChange={chooseCustomer} disabled={locked} />
+                    <CatalogField label="품명" configName="products" options={productOptions} value={report.product || report.spec} onChange={chooseProduct} disabled={locked} />
+                    <label className="flex flex-col gap-1.5 text-sm font-medium">
+                      로트번호
+                      <div className="flex items-center gap-1">
+                        <Input value={report.lotNo} disabled={locked} onChange={(event) => patch({ lotNo: event.target.value })} placeholder="20261119" className="h-10 min-w-0 flex-1" />
+                        <span className="text-slate-400">-</span>
+                        <Input value={splitLotRange(report.lotRange).start} disabled={locked} inputMode="numeric" onChange={(event) => patch({ lotRange: joinLotRange(event.target.value, splitLotRange(report.lotRange).end) })} placeholder="1" className="h-10 w-12 px-1 text-center" />
+                        <span className="text-slate-400">~</span>
+                        <Input value={splitLotRange(report.lotRange).end} disabled={locked} inputMode="numeric" onChange={(event) => patch({ lotRange: joinLotRange(splitLotRange(report.lotRange).start, event.target.value) })} placeholder="9" className="h-10 w-12 px-1 text-center" />
+                      </div>
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-sm font-medium">
+                      발행일자
+                      <Input type="date" value={report.issuedOn} disabled={locked} onChange={(event) => patch({ issuedOn: event.target.value })} className="h-10" />
+                    </label>
+                    <CatalogField label="재질" configName="materials" options={materialOptions} value={report.material} onChange={chooseMaterial} disabled={locked} />
+                    <CatalogField label="도금스펙" configName="specifications" options={platingOptions} value={report.platingSpec} onChange={(platingSpec) => patch({ platingSpec })} disabled={locked} />
+                    <label className="flex flex-col gap-1.5 text-sm font-medium">
+                      수량
+                      <Input value={report.lotSize} disabled={locked} onChange={(event) => patch({ lotSize: event.target.value })} className="h-10" />
+                    </label>
+                    {report.formId === 'form-2' && (
+                      <label className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium">
+                        고객 LOT No.
+                        <input type="checkbox" checked={report.form2ShowLot === true} disabled={locked} onChange={(event) => patch({ form2ShowLot: event.target.checked })} className="h-4 w-4 accent-teal-600" />
+                      </label>
+                    )}
+                    {report.formId === 'form-2' && (
+                      <Form2ItemsEditor
+                        items={form2ItemsOf(report, links)}
+                        disabled={locked}
+                        onChange={(form2Items, removed) => patch(removed === undefined ? { form2Items } : {
+                          form2Items,
+                          form2Rows: form2RowsOf(report).map((row) => ({ ...row, our: row.our.filter((_, i) => i !== removed), cust: row.cust.filter((_, i) => i !== removed) })),
+                        })}
+                        platingSpec={(kind, index) => platingParts(links, report, kind)[index] ?? ''}
+                      />
+                    )}
+                    <Button type="button" variant="outline" className="h-10" disabled={locked} onClick={() => setDimensionOpen(true)}>
+                      치수검사 수정
+                    </Button>
+                  </div>
+                </section>
+              </div>
               <div className="flex min-h-0 min-w-0 flex-1 flex-col self-stretch">
-                <div className="no-print mb-2 flex shrink-0 items-center justify-between">
-                  <p className="text-sm font-bold text-slate-900">미리보기</p>
+                <div className="no-print mb-2 flex h-7 shrink-0 items-center justify-end">
                   <div className="flex items-center gap-1">
                     <button type="button" aria-label="미리보기 축소" className="h-7 w-7 rounded border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-100" onClick={() => setPreviewZoom((value) => Math.max(60, value - 10))}>−</button>
-                    <span className="w-11 text-center text-xs tabular-nums text-slate-600">{previewZoom}%</span>
+                    <span className="w-11 text-center text-xs tabular-nums text-slate-600">{previewZoom - ZOOM_LABEL_OFFSET}%</span>
                     <button type="button" aria-label="미리보기 확대" className="h-7 w-7 rounded border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-100" onClick={() => setPreviewZoom((value) => Math.min(160, value + 10))}>+</button>
                   </div>
                 </div>
@@ -1234,229 +1131,31 @@ export function OutgoingReportView() {
                   onPointerCancel={endPreviewDrag}
                 >
               <article ref={articleRef} inert={embed} style={{ zoom: previewZoom / 100 }} className="outgoing-sheet mx-auto flex w-[210mm] shrink-0 flex-col bg-white px-[4mm] py-[3mm] text-[8px] text-slate-900 shadow-md ring-1 ring-black/10 print:h-[297mm] print:shadow-none print:ring-0">
-                <div className="flex items-center border border-blue-800">
-                  <img src="/logo.png" alt="WOORI" className="h-8 w-auto px-2 print:h-12" />
-                  <h2 className="flex-1 text-center text-[16px] font-extrabold tracking-wide text-blue-900 print:text-[22px]">Quality Assurance Report</h2>
-                </div>
-                <table className="w-full border-collapse text-center">
-                  <tbody>
-                    <tr>
-                      <th className="border border-blue-800 bg-blue-50 py-0.5">CUSTOMER(고객명)</th>
-                      <th className="border border-blue-800 bg-blue-50">DESCRIPTION(품명)</th>
-                      <th className="border border-blue-800 bg-blue-50">LOT NO(로트번호)</th>
-                      <th className="border border-blue-800 bg-blue-50">ISSUED DATE(발행일자)</th>
-                    </tr>
-                    <tr className="h-5">
-                      <td className="border border-blue-800"><CellText value={report.customer} /></td>
-                      <td className="border border-blue-800"><CellText value={report.product} /></td>
-                      <td className="border border-blue-800"><CellText value={formatLot(report.lotNo, report.lotRange)} /></td>
-                      <td className="border border-blue-800"><CellText value={report.issuedOn} /></td>
-                    </tr>
-                    <tr>
-                      <th colSpan={2} className="border border-blue-800 bg-blue-50 py-0.5">재질</th>
-                      <th className="border border-blue-800 bg-blue-50 py-0.5">도금스펙</th>
-                      <th className="border border-blue-800 bg-blue-50">LOT SIZE(수량)</th>
-                    </tr>
-                    <tr className="h-5">
-                      <td colSpan={2} className="border border-blue-800"><CellText value={report.material} /></td>
-                      <td className="border border-blue-800"><CellText value={report.platingSpec} /></td>
-                      <td className="border border-blue-800"><CellText value={report.lotSize} /></td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <table className="mt-1 w-full border-collapse text-center">
-                  <thead>
-                    <tr className="bg-blue-50">
-                      <th className="w-5 border border-blue-800">NO</th>
-                      <th className="border border-blue-800">INSPECTION ITEMS</th>
-                      <th className="w-8 border border-blue-800">Ac/Re</th>
-                      <th className="w-12 border border-blue-800">RESULT</th>
-                      <th className="w-5 border border-blue-800">NO</th>
-                      <th className="border border-blue-800">INSPECTION ITEMS</th>
-                      <th className="w-8 border border-blue-800">Ac/Re</th>
-                      <th className="w-12 border border-blue-800">RESULT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leftVisual.map((left, index) => {
-                      const right = rightVisual[index]
-                      return (
-                        <tr key={left[0]} className="h-4">
-                          <td className="border border-blue-800">{left[0]}</td>
-                          <td className="border border-blue-800 px-1 text-left">{left[1]}</td>
-                          <td className="border border-blue-800">0/1</td>
-                          <td className="border border-blue-800"><MarkText value={report.visual[index]} /></td>
-                          <td className="border border-blue-800">{right[0]}</td>
-                          <td className="border border-blue-800 px-1 text-left">{right[1]}</td>
-                          <td className="border border-blue-800">0/1</td>
-                          <td className="border border-blue-800"><MarkText value={report.visual[index + 5]} /></td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-
-                <div className="mt-1 border border-blue-800 bg-blue-50 px-1 py-0.5 text-center font-bold text-blue-900">
-                  II. DIMENSION INSPECTION (Sampling Plan : n=100mm/Reel, 5Reel/Shipping or n=50ea/Shipping, c=0)
-                </div>
-                <table className="w-full shrink-0 table-fixed border-collapse text-center">
-                  <thead>
-                    <tr className="bg-blue-50">
-                      <th rowSpan={2} className="w-5 border border-blue-800">NO</th>
-                      <th rowSpan={2} className="w-[16mm] border border-blue-800">항목/구분</th>
-                      <th colSpan={3} className="border border-blue-800">SPEC</th>
-                      <th rowSpan={2} className="w-[16mm] border border-blue-800">검사주기</th>
-                      <th colSpan={2} className="border border-blue-800">우리하이피</th>
-                      <th rowSpan={2} className="w-[12mm] border border-blue-800">수량</th>
-                      <th colSpan={2} className="border border-blue-800">고객</th>
-                      <th rowSpan={2} className="w-[12mm] border border-blue-800">판정</th>
-                    </tr>
-                    <tr className="bg-blue-50">
-                      <th className="border border-blue-800">규격</th>
-                      <th className="w-[10mm] border border-blue-800">하한(-)</th>
-                      <th className="w-[10mm] border border-blue-800">상한(+)</th>
-                      <th className="w-[12mm] border border-blue-800">1차</th>
-                      <th className="w-[12mm] border border-blue-800">2차</th>
-                      <th className="w-[10mm] border border-blue-800">1차</th>
-                      <th className="w-[10mm] border border-blue-800">2차</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.dimensions.map((row, index) => (
-                      <tr key={index}>
-                        <td className="border border-blue-800">{index + 1}</td>
-                        <td className="border border-blue-800"><CellText value={row.name} /></td>
-                        <td className="border border-blue-800"><CellText value={row.spec} /></td>
-                        <td className="border border-blue-800"><CellText value={row.lower} /></td>
-                        <td className="border border-blue-800"><CellText value={row.upper} /></td>
-                        <td className="border border-blue-800"><CellText value={row.cycle} /></td>
-                        <td className="border border-blue-800"><CellText value={row.our1} /></td>
-                        <td className="border border-blue-800"><CellText value={row.our2} /></td>
-                        <td className="border border-blue-800"><CellText value={row.qty} /></td>
-                        <td className="border border-blue-800"><CellText value={row.cust1} /></td>
-                        <td className="border border-blue-800"><CellText value={row.cust2} /></td>
-                        <td className="border border-blue-800"><MarkText value={row.judge} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="mt-1 border border-blue-800 bg-blue-50 px-1 py-0.5 text-center font-bold text-blue-900">
-                  III. PLATING THICKNESS(도금두께) (Sampling Plan : y)
-                </div>
-                <table className="w-full border-collapse text-center">
-                  <thead>
-                    <tr className="bg-blue-50">
-                      <th className="w-6 border border-blue-800">NO</th>
-                      <th colSpan={2} className="border border-blue-800">SPECIFICATION</th>
-                      <th className="w-[52mm] border border-blue-800">Measurement Data</th>
-                      <th className="w-12 border border-blue-800">RESULT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td rowSpan={2} className="border border-blue-800">1</td>
-                      <td rowSpan={2} className="w-[24mm] border border-blue-800" style={{ borderRightStyle: 'dotted' }}>X-Ray 측정</td>
-                      <td className="h-6 border border-blue-800 px-1" style={{ borderBottomStyle: 'dotted' }}>{report.platingSpec.split(' / ')[0] ?? ''}</td>
-                      <td className="h-6 border border-blue-800 px-1" style={{ borderBottomStyle: 'dotted' }}>첨부 : 도금성적서</td>
-                      <td rowSpan={2} className="border border-blue-800"><MarkText value={report.platingResult} /></td>
-                    </tr>
-                    <tr>
-                      <td className="h-6 border border-blue-800 px-1">{report.platingSpec.split(' / ')[1] ?? ''}</td>
-                      <td className="h-6 border border-blue-800 px-1">첨부 : 도금성적서</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div className="mt-1 border border-blue-800 bg-blue-50 px-1 py-0.5 text-center font-bold text-blue-900">
-                  IV. FUNCTIONAL TEST (Sampling Plan : n=100mm/EA, 2EA/Shipping, c=0)
-                </div>
-                <table className="w-full shrink-0 table-fixed border-collapse text-center">
-                  <thead>
-                    <tr className="bg-blue-50">
-                      <th className="w-6 border border-blue-800">NO</th>
-                      <th className="w-[34mm] border border-blue-800">INSPECTION ITEMS</th>
-                      <th className="w-[36mm] border border-blue-800">SPECIFICATION</th>
-                      <th className="w-[60mm] border border-blue-800">TEST SAMPLE</th>
-                      <th className="w-12 border border-blue-800">RESULT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="h-20 print:h-[28mm]">
-                      <td className="border border-blue-800">1</td>
-                      <td className="border border-blue-800 font-semibold">ADHESION TEST<br />(밀착성 시험)</td>
-                      <td className="border border-blue-800 p-0">
-                        <div className="flex h-20 items-center justify-center px-1 print:h-[28mm]">
-                          <p className="w-full whitespace-pre-line text-center text-[8px] leading-tight print:text-[9px] print:leading-tight">{report.adhesionSpec}</p>
-                        </div>
-                      </td>
-                      <td className="border border-blue-800" />
-                      <td className="border border-blue-800"><MarkText value={report.adhesionResult} /></td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div className="mt-1 grid shrink-0 grid-cols-[1.3fr_1fr_0.7fr] border border-blue-800">
-                  <div className="flex h-[36mm] flex-col border-r border-blue-800 print:h-[42mm]">
-                    <div className="shrink-0 border-b border-blue-800 py-0.5 text-center text-[8px] font-semibold leading-none text-blue-900 print:text-[9px]">제품도면</div>
-                    <div className="flex min-h-0 flex-1 items-center justify-center px-0.5 py-0.5">
-                      <ProductDrawing spec={report.product || report.spec} platingSpec={report.platingSpec} fullWidth={report.dimensions[0]?.spec ?? ''} gap={report.dimensions[1]?.spec ?? ''} plateWidth={report.dimensions[2]?.spec ?? ''} />
-                    </div>
-                  </div>
-                  <table className="h-full border-collapse text-center">
-                    <tbody>
-                      <tr>
-                        <th rowSpan={2} className="w-5 border border-blue-800 [writing-mode:vertical-rl]">우리하이피</th>
-                        <th className="border border-blue-800">작성</th>
-                        <th className="border border-blue-800">승인</th>
-                      </tr>
-                      <tr className="h-10">
-                        {(['작성', '승인'] as const).map((label) => {
-                          const step = signStep(approval, label)
-                          const signed = step?.status === 'approved' && !!step.userId
-                          const name = label === '작성' ? (user?.displayName || user?.username || report.ourWriter) : '조승현'
-                          return (
-                            <td key={label} className="border border-blue-800">
-                              {signed ? <img src={`/api/auth/signature?userId=${encodeURIComponent(step.userId)}`} alt={step.name} className="mx-auto h-8 object-contain" /> : (
-                                <CellText value={name} className="text-[13px] font-extrabold print:text-[15px]" />
-                              )}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                      <tr>
-                        <th rowSpan={2} className="border border-blue-800 [writing-mode:vertical-rl]">고객</th>
-                        <th className="border border-blue-800">작성</th>
-                        <th className="border border-blue-800">승인</th>
-                      </tr>
-                      <tr className="h-8">
-                        <td className="border border-blue-800"><CellText value={report.customerWriter} /></td>
-                        <td className="border border-blue-800"><CellText value={report.customerApprover} /></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <div className="flex items-stretch border-l border-blue-800">
-                    <span className="flex w-5 items-center justify-center border-r border-blue-800 font-semibold [writing-mode:vertical-rl]">종합판정</span>
-                    <div className="flex flex-1 items-center justify-center py-1">
-                      <JudgmentStamp judgment={report.judgment} date={report.issuedOn} />
-                    </div>
-                  </div>
-                </div>
-                <footer className="mt-1 flex shrink-0 items-center justify-between text-[8px] text-slate-600 print:mt-2 print:text-[11px]">
-                  <span>QEP-840-08</span>
-                  <span>우리하이피 주식회사</span>
-                  <span>A4(210*279)</span>
-                </footer>
+                {report.formId === 'form-2' ? (
+                  <OutgoingForm2 report={report} approval={approval} writerName={user?.displayName || user?.username || ''} links={links} />
+                ) : (
+                  <OutgoingFormBasic report={report} approval={approval} writerName={user?.displayName || user?.username || ''} links={links} />
+                )}
               </article>
                 </div>
               </div>
             </div>
           )}
         </div>
-      )}
 
-      {dimensionOpen && report && (
+      {dimensionOpen && report && report.formId === 'form-2' && (
+        <Form2DataDialog
+          items={form2ItemsOf(report, links)}
+          rows={form2RowsOf(report)}
+          showLot={report.form2ShowLot === true}
+          onClose={() => setDimensionOpen(false)}
+          onSave={(form2Rows) => {
+            patch({ form2Rows })
+            setDimensionOpen(false)
+          }}
+        />
+      )}
+      {dimensionOpen && report && report.formId !== 'form-2' && (
         <DimensionDialog
           rows={report.dimensions.map((row) => ({ ...row }))}
           onClose={() => setDimensionOpen(false)}
@@ -1473,7 +1172,7 @@ export function OutgoingReportView() {
         title="출하성적서 삭제"
         onConfirm={removeReport}
       >
-        이 출하성적서를 목록에서 삭제합니다.
+        {pendingDelete?.lotNo.trim() ? `${pendingDelete.lotNo.trim()} 출하성적서를 삭제합니다. 되돌릴 수 없습니다.` : '이 출하성적서를 삭제합니다. 되돌릴 수 없습니다.'}
       </ConfirmDeleteDialog>
     </div>
   )

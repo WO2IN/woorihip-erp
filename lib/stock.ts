@@ -9,6 +9,8 @@ type InventoryLike = Pick<
   sampleQuantity?: number
   workStage?: WorkStage
   barcode?: string
+  line?: number
+  returned?: boolean
 }
 
 export type StockKind = '입고' | '출고'
@@ -31,8 +33,12 @@ export interface StockMovement {
   workStage?: WorkStage
   /** 입고등록에서 발급한 바코드 */
   barcode?: string
+  /** 생산 라인 번호 (lib/production-lines) */
+  line?: number
   /** 1층 출고를 특정 입고 재고 행에 붙인 경우. 없으면 오래된 입고부터 채운다. */
   consumedInboundId?: string
+  /** 반품 처리한 입고 (재고 계산에서 뺀다) */
+  returned?: boolean
 }
 
 export interface StockGroup {
@@ -98,6 +104,8 @@ function asMovementFromInventory(record: InventoryLike): StockMovement | null {
     sample: nonNegative(record.sampleQuantity),
     workStage: record.workStage === 'working' || record.workStage === 'ready' ? record.workStage : undefined,
     ...(record.barcode ? { barcode: record.barcode } : {}),
+    ...(record.line ? { line: record.line } : {}),
+    ...(record.returned ? { returned: true } : {}),
   }
 }
 
@@ -139,14 +147,19 @@ function byMovementOrder(left: StockMovement, right: StockMovement) {
   return left.kind.localeCompare(right.kind, 'ko')
 }
 
+/**
+ * 재고 이동 목록. 반품 처리한 입고는 재고 계산에서 빠지도록 기본으로 뺀다.
+ * includeReturned: 입고내역처럼 반품 건도 보여 줘야 하는 목록에서 true.
+ */
 export function collectMovements(
   documents: DocumentMetadata[],
   inventory: InventoryLike[],
+  { includeReturned = false }: { includeReturned?: boolean } = {},
 ): StockMovement[] {
   return [
     ...inventory.map(asMovementFromInventory),
     ...documents.map(asMovementFromDocument),
-  ].filter((item): item is StockMovement => Boolean(item))
+  ].filter((item): item is StockMovement => Boolean(item) && (includeReturned || !item?.returned))
 }
 
 export function stockGroupKey(item: Pick<StockMovement, 'company' | 'product' | 'floor' | 'unit'>) {
@@ -228,11 +241,15 @@ export function buildStockGroups(
 
   return [...grouped.values()]
     .map((group) => {
-      const stock = roundQty(group.opening + group.incoming - group.outgoing + group.balanceAdjust)
+      // 입고 등록이 다 들어오기 전까지는 모자란 입고를 출고에 맞춰 채워 재고가 마이너스가 되지 않게 한다.
+      const raw = roundQty(group.opening + group.incoming - group.outgoing + group.balanceAdjust)
+      const fill = raw < 0 ? -raw : 0
+      const stock = roundQty(raw + fill)
       return {
         ...group,
+        incoming: roundQty(group.incoming + fill),
         stock,
-        finalStock: roundQty(stock - group.defect - group.sample),
+        finalStock: Math.max(0, roundQty(stock - group.defect - group.sample)),
       }
     })
     .sort((a, b) =>
@@ -303,8 +320,11 @@ export function applyFloor3WorkLogs(
 
   return [...grouped.values()]
     .map((group) => {
-      const stock = roundQty(group.opening + group.incoming - group.outgoing + (group.balanceAdjust || 0))
-      return { ...group, stock, finalStock: roundQty(stock - group.defect - group.sample) }
+      // 입고 등록이 다 들어오기 전까지는 모자란 입고를 출고에 맞춰 채워 재고가 마이너스가 되지 않게 한다.
+      const raw = roundQty(group.opening + group.incoming - group.outgoing + (group.balanceAdjust || 0))
+      const fill = raw < 0 ? -raw : 0
+      const stock = roundQty(raw + fill)
+      return { ...group, incoming: roundQty(group.incoming + fill), stock, finalStock: Math.max(0, roundQty(stock - group.defect - group.sample)) }
     })
     .sort((a, b) =>
       `${a.company}${a.product}${a.floor}`.localeCompare(`${b.company}${b.product}${b.floor}`, 'ko'),

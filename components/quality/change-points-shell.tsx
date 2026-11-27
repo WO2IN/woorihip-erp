@@ -28,7 +28,7 @@ export function ChangePointsShell() {
         description={writing ? '변경요청서를 작성합니다. 저장과 엑셀 출력은 이 화면에서 합니다.' : '변경 이력을 보고, 행을 누르면 그 건의 요약을 봅니다.'}
         actions={
           writing ? (
-            <Button type="button" variant="outline" className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white" onClick={() => setWriting(false)}>
+            <Button type="button" variant="outline" onClick={() => setWriting(false)}>
               <ArrowLeft className="size-4" />
               대장
             </Button>

@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/components/auth/auth-context'
+import { useDragScroll } from '@/hooks/use-drag-scroll'
 import { useSecretToggle } from '@/hooks/use-secret-toggle'
 import { getAuthHeaders, getJsonAuthHeaders } from '@/lib/auth-client'
 import { useDataChanged } from '@/lib/data-events'
@@ -61,6 +62,7 @@ import {
   sectionsOf,
   splitChoiceAnswer,
 } from '@/lib/process-checklist'
+import { confirmModal } from '@/components/shared/confirm-modal'
 
 type Screen = 'board' | 'form' | 'template'
 
@@ -232,7 +234,7 @@ export function ProcessCheckView() {
   const goHub = () => router.push(hubHref(floor))
 
   const removeTemplate = async (id: string) => {
-    if (!window.confirm('이 점검표를 삭제하시겠습니까? 이미 저장된 기록은 목록에서 빠집니다.')) return
+    if (!(await confirmModal({ title: '이 점검표를 삭제할까요?', description: '이미 저장된 기록은 목록에서 빠집니다.', confirmLabel: '삭제', destructive: true }))) return
     try {
       const response = await fetch('/api/process-templates', {
         method: 'DELETE',
@@ -253,7 +255,7 @@ export function ProcessCheckView() {
   }
 
   const remove = async (id: string) => {
-    if (!window.confirm('이 공정 점검 기록을 삭제하시겠습니까?')) return
+    if (!(await confirmModal({ title: '이 공정 점검 기록을 삭제할까요?', confirmLabel: '삭제', destructive: true }))) return
     try {
       const response = await fetch('/api/process-checks', {
         method: 'DELETE',
@@ -720,6 +722,9 @@ function LineBoard({
     [line.sections],
   )
   const [sectionId, setSectionId] = useState(() => chartSections[0]?.id ?? '')
+  const [trendTarget, setTrendTarget] = useState<{ title: string; field: ProcessFieldSpec } | null>(null)
+  const trendScroll = useDragScroll<HTMLDivElement>()
+  const sectionScroll = useDragScroll<HTMLDivElement>()
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
   const [dateOrder, setDateOrder] = useState<'desc' | 'asc'>('desc')
@@ -847,7 +852,11 @@ function LineBoard({
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">최근 20회 기록 · 초록 띠는 기준 범위, 빨간 점은 범위를 벗어난 값입니다.</p>
             </div>
-            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
+            <div
+              ref={sectionScroll.ref}
+              {...sectionScroll.bind}
+              className={cn('-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 md:cursor-grab', sectionScroll.dragging && 'cursor-grabbing select-none')}
+            >
               {chartSections.map((section) => {
                 const index = line.sections.findIndex((item) => item.id === section.id)
                 const active = section.id === selectedSection.id
@@ -879,15 +888,49 @@ function LineBoard({
               })}
             </div>
           </div>
-          <div className="flex gap-3 overflow-x-auto p-4 [-ms-overflow-style:none] [scrollbar-width:thin]">
+          <div
+            ref={trendScroll.ref}
+            {...trendScroll.bind}
+            className={cn(
+              'flex gap-3 overflow-x-auto p-4 [-ms-overflow-style:none] [scrollbar-width:thin] md:cursor-grab',
+              trendScroll.dragging && 'cursor-grabbing select-none',
+            )}
+          >
             {selectedNumbers.map((field) => (
               <div key={field.id} className="min-w-[min(100%,14.5rem)] flex-1 shrink-0 sm:min-w-[16rem]">
-                <ProcessTrend title={field.label} field={field} records={records} reveal={secretReveal} />
+                <ProcessTrend
+                  title={field.label}
+                  field={field}
+                  records={records}
+                  reveal={secretReveal}
+                  onExpand={() => setTrendTarget({ title: `${selectedSection.title} · ${field.label}`, field })}
+                />
               </div>
             ))}
           </div>
         </section>
       )}
+
+      <Dialog open={Boolean(trendTarget)} onOpenChange={(open) => { if (!open) setTrendTarget(null) }}>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-y-auto p-0 sm:max-w-3xl">
+          <DialogHeader className="border-b px-5 py-4 text-left">
+            <DialogTitle>{trendTarget?.title ?? '수치 추이'}</DialogTitle>
+            <DialogDescription>전체 기간 측정값 추이 · 초록 띠는 기준 범위, 빨간 점은 범위를 벗어난 값입니다.</DialogDescription>
+          </DialogHeader>
+          {trendTarget && (
+            <div className="p-4">
+              <ProcessTrend
+                title={trendTarget.field.label}
+                field={trendTarget.field}
+                records={records}
+                reveal={secretReveal}
+                limit={Number.POSITIVE_INFINITY}
+                expanded
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1848,7 +1891,7 @@ function TemplateEditor({
   }
 
   const removeTemplate = async () => {
-    if (!template || !window.confirm('이 점검표를 삭제하시겠습니까? 이미 저장된 기록은 목록에서 빠집니다.')) return
+    if (!template || !(await confirmModal({ title: '이 점검표를 삭제할까요?', description: '이미 저장된 기록은 목록에서 빠집니다.', confirmLabel: '삭제', destructive: true }))) return
     setSaving(true)
     try {
       const response = await fetch('/api/process-templates', {

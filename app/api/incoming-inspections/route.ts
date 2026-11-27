@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { canEdit, getUserFromHeaders } from '@/lib/auth'
-import { deleteRecord, listRecords, putRecord } from '@/lib/records'
+import { deleteRecord, findRecords, listRecords, patchRecordsWhere, putRecord } from '@/lib/records'
 
 const COLLECTION = 'incoming-inspections'
 
@@ -26,7 +26,13 @@ export async function PUT(req: NextRequest) {
   }
   const sheet = asSheet(await req.json().catch(() => null))
   if (!sheet) return NextResponse.json({ error: '성적서 내용이 올바르지 않습니다.' }, { status: 400 })
+  const [previous] = await findRecords<Record<string, unknown>>(COLLECTION, (row) => row.id === sheet.id, 1)
   const saved = await putRecord(COLLECTION, sheet)
+  // LOT 롤수를 바꾸면 이 성적서에서 나온 이력카드들의 롤수도 같이 바꾼다.
+  const lotRoll = String((sheet as Record<string, unknown>).lotRoll ?? '')
+  if (previous && lotRoll !== String(previous.lotRoll ?? '')) {
+    await patchRecordsWhere<Record<string, unknown>>('lot-cards', (row) => row.sourceIncomingId === sheet.id, { rollCount: lotRoll })
+  }
   return NextResponse.json({ data: saved })
 }
 

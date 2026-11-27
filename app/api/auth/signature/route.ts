@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { findUserById, getUserFromHeaders, toPublicUser, writeUserSignature, readUserSignature, canManageUsers } from '@/lib/auth'
+import { findSignerIdByName, findUserById, getUserFromHeaders, toPublicUser, writeUserSignature, readUserSignature, canManageUsers } from '@/lib/auth'
 import { prepareSignature } from '@/lib/signature'
+
+const APPROVER_NAME = '조승현'
 
 async function currentUser(request: NextRequest) {
   const session = await getUserFromHeaders(request.headers)
@@ -11,6 +13,14 @@ async function currentUser(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const user = await currentUser(request)
   if (!user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+  // 문서 승인란용: 승인자(조승현 부장) 서명. 서명 이미지만 내보내고 계정 정보는 내보내지 않는다.
+  if (request.nextUrl.searchParams.get('approver') === '1') {
+    const signerId = await findSignerIdByName(APPROVER_NAME)
+    const image = signerId ? await readUserSignature(signerId) : null
+    if (!image) return new NextResponse(null, { status: 404 })
+    const prepared = await prepareSignature(image)
+    return new NextResponse(new Uint8Array(prepared ?? image), { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, no-store' } })
+  }
   const requested = request.nextUrl.searchParams.get('userId')
   let id = user.id
   if (requested && /^[a-f0-9-]{36}$/i.test(requested)) {

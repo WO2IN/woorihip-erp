@@ -4,6 +4,13 @@ import type { WorkStage } from '@/lib/stock'
 
 export const TRACE_BARCODE_COLLECTION = 'trace-barcodes'
 
+/** 테스트 단계: 이 계정(username)이 등록한 것만 바코드를 만든다. 정식 운영 때 이 제한을 걷어낸다. */
+const BARCODE_TEST_USERNAMES = ['woo_1n'] // 나우인
+
+export function canIssueTraceBarcode(user: { username: string }) {
+  return BARCODE_TEST_USERNAMES.includes(user.username)
+}
+
 function seoulStamp(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Seoul',
@@ -28,13 +35,24 @@ interface IssueInput {
   by: string
 }
 
-/** 바코드 번호(WR + 날짜 6자리 + 순번 4자리)를 새로 만들고 바코드 대장에 올린다. 처음 상태는 '입고'. */
+/**
+ * 바코드 번호를 새로 만들고 바코드 대장에 올린다. 처음 상태는 '입고'.
+ * 번호: WR + 날짜 6자리(YYMMDD) + 층 1자리 + 순번 3자리. 예) WR2611271001
+ * 순번은 날짜·층마다 001부터 다시 센다. 이미 있는 번호와 겹치면 건너뛴다.
+ */
 export async function issueTraceBarcode(input: IssueInput): Promise<TraceBarcode> {
-  const sequence = await nextSequence('lot-barcode')
+  const stamp = seoulStamp()
+  const floor = Math.min(9, Math.max(0, Math.trunc(input.floor ?? 1)))
+  const prefix = `WR${stamp}${floor}`
+  let barcode = ''
+  do {
+    const sequence = await nextSequence(`lot-barcode-${prefix}`)
+    barcode = `${prefix}${String(sequence).padStart(3, '0')}`
+  } while (await findTraceBarcode(barcode))
   const now = new Date().toISOString()
   const record: TraceBarcode = {
     id: crypto.randomUUID(),
-    barcode: `WR${seoulStamp()}${String(sequence).padStart(4, '0')}`,
+    barcode,
     company: input.company.trim(),
     product: input.product.trim(),
     floor: input.floor ?? 1,
@@ -62,7 +80,7 @@ export async function findTraceBarcode(code: string): Promise<TraceBarcode | nul
 
 /** 입고 건의 기존 '작업 단계' 표시(입고 대기·작업 중·출고 대기)와 맞추기 위한 변환. */
 export function stageForStatus(status: BarcodeStatus): WorkStage | undefined {
-  if (status === 'working' || status === 'done') return 'working'
+  if (status === 'working' || status === 'paused' || status === 'done') return 'working'
   if (status === 'shipReady' || status === 'shipped') return 'ready'
   return undefined
 }

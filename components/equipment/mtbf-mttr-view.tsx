@@ -131,7 +131,7 @@ export function MtbfMttrView() {
         title="설비 MTBF · MTTR 관리현황"
         description={<span className="print:hidden">조회기간 {PERIOD_LABEL} · 우리하이피(주) / 생산 설비</span>}
         className="mtbf-mttr-print-header print:rounded-md print:px-3 print:py-2 print:shadow-none print:[&_h1]:mt-0 print:[&_h1]:text-base print:[&_p]:text-[9px]"
-        actions={<span className="no-print rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white/90">레이아웃 예시</span>}
+        actions={<span className="no-print rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">레이아웃 예시</span>}
       />
 
       <div className="no-print flex flex-wrap gap-1 rounded-2xl border bg-card p-1 shadow-sm">

@@ -19,6 +19,7 @@ import { CellSelect } from '@/components/shared/cell-select'
 import { HolidayPickerPopover } from '@/components/shared/holiday-picker-popover'
 import { RangeFillPopover } from '@/components/shared/range-fill-popover'
 import { ClearSheetDialog } from '@/components/shared/clear-sheet-dialog'
+import { scrollToTodayColumn } from '@/components/checksheets/scroll-to-today'
 
 export interface FiveSCheckItem {
   id: number
@@ -235,8 +236,8 @@ export function FiveSGrid({ sheetId, year, month, items, entries, holidays = [],
         {isCurrentMonth ? ' 오늘 채워야 하는데 비어 있는 칸은 노란색으로 표시됩니다.' : ''}
       </p>
 
-      <div className="print-sheet overflow-x-auto border border-border">
-        <table className="w-full border-collapse text-xs">
+      <div ref={scrollToTodayColumn} className="print-sheet overflow-x-auto border border-border">
+        <table className="checksheet-table w-full border-collapse text-xs">
           <thead>
             <tr>
               <th

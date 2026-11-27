@@ -42,6 +42,7 @@ import { useDataChanged } from '@/lib/data-events'
 import { getAuthHeaders } from '@/lib/auth-client'
 import { useAuth } from '@/components/auth/auth-context'
 import { toast } from 'sonner'
+import { searchText } from '@/lib/product-name'
 
 type Level = 'docType' | 'year' | 'files'
 
@@ -261,7 +262,7 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   const level: Level | null = selectedCompany
     ? selectedDocType
       ? selectedYear ? 'files' : 'year'
-      : 'docType'
+      : selectedYear === 'ALL' ? 'files' : 'docType'
     : null
 
   // 업체 변경 시 하위 상태를 동일 렌더 사이클에서 원자적으로 초기화
@@ -370,12 +371,12 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
         // 통합 검색창
         (
           !keyword ||
-          d.filename?.toLowerCase().includes(keyword) ||
-          d.originalName?.toLowerCase().includes(keyword) ||
+          searchText(d.filename ?? '').includes(searchText(keyword)) ||
+          searchText(d.originalName ?? '').includes(searchText(keyword)) ||
           d.company?.toLowerCase().includes(keyword) ||
           d.documentType?.toLowerCase().includes(keyword) ||
           documentTypeLabel(d.documentType).toLowerCase().includes(keyword) ||
-          d.product?.toLowerCase().includes(keyword) ||
+          searchText(d.product ?? '').includes(searchText(keyword)) ||
           d.material?.toLowerCase().includes(keyword) ||
           d.specification?.toLowerCase().includes(keyword) ||
           d.lotStart?.toLowerCase().includes(keyword) ||
@@ -695,13 +696,10 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
     setLotNumber('')
   }
 
-  const toggleDocType = (type: string | null) => {
+  // 업체 안에서 유형 칩을 누르면 그 폴더로 바로 간다 (연도는 전체로 열어 문서가 바로 보이게 한다)
+  const goNav = (next: { company: string | null; docType: string | null; year: string | null }) => {
     setSelectedDocs([])
-    if (type === null) {
-      setSelectedDocTypes([])
-      return
-    }
-    setSelectedDocTypes(prev => prev.length === 1 && prev[0] === type ? [] : [type])
+    setNav(next)
   }
 
   const goHome = () => {
@@ -713,13 +711,13 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   const breadcrumbs = [
     selectedCompany ? {
       label: selectedCompany,
-      action: selectedDocType ? () => setNav(n => ({ ...n, docType: null, year: null })) : undefined
+      action: selectedDocType || selectedYear ? () => setNav(n => ({ ...n, docType: null, year: null })) : undefined
     } : null,
     selectedDocType ? {
       label: documentTypeLabel(selectedDocType),
       action: selectedYear ? () => setNav(n => ({ ...n, year: null })) : undefined
-    } : null,
-    selectedYear ? { label: selectedYear === 'ALL' ? '전체 연도' : `${selectedYear}년`, action: undefined } : null,
+    } : selectedYear ? { label: '전체 유형', action: undefined } : null,
+    selectedDocType && selectedYear ? { label: selectedYear === 'ALL' ? '전체 연도' : `${selectedYear}년`, action: undefined } : null,
   ].filter(Boolean) as { label: string; action: (() => void) | undefined }[]
 
   const showDocs = !selectedCompany || level === 'files'
@@ -772,7 +770,7 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
   )
 
   return (
-    <div className={cn(PAGE_SHELL, 'flex h-[calc(100dvh-6rem)] min-h-0 flex-col gap-4 overflow-hidden pb-4 sm:pb-4')}>
+    <div className={cn(PAGE_SHELL, 'flex min-h-[28rem] flex-1 flex-col gap-4 overflow-hidden pb-4 sm:pb-4 -mb-8')}>
       <PageHeader
         className="shrink-0"
         tone="teal"
@@ -1015,14 +1013,14 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
               </div>
             )}
 
-            {showDocs && (
+            {selectedCompany && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => toggleDocType(null)}
+                  onClick={() => goNav({ company: selectedCompany, docType: null, year: 'ALL' })}
                   className={cn(
                     'h-7 rounded-full border px-3 text-xs font-semibold transition-colors',
-                    selectedDocTypes.length === 0
+                    !selectedDocType
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-border bg-background text-muted-foreground hover:text-foreground'
                   )}
@@ -1030,12 +1028,12 @@ export function ExplorerView({ initialCompany, initialDocType }: ExplorerViewPro
                   전체 유형
                 </button>
                 {docTypeCounts.map(([type, count]) => {
-                  const active = selectedDocTypes.includes(type)
+                  const active = selectedDocType === type
                   return (
                     <button
                       key={type}
                       type="button"
-                      onClick={() => toggleDocType(type)}
+                      onClick={() => goNav({ company: selectedCompany, docType: type, year: 'ALL' })}
                       className={cn(
                         'h-7 rounded-full border px-3 text-xs font-semibold transition-colors',
                         active

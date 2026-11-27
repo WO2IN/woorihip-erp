@@ -7,7 +7,6 @@ import {
   updateFiveSTarget,
   toggleFiveSHoliday,
 } from '@/app/actions/five-s'
-import { SiteHeader } from '@/components/layout/site-header'
 import { ChecksheetBackLink } from '@/components/checksheets/checksheet-back-link'
 import { PageHeader } from '@/components/shared/page-header'
 import { NextCheckLink } from '@/components/checksheets/next-check-link'
@@ -62,7 +61,6 @@ export default async function FiveSPage({
 
   return (
     <div className="checksheet-page min-h-dvh">
-      <SiteHeader />
       <main className="print-page checksheet-print-page mx-auto flex w-full max-w-[1500px] flex-col gap-5 p-4 sm:p-6 print:max-w-none print:gap-1 print:p-0">
         <PageHeader
           className="no-print"

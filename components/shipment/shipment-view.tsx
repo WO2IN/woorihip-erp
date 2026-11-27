@@ -19,6 +19,7 @@ import {
   Trash2,
   TriangleAlert,
   X,
+  Undo2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { canOperateFloor, homeFloor } from '@/lib/access'
@@ -29,6 +30,7 @@ import { StockDashboard } from '@/components/shipment/stock-status-board'
 import { ProcessCheckRecord, ProcessTemplate } from '@/lib/process-checklist'
 import { Button } from '@/components/ui/button'
 import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
+import { InboundRegisterView } from '@/components/shipment/inbound-register-view'
 import {
   Dialog,
   DialogContent,
@@ -40,6 +42,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from '@/components/ui/select'
+import { lineName, linesOf } from '@/lib/production-lines'
 import { FilterChip, FilterSelect } from '@/components/shared/list-filters'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/components/auth/auth-context'
@@ -64,30 +68,24 @@ import {
   formatQuantity,
   uniqueUnits,
   type FlowLot,
-  type UnregisteredOutbound,
-  type WorkStage,
 } from '@/lib/stock'
-import { LotFlowBoard } from '@/components/shipment/lot-flow-board'
 import { cn } from '@/lib/utils'
+import { confirmModal } from '@/components/shared/confirm-modal'
 
 type TabKey = 'flow' | 'stock' | 'in' | 'out' | 'work'
 
-const FLOW_STAGE_LABELS: { key: FlowLot['stage']; label: string }[] = [
-  { key: 'waiting', label: '입고 대기' },
-  { key: 'working', label: '작업 중' },
-  { key: 'ready', label: '출고 대기' },
-  { key: 'done', label: '출고 완료' },
-]
-
 const STOCK_TAB_ACCENT =
-  'bg-teal-600 text-white shadow-sm dark:bg-teal-500'
+  'bg-slate-800 text-white shadow-sm hover:bg-slate-700 hover:text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:hover:text-slate-900'
 const isTabKey = (v: string | null): v is TabKey => v === 'flow' || v === 'stock' || v === 'in' || v === 'out' || v === 'work'
+const UNITS = ['EA', 'Kg', 'R']
+
 type InventoryForm = {
   id?: string
   issueDate: string
   company: string
   product: string
   floor: string
+  line: string
   quantity: string
   quantityUnit: string
   lotStart: string
@@ -100,6 +98,7 @@ const emptyForm = (): InventoryForm => ({
   company: '',
   product: '',
   floor: '1',
+  line: '',
   quantity: '',
   quantityUnit: 'EA',
   lotStart: '',
@@ -132,11 +131,14 @@ export function ShipmentView() {
   useEffect(() => {
     if (isTabKey(tabParam)) setTabState(tabParam)
   }, [tabParam])
+  // 입고 등록 창을 여는 신호. 누를 때마다 1씩 올린다.
+  const [inboundFormSignal, setInboundFormSignal] = useState(0)
   const setTab = (key: TabKey) => {
     setTabState(key)
     router.replace(`/shipment?tab=${key}`, { scroll: false })
   }
   const [query, setQuery] = useState('')
+  const [unitView, setUnitView] = useState('EA')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [productFilter, setProductFilter] = useState('all')
   const [floorFilter, setFloorFilter] = useState(editFloor ? String(editFloor) : 'all')
@@ -149,7 +151,6 @@ export function ShipmentView() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [unitView, setUnitView] = useState('EA')
   const activeFilterCount =
     Number(companyFilter !== 'all') + Number(productFilter !== 'all') + Number(Boolean(startDate || endDate))
   const [formOpen, setFormOpen] = useState(false)
@@ -210,6 +211,11 @@ export function ShipmentView() {
   const movements = useMemo(
     () => collectMovements(documents, inventory),
     [documents, inventory],
+  )
+  // 반품 처리한 입고: 재고 계산(movements)에서는 빠지고 입고내역에만 보인다.
+  const returnedMovements = useMemo(
+    () => collectMovements([], inventory, { includeReturned: true }).filter((item) => item.returned),
+    [inventory],
   )
 
   const availableCompanies = useMemo(
@@ -301,6 +307,16 @@ export function ShipmentView() {
       setProductFilter('all')
     }
   }, [availableProducts, productFilter])
+  const matchesView = useCallback((item: StockMovement) => {
+    const q = query.trim().toLocaleLowerCase('ko-KR')
+    const matchesFilter =
+      (activeCompany === 'all' || item.company === activeCompany) &&
+      (activeProduct === 'all' || item.product === activeProduct) &&
+      (activeFloor === 'all' || item.floor === activeFloor)
+    if (!matchesFilter) return false
+    if (!q) return true
+    return [item.company, item.product, item.lot, item.floor, item.unit].join(' ').toLocaleLowerCase('ko-KR').includes(q)
+  }, [activeCompany, activeFloor, activeProduct, query])
   const filteredMovements = useMemo(() => {
     const q = query.trim().toLocaleLowerCase('ko-KR')
     return movements.filter((item) => {
@@ -349,11 +365,11 @@ export function ShipmentView() {
 
   const inbound = useMemo(
     () =>
-      filteredMovements
+      [...filteredMovements, ...returnedMovements.filter(matchesView)]
         .filter((item) => item.kind === '입고')
         .filter((item) => inDateRange(item.issueDate, startDate, endDate))
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate)),
-    [endDate, filteredMovements, startDate],
+    [endDate, filteredMovements, matchesView, returnedMovements, startDate],
   )
 
   const workRows = useMemo(() => {
@@ -495,6 +511,7 @@ export function ShipmentView() {
         company: form.company,
         product: form.product,
         floor: editFloor ?? Number(form.floor),
+        line: Number(form.line),
         quantity: Number(form.quantity),
         quantityUnit: form.quantityUnit,
         lotStart: form.lotStart,
@@ -514,23 +531,6 @@ export function ShipmentView() {
       toast.error(error instanceof Error ? error.message : '입고 저장에 실패했습니다.')
     } finally {
       setSaving(false)
-    }
-  }
-
-  const deleteInventory = async (id: string) => {
-    if (!window.confirm('이 입고 내역을 삭제하시겠습니까?')) return
-    try {
-      const response = await fetch('/api/inventory', {
-        method: 'DELETE',
-        headers: getJsonAuthHeaders(),
-        body: JSON.stringify({ id }),
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.error || '입고 삭제에 실패했습니다.')
-      toast.success('입고 내역을 삭제했습니다.')
-      await load(true)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '입고 삭제에 실패했습니다.')
     }
   }
 
@@ -560,6 +560,7 @@ export function ShipmentView() {
       company: row.company,
       product: row.product,
       floor: row.floor || '1',
+      line: row.line ? String(row.line) : '',
       quantity: String(row.quantity),
       quantityUnit: row.unit || 'EA',
       lotStart: row.lot === '-' ? '' : row.lot,
@@ -569,35 +570,42 @@ export function ShipmentView() {
     setFormOpen(true)
   }
 
-  const changeStage = async (lot: FlowLot, stage: WorkStage | null) => {
+  const toggleReturn = async (row: StockMovement) => {
+    const returning = !row.returned
+    const ok = await confirmModal(returning
+      ? { title: '이 입고를 반품 처리할까요?', description: `${row.company} · ${row.product} · ${formatQuantity(row.quantity, row.unit)} — 입고내역에는 남고 재고 수량에서 빠집니다.`, confirmLabel: '반품', destructive: true }
+      : { title: '반품을 취소할까요?', description: `${row.company} · ${row.product} · ${formatQuantity(row.quantity, row.unit)} — 다시 재고 수량에 들어갑니다.`, confirmLabel: '반품 취소' })
+    if (!ok) return
     try {
       const response = await fetch('/api/inventory', {
         method: 'PATCH',
         headers: getJsonAuthHeaders(),
-        body: JSON.stringify({ id: lot.inbound.id, workStage: stage }),
+        body: JSON.stringify({ id: row.id, returned: returning }),
       })
       const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.error || '작업 단계 변경에 실패했습니다.')
-      setInventory((current) =>
-        current.map((item) => (item.id === lot.inbound.id ? { ...item, workStage: stage ?? undefined } : item)),
-      )
+      if (!response.ok) throw new Error(result.error || '반품 처리에 실패했습니다.')
+      toast.success(returning ? '반품 처리했습니다. 재고에서 뺐습니다.' : '반품을 취소했습니다.')
+      await load(true)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '작업 단계 변경에 실패했습니다.')
+      toast.error(error instanceof Error ? error.message : '반품 처리에 실패했습니다.')
     }
   }
 
-  const registerInbound = (item: UnregisteredOutbound) => {
-    const first = item.firstDate
-    setForm({
-      ...emptyForm(),
-      ...(first.length === 8 ? { issueDate: `${first.slice(0, 4)}-${first.slice(4, 6)}-${first.slice(6, 8)}` } : {}),
-      company: item.company,
-      product: item.product,
-      floor: item.floor || '1',
-      quantity: String(item.quantity),
-      quantityUnit: item.unit || 'EA',
-    })
-    setFormOpen(true)
+  const deleteInventory = async (id: string) => {
+    if (!(await confirmModal({ title: '이 입고 내역을 삭제할까요?', confirmLabel: '삭제', destructive: true }))) return
+    try {
+      const response = await fetch('/api/inventory', {
+        method: 'DELETE',
+        headers: getJsonAuthHeaders(),
+        body: JSON.stringify({ id }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || '입고 삭제에 실패했습니다.')
+      toast.success('입고 내역을 삭제했습니다.')
+      await load(true)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '입고 삭제에 실패했습니다.')
+    }
   }
 
   const ledgerKey = (row: Pick<StockMovement, 'source' | 'id'>) => `${row.source}-${row.id}`
@@ -798,7 +806,7 @@ export function ShipmentView() {
                 )}
               >
                 {label}
-                <span className={cn('ml-1.5 tabular-nums text-xs', tab === key ? 'text-white/85' : 'text-muted-foreground')}>{count}</span>
+                <span className={cn('ml-1.5 tabular-nums text-xs', tab === key ? 'opacity-80' : 'text-muted-foreground')}>{count}</span>
               </button>
             ))}
           </nav>
@@ -821,8 +829,8 @@ export function ShipmentView() {
               <Button
                 className={cn('h-10', STOCK_TAB_ACCENT)}
                 onClick={() => {
-                  setForm(emptyForm())
-                  setFormOpen(true)
+                  // 입고 등록은 진행현황의 등록 창 하나로 한다. 그래야 바코드가 바로 뜨고 진행현황 목록에 올라간다.
+                  setInboundFormSignal((value) => value + 1)
                 }}
               >
                 <Plus className="mr-2 h-4 w-4" />
@@ -845,12 +853,7 @@ export function ShipmentView() {
         </div>
       )}
 
-      {user?.role !== 'viewer' && editFloor == null && (
-        <p className="rounded-xl border border-dashed bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
-          입고 등록이 아직 전면 도입되지 않아 재고·진행 수치는 참고용입니다. 출고는 성적서 등록 시 자동 반영됩니다.
-        </p>
-      )}
-
+      {tab !== 'flow' && (
       <section className="rounded-2xl border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex h-10 items-center gap-0.5 rounded-lg border bg-muted/30 p-1" role="tablist" aria-label="층 선택">
@@ -873,7 +876,7 @@ export function ShipmentView() {
           <label className="relative min-w-56 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
-              type="search"
+              type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="업체명, 품목, 로트번호 검색..."
@@ -890,7 +893,7 @@ export function ShipmentView() {
               </button>
             )}
           </label>
-          {tab !== 'flow' && unitOrder.length > 1 && (
+          {unitOrder.length > 1 && (
             <div className="flex h-10 items-center gap-1 rounded-lg border bg-muted/30 p-1">
               {unitOrder.map((unit) => (
                 <button
@@ -977,13 +980,6 @@ export function ShipmentView() {
           </div>
         )}
       </section>
-
-      {tab === 'flow' && (
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {FLOW_STAGE_LABELS.map(({ key, label }) => (
-            <StockKpi key={key} label={label} lines={[{ unit: '건', value: stageCount(key) }]} hint={key === 'done' ? '최근 완료 포함' : '현재 단계 입고 건'} />
-          ))}
-        </section>
       )}
 
       {tab !== 'flow' && (
@@ -995,21 +991,10 @@ export function ShipmentView() {
         </section>
       )}
 
-      {tab === 'flow' && (
-          <LotFlowBoard
-          loading={loading}
-          flow={lotFlow}
-          query={query}
-          startDate={startDate}
-          endDate={endDate}
-          editable={editable}
-          editFloor={editFloor}
-          workLogs={workLogs}
-          onStage={(lot, stage) => void changeStage(lot, stage)}
-          onOpen={setSelectedLot}
-          onRegister={registerInbound}
-        />
-      )}
+      {/* 입고 등록 창이 어느 탭에서든 열리도록 진행현황은 늘 띄워 두고, 다른 탭에서는 숨긴다. */}
+      <div hidden={tab !== 'flow'}>
+        <InboundRegisterView embedded openFormSignal={inboundFormSignal} onChanged={() => void load(true)} />
+      </div>
       {tab === 'stock' && (
         <StockTable
           loading={loading}
@@ -1032,6 +1017,7 @@ export function ShipmentView() {
           editFloor={editFloor}
           onEdit={openEdit}
           onDelete={deleteInventory}
+          onReturn={toggleReturn}
           onOpenLot={setSelectedLot}
         />
       )}
@@ -1064,16 +1050,16 @@ export function ShipmentView() {
       )}
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-[440px]">
+        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[460px]">
           <DialogHeader>
-            <DialogTitle>{form.id ? '입고 내역 수정' : '입고 내역 등록'}</DialogTitle>
-            <DialogDescription>거래명세표 기준으로 입고 한 건을 저장합니다.</DialogDescription>
+            <DialogTitle>{form.id ? '입고 수정' : '입고 등록'}</DialogTitle>
+            <DialogDescription>{form.id ? '입고 내용을 고칩니다. 바코드는 바뀌지 않습니다.' : '거래명세표 기준으로 입고 한 건을 저장합니다.'}</DialogDescription>
           </DialogHeader>
           <form onSubmit={saveInventory} className="space-y-3 py-2">
             <Field label="입고일자">
               <Input type="date" value={form.issueDate} onChange={(event) => setForm({ ...form, issueDate: event.target.value })} required />
             </Field>
-            <Field label="업체명">
+            <Field label="업체명" required>
               <SearchableCombobox
                 configName="companies"
                 options={formCompanies}
@@ -1084,7 +1070,7 @@ export function ShipmentView() {
                 className="h-10"
               />
             </Field>
-            <Field label="품명">
+            <Field label="품명 (규격)" required>
               <SearchableCombobox
                 configName="products"
                 options={formProducts}
@@ -1095,38 +1081,72 @@ export function ShipmentView() {
                 className="h-10"
               />
             </Field>
-            <Field label="층">
-              <select
-                value={editFloor != null ? String(editFloor) : form.floor}
-                onChange={(event) => setForm({ ...form, floor: event.target.value })}
-                disabled={editFloor != null}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-70"
-              >
-                <option value="1">1층</option>
-                <option value="2">2층</option>
-                <option value="3">3층</option>
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="층">
+                <Select
+                  value={form.floor}
+                  onValueChange={(value) => setForm({ ...form, floor: String(value ?? form.floor), line: value === form.floor ? form.line : '' })}
+                  disabled={editFloor != null}
+                >
+                  <SelectTrigger aria-label="층" className="h-10 w-full bg-background px-3 disabled:opacity-70">
+                    <span>{form.floor}층</span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {['1', '2', '3'].map((item) => (
+                        <SelectItem key={item} value={item} className="py-2">
+                          <span className="font-medium">{item}층</span>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="라인 (선택)">
+                <Select value={form.line || 'none'} onValueChange={(value) => setForm({ ...form, line: !value || value === 'none' ? '' : String(value) })}>
+                  <SelectTrigger aria-label="라인" className="h-10 w-full bg-background px-3">
+                    <span className={cn(!form.line && 'text-muted-foreground')}>
+                      {form.line ? lineName(Number(form.floor), Number(form.line)) : '라인 선택'}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectGroup>
+                      <SelectItem value="none" className="py-2 text-muted-foreground">선택 안 함</SelectItem>
+                      {linesOf(Number(form.floor)).map((item) => (
+                        <SelectItem key={item.no} value={String(item.no)} className="py-2">
+                          <span className="font-medium">{lineName(Number(form.floor), item.no)}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <Field label="로트번호 (선택)">
+              <Input value={form.lotStart} onChange={(event) => setForm({ ...form, lotStart: event.target.value })} placeholder="(선택)" className="h-10 px-3 text-sm" />
             </Field>
-            <Field label="로트번호">
-              <Input value={form.lotStart} onChange={(event) => setForm({ ...form, lotStart: event.target.value })} placeholder="(선택)" />
-            </Field>
-            <Field label="수량">
+            <Field label="수량" required>
               <div className="flex gap-2">
                 <Input type="number" min="0" step="any" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required />
-                <select
-                  value={form.quantityUnit}
-                  onChange={(event) => setForm({ ...form, quantityUnit: event.target.value })}
-                  className="w-24 rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="EA">EA</option>
-                  <option value="Kg">Kg</option>
-                  <option value="R">R</option>
-                </select>
+                <Select value={form.quantityUnit} onValueChange={(value) => setForm({ ...form, quantityUnit: String(value ?? form.quantityUnit) })}>
+                  <SelectTrigger aria-label="단위" className="h-10 w-24 shrink-0 bg-background px-3">
+                    <span>{form.quantityUnit}</span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {UNITS.map((unit) => (
+                        <SelectItem key={unit} value={unit} className="py-2">
+                          <span className="font-medium">{unit}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
             </Field>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>취소</Button>
-              <Button type="submit" disabled={saving}>{saving ? '저장 중...' : '저장'}</Button>
+              <Button type="button" variant="outline" onClick={() => setFormOpen(false)} disabled={saving}>취소</Button>
+              <Button type="submit" disabled={saving}>{saving ? '저장 중…' : '저장'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1642,9 +1662,8 @@ function StockTable({
       setSortOrder('desc')
     }
   }, [showOpening, sortKey])
-  const headers = floor3
-    ? ['업체명', '품목', '층', '단위', '작업수량', '입고', '출고', '불량', '검사시료', '현 재고수량', '최종 재고수량', '최근일자']
-    : ['업체명', '품목', '층', '단위', ...(showOpening ? ['기초'] : []), '입고', '출고', '현재고', '최근일자']
+  // 층과 관계없이 같은 칸을 보여 준다. 작업일보가 없는 층은 작업수량·불량·검사시료가 0으로 나온다.
+  const headers = ['업체명', '품목', '층', '단위', ...(showOpening ? ['기초'] : []), '작업수량', '입고', '출고', '불량', '검사시료', '현 재고수량', '최종 재고수량', '최근일자']
   function toggleSort(key: StockSortKey) {
     if (sortKey === key) {
       setSortOrder((order) => order === 'asc' ? 'desc' : 'asc')
@@ -1675,7 +1694,7 @@ function StockTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className={`w-full text-sm ${floor3 ? 'min-w-[1080px]' : 'min-w-[860px]'}`}>
+        <table className="w-full min-w-[1080px] text-sm">
           <thead className="text-xs text-muted-foreground">
             <tr className="border-b">
               {headers.map((head) => {
@@ -1725,19 +1744,15 @@ function StockTable({
                     <td className="px-4 py-3">{row.product}</td>
                     <td className="px-4 py-3">{row.floor ? `${row.floor}층` : '-'}</td>
                     <td className="px-4 py-3">{row.unit}</td>
-                    {floor3 && <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.workQuantity)}</td>}
-                    {!floor3 && showOpening && <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.opening)}</td>}
+                    {showOpening && <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.opening)}</td>}
+                    <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.workQuantity)}</td>
                     <td className="px-4 py-3 text-right font-semibold tabular-nums text-blue-700 dark:text-blue-300">{formatQuantity(row.incoming)}</td>
                     <td className="px-4 py-3 text-right font-semibold tabular-nums text-orange-700 dark:text-orange-300">{formatQuantity(row.outgoing)}</td>
-                    {floor3 && (
-                      <>
-                        <td className="px-4 py-3 text-right">
-                          <div className="font-semibold tabular-nums">{formatQuantity(row.defect)}</div>
-                          {rate && <div className="text-[11px] leading-4 text-muted-foreground">불량률 {rate}</div>}
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.sample)}</td>
-                      </>
-                    )}
+                    <td className="px-4 py-3 text-right">
+                      <div className="font-semibold tabular-nums">{formatQuantity(row.defect)}</div>
+                      {rate && <div className="text-[11px] leading-4 text-muted-foreground">불량률 {rate}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.sample)}</td>
                     <td className="px-4 py-3 text-right">
                       {row.stock < 0 ? (
                         <span className="inline-flex min-w-12 justify-center rounded-full bg-rose-50 px-2 py-0.5 font-bold text-rose-600 tabular-nums dark:bg-rose-950/50 dark:text-rose-300">
@@ -1747,11 +1762,9 @@ function StockTable({
                         <span className="font-bold tabular-nums">{formatQuantity(row.stock)}</span>
                       )}
                     </td>
-                    {floor3 && (
-                      <td className={`px-4 py-3 text-right font-bold tabular-nums ${row.finalStock < 0 ? 'text-destructive' : 'text-[oklch(0.45_0.17_162)] dark:text-[oklch(0.68_0.17_162)]'}`}>
-                        {formatQuantity(row.finalStock)}
-                      </td>
-                    )}
+                    <td className={`px-4 py-3 text-right font-bold tabular-nums ${row.finalStock < 0 ? 'text-destructive' : 'text-[oklch(0.45_0.17_162)] dark:text-[oklch(0.68_0.17_162)]'}`}>
+                      {formatQuantity(row.finalStock)}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3">{displayDate(row.lastDate)}</td>
                   </tr>
                 )
@@ -1774,6 +1787,7 @@ function MovementTable({
   editFloor,
   onEdit,
   onDelete,
+  onReturn,
   onOpenLot,
 }: {
   loading: boolean
@@ -1785,6 +1799,7 @@ function MovementTable({
   editFloor?: 1 | 2 | 3 | null
   onEdit?: (row: StockMovement) => void
   onDelete?: (id: string) => void
+  onReturn?: (row: StockMovement) => void
   onOpenLot?: (row: StockMovement) => void
 }) {
   const canEditRow = (row: StockMovement) => Boolean(canManage) && (editFloor == null || String(editFloor) === row.floor)
@@ -1817,18 +1832,21 @@ function MovementTable({
               rows.map((row) => (
                 <tr
                   key={`${row.source}-${row.id}`}
-                  className={onOpenLot ? 'cursor-pointer transition-colors hover:bg-muted/70' : undefined}
+                  className={cn(onOpenLot && 'cursor-pointer transition-colors hover:bg-muted/70', row.returned && 'bg-rose-50/60 text-muted-foreground dark:bg-rose-950/20')}
                   onClick={onOpenLot ? () => onOpenLot(row) : undefined}
                 >
                   <td className="px-4 py-3">{displayDate(row.issueDate)}</td>
                   <td className="px-4 py-3">
-                    <KindBadge kind={row.kind} />
+                    <div className="flex items-center gap-1">
+                      <KindBadge kind={row.kind} />
+                      {row.returned && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300">반품</span>}
+                    </div>
                   </td>
                   <td className="px-4 py-3 font-medium">{row.company}</td>
                   <td className="px-4 py-3">{row.product}</td>
                   <td className="px-4 py-3">{row.floor ? `${row.floor}층` : '-'}</td>
                   <td className="px-4 py-3">{lotLabel(row.kind, row.lot)}</td>
-                  <td className={`px-4 py-3 text-right tabular-nums ${quantityTone(row.kind)}`}>{formatQuantity(row.quantity, row.unit)}</td>
+                  <td className={cn('px-4 py-3 text-right tabular-nums', row.returned ? 'text-muted-foreground line-through' : quantityTone(row.kind))}>{formatQuantity(row.quantity, row.unit)}</td>
                   {showQuality && (
                     <>
                       <td className="px-4 py-3 text-right">
@@ -1847,6 +1865,17 @@ function MovementTable({
                         <Button type="button" size="sm" variant="outline" onClick={() => onEdit?.(row)}>
                           <Pencil className="mr-1 h-3.5 w-3.5" /> 수정
                         </Button>
+                        {row.source === 'inventory' && onReturn ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className={row.returned ? undefined : 'border-rose-300 text-rose-600 hover:bg-rose-50'}
+                            onClick={() => onReturn(row)}
+                          >
+                            <Undo2 className="mr-1 h-3.5 w-3.5" /> {row.returned ? '반품 취소' : '반품'}
+                          </Button>
+                        ) : null}
                         {row.source === 'inventory' && onDelete ? (
                           <Button
                             type="button"
@@ -1872,11 +1901,13 @@ function MovementTable({
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-4 items-center gap-3">
-      <span className="text-right text-sm font-medium">{label}</span>
-      <div className="col-span-3">{children}</div>
+    <div className="space-y-1.5">
+      <span className="block text-xs font-semibold text-muted-foreground">{label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+      </span>
+      {children}
     </div>
   )
 }

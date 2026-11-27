@@ -50,12 +50,11 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => str(a.lotNo).localeCompare(str(b.lotNo), 'ko', { numeric: true }))
   const cardIds = new Set(cards.map((card) => card.id))
   const sheetIds = new Set(cards.map((card) => str(card.sourceIncomingId)).filter(Boolean))
-  const sheets = sheetIds.size > 0 ? await findRecords<Row>('incoming-inspections', (row) => sheetIds.has(row.id)) : []
+  // 이력카드가 아직 없어도 같은 바코드로 연결된 수입검사·출하성적서는 함께 찾는다.
+  const sheets = await findRecords<Row>('incoming-inspections', (row) => sheetIds.has(row.id) || str(row.barcode).toUpperCase() === barcodeKey)
   const sheetOf = new Map(sheets.map((sheet) => [sheet.id, sheet]))
-  const reports = cardIds.size > 0
-    ? (await findRecords<Row>('outgoing-reports', (row) => cardIds.has(str(row.sourceLotCardId))))
-        .sort((a, b) => str(a.issuedOn).localeCompare(str(b.issuedOn)))
-    : []
+  const reports = (await findRecords<Row>('outgoing-reports', (row) => cardIds.has(str(row.sourceLotCardId)) || str(row.barcode).toUpperCase() === barcodeKey))
+    .sort((a, b) => str(a.issuedOn).localeCompare(str(b.issuedOn)))
   const cardLot = new Map(cards.map((card) => [card.id, str(card.lotNo)]))
 
   const ownInbound = record.inventoryId
@@ -150,10 +149,17 @@ export async function GET(request: NextRequest) {
     if (parts.length > 0) return `${parts.join(' · ')} μm`
     return str(fallback) ? `${str(fallback)} μm` : ''
   }
+  // 작업 이력에는 '완료'를 누른 서류만 올린다. 완료를 취소하면 다시 빠진다.
+  // 수입검사: 성적서 한 장에 이력카드가 여러 장 붙어도 한 번만 올린다.
+  const pushedSheets = new Set<string>()
   for (const card of cards) {
     const sheet = sheetOf.get(str(card.sourceIncomingId))
+    if (sheet && sheet.done === true && !pushedSheets.has(sheet.id)) {
+      pushedSheets.add(sheet.id)
+      push('수입검사성적서', sheet.inspectedOn, '수입검사', { judge: sheet.judgment, detail: [str(sheet.thicknessValue) && `두께 ${str(sheet.thicknessValue)}`, str(sheet.widthValue) && `전폭 ${str(sheet.widthValue)}`].filter(Boolean).join(' · ') })
+    }
+    if (card.done !== true) continue
     const lot = str(card.lotNo)
-    push('이력카드', card.incomingDate || sheet?.inspectedOn, '수입검사', { judge: card.incomingJudge || sheet?.judgment, detail: widths(card.incomingFullWidth, card.incomingGap, card.incomingPlateWidth), lot })
     push('이력카드', card.maskDate, '마스킹', { judge: card.maskJudge, detail: widths(card.maskFullWidth, card.maskGap, card.maskPlateWidth), lot })
     push('이력카드', card.niDate, 'Ni 도금', { judge: card.niJudge, detail: thickness(card.niFirst, card.niLast, card.niThickness), lot })
     push('이력카드', card.auDate, 'Au 도금', { judge: card.auJudge, detail: thickness(card.auFirst, card.auLast, card.auThickness), lot })
@@ -163,6 +169,7 @@ export async function GET(request: NextRequest) {
     push('작업일보', log.date, '작업', { detail: `작업 ${log.work.toLocaleString('ko-KR')}${log.unit}${log.defect > 0 ? ` · 불량 ${log.defect.toLocaleString('ko-KR')}` : ''}` })
   }
   for (const report of reports) {
+    if (report.done !== true) continue
     push('출하성적서', report.issuedOn, '출하성적서 발행', { judge: report.judgment, detail: str(report.customer), lot: cardLot.get(str(report.sourceLotCardId)) })
   }
   steps.sort((a, b) => a.date.localeCompare(b.date))
@@ -179,7 +186,18 @@ export async function GET(request: NextRequest) {
 
   const cardWorkDates = cards.flatMap((card) => [card.workDate, card.niDate, card.auDate, card.snDate, card.maskDate]).map(day).filter(Boolean)
   const workDates = [...workLogs.map((log) => log.date), ...cardWorkDates].filter(Boolean).sort()
-  const workPeriod = workDates.length === 0 ? '' : workDates[0] === workDates[workDates.length - 1] ? workDates[0] : `${workDates[0]} ~ ${workDates[workDates.length - 1]}`
+  // 작업 기간: 현장 작업에서 처음 '작업 시작'을 누른 시각 ~ 마지막 롤 '작업 완료' 시각. 아직 남은 롤이 있으면 '~ 진행 중'.
+  // 현장 작업 기록이 없으면 예전처럼 작업일보·이력카드 작업일자로 잡는다.
+  const stamp = (value: unknown) => {
+    const at = Date.parse(str(value))
+    return Number.isNaN(at) ? '' : new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(at))
+  }
+  const starts = cards.map((card) => str(card.workStartedAt)).filter(Boolean).sort()
+  const allDone = cards.length > 0 && cards.every((card) => card.workStatus === 'done')
+  const ends = cards.map((card) => str(card.workDoneAt)).filter(Boolean).sort()
+  const workPeriod = starts.length > 0
+    ? `${stamp(starts[0])} ~ ${allDone && ends.length > 0 ? stamp(ends[ends.length - 1]) : '진행 중'}`
+    : workDates.length === 0 ? '' : workDates[0] === workDates[workDates.length - 1] ? workDates[0] : `${workDates[0]} ~ ${workDates[workDates.length - 1]}`
 
   const result: TraceResult = {
     barcode: record.barcode,

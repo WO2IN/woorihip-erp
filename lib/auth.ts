@@ -220,6 +220,13 @@ export async function deleteUser(id: string) {
   await query('DELETE FROM users WHERE id = $1', [id])
 }
 
+/** 문서 승인란에 찍는 승인자(표시 이름으로 찾는다)의 서명 id. 계정이 없으면 null. */
+export async function findSignerIdByName(displayName: string): Promise<string | null> {
+  await usersReady()
+  const [row] = await query<{ id: string }>('SELECT id FROM users WHERE display_name = $1 AND signature IS NOT NULL ORDER BY created_at LIMIT 1', [displayName])
+  return row?.id ?? null
+}
+
 export async function readUserSignature(id: string) {
   await usersReady()
   const [row] = await query<{ signature: Buffer | null }>('SELECT signature FROM users WHERE id = $1', [id])
@@ -242,6 +249,7 @@ export function toPublicUser(user: User) {
     floor: user.floor,
     navOrder: user.navOrder ?? null,
     hasSignature: Boolean(user.hasSignature),
+    ...(user.jobTitle ? { jobTitle: user.jobTitle } : {}),
   }
 }
 
@@ -373,6 +381,7 @@ export function canManageQualityRecords(role: UserRole): boolean {
 
 export async function getUserFromHeaders(headers: Headers): Promise<{
   id: string
+  username: string
   displayName: string
   role: UserRole
   floor?: 1 | 2 | 3
@@ -383,6 +392,7 @@ export async function getUserFromHeaders(headers: Headers): Promise<{
   void touchUserLastSeen(user.id)
   return {
     id: user.id,
+    username: user.username,
     displayName: user.displayName,
     role: user.role,
     floor: user.floor,

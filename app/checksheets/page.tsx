@@ -2,7 +2,6 @@ import { getEquipmentList } from '@/app/actions/equipment'
 import { getFiveSTargets } from '@/app/actions/five-s'
 import { getTempHumidityTargets } from '@/app/actions/temp-humidity'
 import { getTodayCheckStatuses } from '@/app/actions/today-status'
-import { SiteHeader } from '@/components/layout/site-header'
 import { FloorHome } from '@/components/checksheets/floor-home'
 import { FLOOR_OPTIONS, detectFloor } from '@/lib/floor'
 import { currentActor } from '@/lib/check-access'
@@ -41,14 +40,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   ])
   const hidden = new Set(hiddenLines)
   const processLines = processTemplates.filter((template) => !hidden.has(template.id))
-  const processCovered = (floor: string | number) => processChecks.some(
+  // 공정 점검은 점검표(라인)마다 따로 본다. 같은 층의 다른 점검표를 썼다고 완료가 되지 않는다.
+  const lineCovered = (template: ProcessTemplate) => processChecks.some(
     (record: ProcessCheckRecord) =>
       record.writtenDate === todayDate &&
-      String(recordFloor(record)) === String(floor) &&
-      !hidden.has(recordLineId(record)),
+      String(recordFloor(record)) === String(template.floor) &&
+      recordLineId(record) === template.id,
   )
   const processStatusOf = (template: ProcessTemplate): TodayStatus => {
-    if (processCovered(template.floor)) return 'done'
+    if (lineCovered(template)) return 'done'
     return today.weekend ? 'off' : 'missing'
   }
   const statusOf = (status: TodayStatus | undefined) => {
@@ -78,7 +78,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       fiveSItems.filter((item) => today.fiveS[item.id] === 'missing').length +
       dailyItems.filter((item) => today.daily[item.id] === 'missing').length +
       tempItems.filter((item) => today.temp[item.id] === 'missing').length +
-      (processItems.length === 0 || today.weekend || processCovered(option.floor) ? 0 : 1)
+      (today.weekend ? 0 : processItems.filter((item) => !lineCovered(item)).length)
     return {
       floor: option.floor,
       label: option.label,
@@ -161,7 +161,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       count: filteredProcessLines.length,
       icon: 'factory' as const,
       tone: 'emerald' as const,
-      missingCount: !selectedFloor || today.weekend || filteredProcessLines.length === 0 || processCovered(selectedFloor) ? 0 : 1,
+      missingCount: !selectedFloor || today.weekend ? 0 : filteredProcessLines.filter((item) => !lineCovered(item)).length,
       items: filteredProcessLines.map((template) => ({
         id: template.id,
         name: template.name,
@@ -175,7 +175,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="min-h-dvh">
-      <SiteHeader />
       <FloorHome
         selectedFloor={selectedFloor}
         floorStats={floorStats}

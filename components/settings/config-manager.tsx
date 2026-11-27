@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { notifyDataChanged } from '@/lib/data-events'
 import { getJsonAuthHeaders, getSession } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
+import { searchText } from '@/lib/product-name'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -188,9 +189,9 @@ export function ConfigManager({
     forceDeleteTarget && deletingItem === forceDeleteTarget,
   )
 
-  const keyword = query.trim().toLowerCase()
+  const keyword = searchText(query.trim())
   const indexed = items.map((value, index) => ({ value, index }))
-  const filtered = indexed.filter(({ value }) => !keyword || value.toLowerCase().includes(keyword))
+  const filtered = indexed.filter(({ value }) => !keyword || searchText(value).includes(keyword))
   const visible = sort === 'name'
     ? [...filtered].sort((a, b) => a.value.localeCompare(b.value, 'ko'))
     : filtered

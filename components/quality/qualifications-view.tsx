@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { QUALIFICATION_ID_PHOTO_PLACEHOLDER_URL } from '@/lib/qualification-id-photo-placeholder'
 import { useAuth } from '@/components/auth/auth-context'
 import { PAGE_SHELL_RELATIVE, PageHeader } from '@/components/shared/page-header'
+import { SectionTabs } from '@/components/shared/section-tabs'
 import { InspectorEvalDraft, InternalAuditorEvalDraft } from '@/components/quality/internal-auditor-eval-draft'
 import { RecognitionCertificateDraft } from '@/components/quality/recognition-certificate-draft'
 import { QualificationPrintHub } from '@/components/quality/qualification-print-hub'
@@ -188,26 +189,7 @@ export function QualificationsView() {
         description="자격·인증 대장, 적격성·심사원·검사원 평가, 갱신·취소 및 양식 출력을 한곳에서 관리합니다."
       />
 
-      <nav
-        className="-mx-1 flex gap-1 overflow-x-auto border-b pb-px"
-        aria-label="자격인증 관리 메뉴"
-      >
-        {tabButtons.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={cn(
-              'shrink-0 border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors',
-              tab === key
-                ? 'border-emerald-600 text-emerald-700 dark:border-emerald-400 dark:text-emerald-300'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <SectionTabs items={tabButtons} value={tab} onChange={setTab} label="자격인증 관리 메뉴" />
 
       {tab === 'ledger' ? (
         <QualificationLedgerTab />

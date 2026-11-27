@@ -9,9 +9,11 @@ interface ComingSoonProps {
   title: string
   description: string
   plans: string[]
+  /** 상태 배지 문구 (기본: 향후 추가 예정) */
+  status?: string
 }
 
-export function ComingSoon({ group, title, description, plans }: ComingSoonProps) {
+export function ComingSoon({ group, title, description, plans, status = '향후 추가 예정' }: ComingSoonProps) {
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
@@ -27,7 +29,7 @@ export function ComingSoon({ group, title, description, plans }: ComingSoonProps
           <Construction className="h-7 w-7" />
         </span>
         <span className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-          <CalendarClock className="h-3.5 w-3.5" /> 향후 추가 예정
+          <CalendarClock className="h-3.5 w-3.5" /> {status}
         </span>
         <p className="mt-3 text-base font-semibold">{description}</p>
         <p className="mt-1 text-sm text-muted-foreground">현재 준비 중인 메뉴. 기능이 완성되면 이 화면에서 바로 사용할 수 있다.</p>

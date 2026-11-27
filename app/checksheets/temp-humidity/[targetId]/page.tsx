@@ -7,7 +7,6 @@ import {
   updateTempHumidityTarget,
   toggleTempHumidityHoliday,
 } from '@/app/actions/temp-humidity'
-import { SiteHeader } from '@/components/layout/site-header'
 import { ChecksheetBackLink } from '@/components/checksheets/checksheet-back-link'
 import { PageHeader } from '@/components/shared/page-header'
 import { NextCheckLink } from '@/components/checksheets/next-check-link'
@@ -93,7 +92,6 @@ export default async function TempHumidityPage({
           #temp-humidity-print-sheet .temp-humidity-table-wrap .print-sheet table { height: auto !important; min-height: 0 !important; flex: none !important; }
         }
       `}</style>
-      <SiteHeader />
       <main
         id="temp-humidity-print-sheet"
         className="print-page mx-auto flex w-full max-w-[1500px] flex-col gap-5 p-4 sm:p-6 print:h-auto print:min-h-0 print:max-w-none print:gap-1 print:p-0"

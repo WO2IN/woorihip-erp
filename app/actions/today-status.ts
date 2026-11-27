@@ -8,8 +8,8 @@ function dayOffChecker(year: number, month: number, holidays: number[] | undefin
   return (day: number) => isDayOffDate(year, month, day, holidays ?? [], workdays ?? [])
 }
 
-export async function getTodayCheckStatuses() {
-  const now = new Date()
+export async function getTodayCheckStatuses(targetDate?: string) {
+  const now = targetDate ? new Date(`${targetDate}T00:00:00`) : new Date()
   const year = now.getFullYear()
   const month = now.getMonth() + 1
   const day = now.getDate()

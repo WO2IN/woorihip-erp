@@ -344,7 +344,8 @@ export function displayProcessAnswer(field: ProcessFieldSpec, value: ProcessAnsw
     if (picked.length > 0) return picked.join(' · ')
   }
   if (field.type === 'number' && typeof value === 'number') {
-    const text = String(Math.round(value))
+    // 소수점을 버리지 않는다 (예: 57.9 → 57.9, 4.5 → 4.5, 56 → 56)
+    const text = formatSpecNumber(value)
     return field.unit ? `${text} ${field.unit}` : text
   }
   return field.unit ? `${value} ${field.unit}` : String(value)

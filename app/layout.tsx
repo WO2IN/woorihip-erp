@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
+import { ConfirmModalHost } from '@/components/shared/confirm-modal'
 import { AppShell } from '@/components/layout/app-shell'
 
 export const metadata: Metadata = {
@@ -29,6 +30,7 @@ export default function RootLayout({
         </AppShell>
 
         <Toaster richColors position="top-right" />
+        <ConfirmModalHost />
       </body>
     </html>
   )

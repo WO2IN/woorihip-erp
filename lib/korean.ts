@@ -1,3 +1,4 @@
+import { searchText } from './product-name'
 // 한국어 초성 추출 유틸리티
 
 const CHOSUNG = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
@@ -47,6 +48,29 @@ export function matchesChosung(str: string, filter: string): boolean {
   return group.includes(first)
 }
 
+/**
+ * 알파벳을 한글로 읽은 소리. 업체명이 'PTC → 피티씨' 처럼 한글로 등록돼 있어도 영어로 찾을 수 있게 한다.
+ * 흔히 섞어 쓰는 표기는 여러 개를 둔다. (C: 씨·시, G: 지·쥐, R: 알·아르, Z: 지·제트·젯 등)
+ */
+const LETTER_SOUNDS: Record<string, string[]> = {
+  a: ['에이'], b: ['비'], c: ['씨', '시'], d: ['디'], e: ['이'], f: ['에프', '에후'], g: ['지', '쥐'],
+  h: ['에이치', '에치'], i: ['아이'], j: ['제이'], k: ['케이'], l: ['엘'], m: ['엠'], n: ['엔'], o: ['오'],
+  p: ['피'], q: ['큐'], r: ['알', '아르'], s: ['에스'], t: ['티'], u: ['유'], v: ['브이', '비'],
+  w: ['더블유', '더블류'], x: ['엑스'], y: ['와이'], z: ['지', '제트', '젯'],
+}
+
+/** 알파벳이 든 검색어를 한글 읽는 소리 정규식으로 바꾼다. 예) 'ptc' → /피티(씨|시)/. 알파벳이 없으면 null. */
+function letterSoundPattern(query: string): RegExp | null {
+  const lower = query.toLowerCase()
+  if (!/[a-z]/.test(lower)) return null
+  const source = [...lower].map((char) => {
+    const sounds = LETTER_SOUNDS[char]
+    if (sounds) return sounds.length === 1 ? sounds[0] : `(?:${sounds.join('|')})`
+    return /\s/.test(char) ? '\\s*' : char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }).join('')
+  return new RegExp(source)
+}
+
 /** 초성 검색 — 검색어의 각 글자 초성이 대상 문자열 초성 순서와 일치하는지 확인 */
 export function chosungSearch(target: string, query: string): boolean {
   if (!query) return true
@@ -70,6 +94,8 @@ export function chosungSearch(target: string, query: string): boolean {
     return false
   }
 
-  // 일반 텍스트 포함 검색
-  return target.toLowerCase().includes(query.toLowerCase())
+  // 일반 텍스트 포함 검색. 0.15x91 로 찾아도 0.15*91 이 나오게 x·X·* 를 같게 본다.
+  if (searchText(target).includes(searchText(query))) return true
+  // 영어로 쳐도 한글 업체명이 나오게 한다. 예) ptc → 피티씨
+  return letterSoundPattern(query)?.test(target) ?? false
 }

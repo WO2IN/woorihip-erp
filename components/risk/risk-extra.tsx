@@ -47,6 +47,8 @@ import {
   type RiskMethod,
   type RiskSettings,
 } from '@/lib/risk/model'
+import { confirmModal } from '@/components/shared/confirm-modal'
+import { toast } from 'sonner'
 
 const PAGE_SIZE = 10
 
@@ -630,14 +632,15 @@ export function RiskMaster({
             void file.text().then(setBackupText)
           }} />
           <div className="mt-3 flex justify-end gap-2">
-            <Button type="button" variant="outline" disabled={!editable} onClick={() => { if (window.confirm('모든 평가를 예시 데이터로 바꿉니다.')) onReset() }}>예시로 초기화</Button>
+            <Button type="button" variant="outline" disabled={!editable} onClick={() => { void confirmModal({ title: '모든 평가를 예시 데이터로 바꿀까요?', confirmLabel: '초기화', destructive: true }).then((ok) => { if (ok) onReset() }) }}>예시로 초기화</Button>
             <Button type="button" disabled={!editable} onClick={() => {
               try {
                 const parsed = JSON.parse(backupText) as { settings?: RiskSettings; assessments?: RiskAssessment[] }
                 if (!parsed.settings?.biz || !Array.isArray(parsed.assessments)) throw new Error('백업 형식이 아닙니다.')
-                if (window.confirm(`평가 ${parsed.assessments.length}건으로 현재 데이터를 바꿉니다.`)) onImport({ settings: parsed.settings, assessments: parsed.assessments })
+                const next = { settings: parsed.settings, assessments: parsed.assessments }
+                void confirmModal({ title: `평가 ${parsed.assessments.length}건으로 현재 데이터를 바꿀까요?`, confirmLabel: '가져오기', destructive: true }).then((ok) => { if (ok) onImport(next) })
               } catch (error) {
-                window.alert(error instanceof Error ? error.message : 'JSON 형식이 올바르지 않습니다.')
+                toast.error(error instanceof Error ? error.message : 'JSON 형식이 올바르지 않습니다.')
               }
             }}>가져오기</Button>
           </div>

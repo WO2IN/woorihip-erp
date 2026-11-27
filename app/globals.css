@@ -51,7 +51,7 @@
 
 :root {
   color-scheme: light;
-  --background: oklch(0.972 0.004 240);
+  --background: oklch(0.95 0.005 240);
   --foreground: oklch(0.13 0.012 240);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.13 0.012 240);
@@ -141,153 +141,11 @@
   }
 }
 
-/* 카드 사이 회색 바탕. 상단 띠 색이 아래로 옅어진다 */
-.app-shell-main[data-page-tone] {
-  background-color: var(--background);
-  background-attachment: fixed;
-  background-repeat: no-repeat;
-}
-
-.app-shell-main[data-page-tone='rose'] {
-  background-image: linear-gradient(180deg, oklch(0.91 0.06 16) 0, oklch(0.96 0.025 18) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='blue'] {
-  background-image:
-    radial-gradient(680px 460px at 0% -6%, oklch(0.84 0.1 265 / 0.55), transparent 68%),
-    radial-gradient(620px 420px at 100% 0%, oklch(0.88 0.1 55 / 0.5), transparent 66%),
-    radial-gradient(540px 380px at 78% 100%, oklch(0.9 0.08 175 / 0.28), transparent 70%),
-    linear-gradient(165deg, oklch(0.94 0.03 250) 0, oklch(0.97 0.012 70) 36rem, var(--background) 52rem);
-}
-.app-shell-main[data-page-tone='indigo'] {
-  background-image: linear-gradient(180deg, oklch(0.92 0.045 278) 0, oklch(0.965 0.02 278) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='green'] {
-  background-image: linear-gradient(180deg, oklch(0.93 0.045 158) 0, oklch(0.968 0.02 160) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='cyan'] {
-  background-image: linear-gradient(180deg, oklch(0.93 0.04 210) 0, oklch(0.968 0.018 212) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='amber'] {
-  background-image: linear-gradient(180deg, oklch(0.91 0.075 68) 0, oklch(0.96 0.032 62) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='violet'] {
-  background-image: linear-gradient(180deg, oklch(0.92 0.045 304) 0, oklch(0.965 0.02 304) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='teal'] {
-  background-image: linear-gradient(180deg, oklch(0.93 0.035 188) 0, oklch(0.968 0.016 190) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='orange'] {
-  background-image: linear-gradient(180deg, oklch(0.92 0.06 40) 0, oklch(0.965 0.025 38) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='red'] {
-  background-image: linear-gradient(180deg, oklch(0.93 0.028 27) 0, oklch(0.968 0.012 26) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='slate'] {
-  background-image: linear-gradient(180deg, oklch(0.93 0.012 252) 0, oklch(0.965 0.006 252) 24rem, var(--background) 48rem);
-}
-.app-shell-main[data-page-tone='steel'] {
-  background-image: linear-gradient(180deg, oklch(0.92 0.02 256) 0, oklch(0.962 0.01 256) 24rem, var(--background) 48rem);
-}
-
-.dark .app-shell-main[data-page-tone='rose'] {
-  background-image: linear-gradient(180deg, oklch(0.3 0.06 16) 0, oklch(0.22 0.03 18) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='blue'] {
-  background-image:
-    radial-gradient(680px 460px at 0% -6%, oklch(0.4 0.1 265 / 0.55), transparent 68%),
-    radial-gradient(620px 420px at 100% 0%, oklch(0.42 0.09 55 / 0.4), transparent 66%),
-    radial-gradient(540px 380px at 78% 100%, oklch(0.36 0.07 175 / 0.28), transparent 70%),
-    linear-gradient(165deg, oklch(0.22 0.04 255) 0, oklch(0.19 0.02 50) 36rem, var(--background) 52rem);
-}
-
-@property --wash-violet {
-  syntax: '<color>';
-  inherits: false;
-  initial-value: oklch(0.84 0.1 265);
-}
-@property --wash-amber {
-  syntax: '<color>';
-  inherits: false;
-  initial-value: oklch(0.88 0.1 55);
-}
-@property --wash-mint {
-  syntax: '<color>';
-  inherits: false;
-  initial-value: oklch(0.9 0.08 175);
-}
-@property --wash-x {
-  syntax: '<percentage>';
-  inherits: false;
-  initial-value: 0%;
-}
-@property --wash-y {
-  syntax: '<percentage>';
-  inherits: false;
-  initial-value: 0%;
-}
-@property --wash-x2 {
-  syntax: '<percentage>';
-  inherits: false;
-  initial-value: 100%;
-}
-@property --wash-y2 {
-  syntax: '<percentage>';
-  inherits: false;
-  initial-value: 100%;
-}
-
-.app-shell-main[data-page-wave] {
-  --wash-violet: oklch(0.9 0.05 248 / 0.5);
-  --wash-amber: oklch(0.92 0.04 72 / 0.38);
-  --wash-mint: oklch(0.92 0.035 198 / 0.32);
-  --wash-x3: 50%;
-  --wash-y3: 46%;
-  background-image:
-    radial-gradient(78% 62% at var(--wash-x) var(--wash-y), var(--wash-violet), transparent 74%),
-    radial-gradient(70% 58% at var(--wash-x2) var(--wash-y2), var(--wash-amber), transparent 76%),
-    radial-gradient(88% 70% at var(--wash-x3) var(--wash-y3), var(--wash-mint), transparent 78%),
-    linear-gradient(180deg, oklch(0.95 0.018 250) 0, var(--background) 46rem);
-}
-
-.dark .app-shell-main[data-page-wave] {
-  --wash-violet: oklch(0.4 0.07 248 / 0.55);
-  --wash-amber: oklch(0.38 0.05 72 / 0.4);
-  --wash-mint: oklch(0.36 0.045 198 / 0.35);
-  background-image:
-    radial-gradient(78% 62% at var(--wash-x) var(--wash-y), var(--wash-violet), transparent 74%),
-    radial-gradient(70% 58% at var(--wash-x2) var(--wash-y2), var(--wash-amber), transparent 76%),
-    radial-gradient(88% 70% at var(--wash-x3) var(--wash-y3), var(--wash-mint), transparent 78%),
-    linear-gradient(180deg, oklch(0.22 0.03 250) 0, var(--background) 46rem);
-}
-.dark .app-shell-main[data-page-tone='indigo'] {
-  background-image: linear-gradient(180deg, oklch(0.27 0.05 278) 0, oklch(0.21 0.025 278) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='green'] {
-  background-image: linear-gradient(180deg, oklch(0.28 0.045 158) 0, oklch(0.21 0.022 160) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='cyan'] {
-  background-image: linear-gradient(180deg, oklch(0.27 0.04 210) 0, oklch(0.21 0.02 212) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='amber'] {
-  background-image: linear-gradient(180deg, oklch(0.3 0.05 58) 0, oklch(0.22 0.025 55) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='violet'] {
-  background-image: linear-gradient(180deg, oklch(0.28 0.05 304) 0, oklch(0.21 0.025 304) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='teal'] {
-  background-image: linear-gradient(180deg, oklch(0.27 0.04 188) 0, oklch(0.21 0.02 190) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='orange'] {
-  background-image: linear-gradient(180deg, oklch(0.32 0.07 40) 0, oklch(0.22 0.03 38) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='red'] {
-  background-image: linear-gradient(180deg, oklch(0.28 0.04 27) 0, oklch(0.21 0.02 26) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='slate'] {
-  background-image: linear-gradient(180deg, oklch(0.26 0.015 252) 0, oklch(0.2 0.01 252) 24rem, var(--background) 48rem);
-}
-.dark .app-shell-main[data-page-tone='steel'] {
-  background-image: linear-gradient(180deg, oklch(0.26 0.025 256) 0, oklch(0.2 0.012 256) 24rem, var(--background) 48rem);
+/* 휴대폰·태블릿에서는 월간 점검표 날짜 칸이 눌릴 만큼 넓게 두고 가로로 스크롤한다. */
+@media screen and (max-width: 1023.98px) {
+  .checksheet-table {
+    min-width: 1280px;
+  }
 }
 
 @media print {
@@ -451,6 +309,10 @@
   body.lot-card-print .lot-card-sheet {
     width: 200mm;
     max-width: 200mm;
+    /* 화면용 A4 높이는 풀고, 내용이 한 장을 넘으면 인쇄 직전에 잰 비율(--print-zoom)만큼 줄인다 */
+    height: auto !important;
+    min-height: 0 !important;
+    zoom: var(--print-zoom, 1);
     margin: 0 auto;
     padding: 0 !important;
     box-shadow: none !important;
@@ -470,6 +332,11 @@
 
   body.lot-card-print .lot-card-sheet .work-date-print {
     display: inline !important;
+  }
+
+  /* 날짜 칸의 달력 아이콘은 인쇄하지 않는다 */
+  body.lot-card-print .lot-card-sheet input[type='date']::-webkit-calendar-picker-indicator {
+    display: none !important;
   }
 
   body.lot-card-print .lot-card-sheet svg {
@@ -529,9 +396,16 @@
 
   body.incoming-inspection-print .incoming-sheet .sheet-combo {
     height: auto !important;
-    justify-content: center;
+    justify-content: flex-start !important;
+    text-align: left !important;
     color: #0f172a !important;
     background: transparent !important;
+  }
+
+  /* 선택 상자 버튼은 브라우저 기본으로 가운데 정렬이라, 값 글자를 왼쪽으로 밀어 준다 */
+  body.incoming-inspection-print .incoming-sheet .sheet-combo > span:first-child {
+    margin-right: auto !important;
+    text-align: left !important;
   }
 
   body.incoming-inspection-print .incoming-sheet .sheet-combo svg,
@@ -2325,7 +2199,8 @@ body.kpi-close-print-delivery .kpi-close-report td {
     font-size: 11px !important;
   }
 
-  .kpi-close-stats > div p:last-child {
+  /* 최고/최저 카드(kpi-close-stat-range)의 둘째 줄 글자는 아래 규칙에서 제외 */
+  .kpi-close-stats > div:not(.kpi-close-stat-range) p:last-child {
     margin-top: 1.5mm !important;
     font-size: 22px !important;
   }
@@ -2445,7 +2320,7 @@ body.kpi-close-print-delivery .kpi-close-report td {
   }
 
   body.kpi-close-print-delivery .kpi-close-stats.kpi-close-stats-5 {
-    grid-template-columns: repeat(5, 1fr) !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
   }
 
   body.kpi-close-print-delivery .kpi-close-stats:not(.kpi-close-stats-5) {
@@ -2460,7 +2335,7 @@ body.kpi-close-print-delivery .kpi-close-report td {
     font-size: 10px !important;
   }
 
-  body.kpi-close-print-delivery .kpi-close-stats > div p:last-child {
+  body.kpi-close-print-delivery .kpi-close-stats > div:not(.kpi-close-stat-range) p:last-child {
     margin-top: 0.6mm !important;
     font-size: 15px !important;
   }
@@ -3008,6 +2883,13 @@ body.kpi-close-print-delivery .kpi-close-report td {
   .mtbf-mttr-print-sheet thead th:last-child {
     background-color: #1e293b !important;
   }
+}
+
+/* 상단 탭으로 연 화면(iframe, ?tabmode=1): 메뉴·머리글·탭 줄을 숨기고 화면만 보여 준다 */
+html.tab-frame .app-shell > aside,
+html.tab-frame .app-shell-column > header,
+html.tab-frame .app-tabbar {
+  display: none !important;
 }
 
 /* 제품 이력 창의 서류 미리보기(iframe, 주소에 ?embed=1). 메뉴·머리글·목록·버튼을 숨기고 서류 한 장만 보여 준다. */

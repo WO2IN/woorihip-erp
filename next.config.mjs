@@ -10,6 +10,8 @@ const nextConfig = {
     turbopackFileSystemCacheForDev: false,
   },
   serverExternalPackages: ['minio', 'pg', 'tesseract.js', 'sharp'],
+  // 개발 모드 화면 구석의 동그라미(N) 표시를 끈다.
+  devIndicators: false,
 
   typescript: {
     ignoreBuildErrors: true,

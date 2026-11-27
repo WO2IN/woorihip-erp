@@ -3,7 +3,11 @@ import { appendAuditLog, appendInventory, deleteInventory, readInventory, update
 import { canEdit, getUserFromHeaders } from '@/lib/auth'
 import { canOperateFloor } from '@/lib/access'
 import { normalizeIssueDate } from '@/lib/lot'
-import { issueTraceBarcode } from '@/lib/trace-barcode'
+import { normalizeProductName } from '@/lib/product-name'
+import { canIssueTraceBarcode, issueTraceBarcode, TRACE_BARCODE_COLLECTION } from '@/lib/trace-barcode'
+import { lineName, linesOf } from '@/lib/production-lines'
+import { deleteRecordsWhere } from '@/lib/records'
+import type { TraceBarcode } from '@/lib/trace'
 import type { WorkStage } from '@/lib/stock'
 
 const STAGE_LABEL = { waiting: '입고 대기', working: '작업 중', ready: '출고 대기' } as const
@@ -13,6 +17,11 @@ function inventoryChanges(before: InventoryRecord, after: InventoryRecord) {
   if (before.company !== after.company) lines.push(`업체: ${before.company} → ${after.company}`)
   if (before.product !== after.product) lines.push(`품목: ${before.product} → ${after.product}`)
   if (before.floor !== after.floor) lines.push(`층: ${before.floor}층 → ${after.floor}층`)
+  const beforeLine = (before as { line?: number }).line || 0
+  const afterLine = (after as { line?: number }).line || 0
+  if (before.floor !== after.floor || beforeLine !== afterLine) {
+    lines.push(`라인: ${lineName(before.floor ?? 1, beforeLine) || '-'} → ${lineName(after.floor ?? 1, afterLine) || '-'}`)
+  }
   if (before.quantity !== after.quantity || before.quantityUnit !== after.quantityUnit) {
     lines.push(`수량: ${before.quantity}${before.quantityUnit} → ${after.quantity}${after.quantityUnit}`)
   }
@@ -69,6 +78,8 @@ export async function DELETE(req: NextRequest) {
   if (!removed) {
     return NextResponse.json({ error: '입고 내역을 찾을 수 없습니다.' }, { status: 404 })
   }
+  // 이 입고로 발급된 바코드도 바코드 대장에서 지운다.
+  await deleteRecordsWhere<TraceBarcode>(TRACE_BARCODE_COLLECTION, (row) => row.source === 'inbound' && row.inventoryId === id)
 
   await appendAuditLog({
     action: 'DELETE',
@@ -95,6 +106,26 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: '수정할 입고 ID가 필요합니다.' }, { status: 400 })
   }
   const previous = (await readInventory()).find((item) => item.id === body.id)
+  // 반품 처리 / 반품 취소: 입고내역에는 남기고 재고 계산에서만 뺀다.
+  if ('returned' in body && body.quantity == null) {
+    if (!previous) return NextResponse.json({ error: '입고 내역을 찾을 수 없습니다.' }, { status: 404 })
+    if (!canOperateFloor(requestUser, previous.floor)) {
+      return NextResponse.json({ error: '다른 층 입고는 반품 처리할 수 없습니다.' }, { status: 403 })
+    }
+    const returned = body.returned === true
+    const updated = await updateInventory(body.id, returned
+      ? { returned: true, returnedAt: new Date().toISOString(), returnedBy: requestUser.displayName }
+      : { returned: false, returnedAt: '', returnedBy: '' })
+    if (!updated) return NextResponse.json({ error: '입고 내역을 찾을 수 없습니다.' }, { status: 404 })
+    await appendAuditLog({
+      action: 'UPDATE',
+      target: 'inventory',
+      detail: [`${updated.company} · ${updated.product}`, `${updated.floor}층 · ${updated.quantity}${updated.quantityUnit} ${returned ? '반품 처리' : '반품 취소'}`].join('\n'),
+      userId: requestUser.id,
+      userName: requestUser.displayName,
+    })
+    return NextResponse.json({ success: true, data: updated })
+  }
   if ('workStage' in body && body.quantity == null) {
     if (!previous) return NextResponse.json({ error: '입고 내역을 찾을 수 없습니다.' }, { status: 404 })
     if (!canOperateFloor(requestUser, previous.floor)) {
@@ -128,6 +159,10 @@ export async function PATCH(req: NextRequest) {
   if (!canOperateFloor(requestUser, previous.floor) || !canOperateFloor(requestUser, nextFloor)) {
     return NextResponse.json({ error: '다른 층 입고는 수정할 수 없습니다.' }, { status: 403 })
   }
+  const line = body.line == null ? undefined : Number(body.line) || 0
+  if (line && !linesOf(nextFloor ?? 1).some((item) => item.no === line)) {
+    return NextResponse.json({ error: '라인이 올바르지 않습니다.' }, { status: 400 })
+  }
   let quality: { defectQuantity?: number; sampleQuantity?: number } = {}
   try {
     if (nextFloor === 3) {
@@ -144,11 +179,12 @@ export async function PATCH(req: NextRequest) {
     quantityUnit: body.quantityUnit || 'EA',
     ...(issueDate ? { issueDate } : {}),
     ...(body.company != null ? { company: String(body.company).trim() } : {}),
-    ...(body.product != null ? { product: String(body.product).trim() } : {}),
+    ...(body.product != null ? { product: normalizeProductName(String(body.product)) } : {}),
     ...(floor != null ? { floor } : {}),
+    ...(line != null ? { line } : {}),
     ...(body.lotStart != null ? { lotStart: String(body.lotStart).trim() } : {}),
     ...quality,
-  })
+  } as Partial<InventoryRecord>)
   if (!updated) return NextResponse.json({ error: '입고 내역을 찾을 수 없습니다.' }, { status: 404 })
 
   const changes = previous ? inventoryChanges(previous, updated) : [`수량 ${updated.quantity}${updated.quantityUnit}`]
@@ -190,11 +226,16 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : '입고일자가 올바르지 않습니다.' }, { status: 400 })
   }
+  const line = Number(body.line) || 0
+  if (line && !linesOf(floor).some((item) => item.no === line)) {
+    return NextResponse.json({ error: '라인이 올바르지 않습니다.' }, { status: 400 })
+  }
   const id = crypto.randomUUID()
   // 입고등록 한 건마다 제품 바코드를 하나 만든다. 이후 이력카드·출하성적서는 이 바코드에 묶인다.
-  const traceBarcode = await issueTraceBarcode({
+  // 테스트 단계: 지정 계정이 등록한 입고만 바코드를 만든다.
+  const traceBarcode = canIssueTraceBarcode(requestUser) ? await issueTraceBarcode({
     company: String(body.company),
-    product: String(body.product),
+    product: normalizeProductName(String(body.product)),
     floor,
     quantity: Number(body.quantity),
     quantityUnit: body.quantityUnit || 'EA',
@@ -202,18 +243,20 @@ export async function POST(req: NextRequest) {
     source: 'inbound',
     inventoryId: id,
     by: requestUser.displayName,
-  })
+  }) : null
   const record = {
     id,
-    barcode: traceBarcode.barcode,
+    barcode: traceBarcode?.barcode ?? '',
     company: String(body.company).trim(),
-    product: String(body.product).trim(),
+    product: normalizeProductName(String(body.product)),
     floor,
+    ...(line ? { line } : {}),
     quantity: Number(body.quantity),
     quantityUnit: body.quantityUnit || 'EA',
     issueDate,
     lotStart: body.lotStart || '',
     ...(floor === 3 ? { defectQuantity, sampleQuantity } : {}),
+    ...(body.flow === true ? { flow: true } : {}),
     movementType: '입고' as const,
     storagePath: 'INVENTORY' as const,
     createdAt: now,
@@ -230,7 +273,7 @@ export async function POST(req: NextRequest) {
       `${record.floor}층 · ${record.quantity}${record.quantityUnit} · ${record.issueDate} 입고 등록${
         record.floor === 3 ? ` · 불량 ${defectQuantity} · 검사시료 ${sampleQuantity}` : ''
       }`,
-      `바코드 ${record.barcode} 발급`,
+      ...(record.barcode ? [`바코드 ${record.barcode} 발급`] : []),
     ].join('\n'),
     userId: requestUser.id,
     userName: requestUser.displayName,

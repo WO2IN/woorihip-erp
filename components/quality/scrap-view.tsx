@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/components/auth/auth-context'
 import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
+import { SectionTabs } from '@/components/shared/section-tabs'
 import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { getJsonAuthHeaders } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
@@ -351,23 +352,14 @@ export function ScrapView() {
         title="폐기품 관리"
         description="폐기 대상의 등록, 검토, 승인 상태를 관리대장으로 기록합니다."
       />
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <nav className="flex gap-1 overflow-x-auto" aria-label="폐기품 구분">
-          {CATEGORIES.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setCategory(item)}
-              className={cn(
-                'shrink-0 border-b-2 px-3 py-2 text-sm font-semibold',
-                category === item ? 'border-emerald-700 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-800',
-              )}
-            >
-              {item}
-            </button>
-          ))}
-        </nav>
-        <div className="no-print flex flex-wrap gap-2">
+      <SectionTabs
+        className="no-print"
+        label="폐기품 구분"
+        items={CATEGORIES.map((item) => ({ key: item, label: item }))}
+        value={category}
+        onChange={setCategory}
+        actions={
+          <>
           <Button type="button" variant="outline" className="h-9 bg-white" onClick={exportCsv}>
             <Download className="size-4" /> CSV 내보내기
           </Button>
@@ -377,8 +369,9 @@ export function ScrapView() {
           <Button type="button" className="h-9 bg-emerald-700 text-white hover:bg-emerald-800" onClick={openRegister}>
             <Plus className="size-4" /> 폐기품 등록
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="no-print flex flex-wrap gap-2">
         <StatusChip label="전체" count={scoped.length} active={status === '전체'} onClick={() => setStatus('전체')} />

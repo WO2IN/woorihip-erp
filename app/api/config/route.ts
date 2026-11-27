@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readConfig, writeConfig, appendAuditLog } from '@/lib/storage'
+import { normalizeProductName } from '@/lib/product-name'
 import { canEdit, getUserFromHeaders } from '@/lib/auth'
 import { readMetadata } from '@/lib/storage'
 
@@ -73,7 +74,8 @@ export async function POST(req: NextRequest) {
   }
 
   const data = await readConfig(name)
-  const trimmed = value.trim()
+  // 품목은 0.15x91 처럼 입력해도 0.15*91 로 저장한다.
+  const trimmed = name === 'products' ? normalizeProductName(value) : value.trim()
   const existed = data.some((item) => item.trim() === trimmed)
 
   // 기존 값 제거 후 맨 앞으로 이동

@@ -34,6 +34,12 @@ export type InventoryRecord = Pick<DocumentMetadata, 'id' | 'company' | 'product
   workStage?: WorkStage
   /** 입고등록 때 발급한 제품 바코드 */
   barcode?: string
+  /** 입고 등록 화면(입고→수입검사→이력카드→출하 흐름)에서 등록한 건 */
+  flow?: boolean
+  /** 반품 처리한 입고. 입고내역에는 남기고 재고 계산에서는 뺀다. */
+  returned?: boolean
+  returnedAt?: string
+  returnedBy?: string
 }
 
 export interface AuditLogEntry {

@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { EXTERNAL_LINK_TITLE_MAX, type ExternalLink } from '@/lib/external-links'
 import { cn } from '@/lib/utils'
+import { CARD_HEADER } from '@/components/dashboard/card-band'
+import { toast } from 'sonner'
 
 const TONES = [
   'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200',
@@ -96,7 +98,7 @@ export function ExternalLinks() {
         setRemoving(null)
       } else {
         const body = await response.json().catch(() => null)
-        window.alert(body?.error ?? '링크를 삭제하지 못했습니다.')
+        toast.error(body?.error ?? '링크를 삭제하지 못했습니다.')
       }
     } finally {
       setRemoveBusy(false)
@@ -105,9 +107,11 @@ export function ExternalLinks() {
 
   return (
     <section aria-label="링크 바로가기" className="shrink-0 overflow-hidden rounded-2xl border bg-card shadow-sm">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <h2 className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
-          <Link2 className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+      <div className={cn('flex items-center justify-between px-4 py-3', CARD_HEADER)}>
+        <h2 className="flex items-center gap-2.5 text-[15px] font-bold text-white">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm ring-1 ring-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600">
+            <Link2 className="h-4 w-4" />
+          </span>
           링크 바로가기
         </h2>
         {editable && (

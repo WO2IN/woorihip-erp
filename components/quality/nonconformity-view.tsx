@@ -6,7 +6,7 @@ import { ShieldAlert } from 'lucide-react'
 import { CustomerNcView } from '@/components/quality/customer-nc-view'
 import { ProcessNcView } from '@/components/quality/process-nc-view'
 import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
-import { cn } from '@/lib/utils'
+import { SectionTabs } from '@/components/shared/section-tabs'
 
 const TABS = [
   { key: 'customer', label: '고객부적합' },
@@ -43,23 +43,7 @@ export function NonconformityView() {
         title="부적합관리"
         description="어느 업체·품목에서 어떤 부적합이 있었고, 어떻게 처리했는지 기록합니다."
       />
-      <nav className="-mx-1 flex gap-1 overflow-x-auto border-b pb-px" aria-label="부적합 구분">
-        {TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={cn(
-              'shrink-0 border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors',
-              tab === key
-                ? 'border-emerald-600 text-emerald-700 dark:border-emerald-400 dark:text-emerald-300'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <SectionTabs items={TABS} value={tab} onChange={setTab} label="부적합 구분" />
       {tab === 'customer' ? <CustomerNcView embedded /> : <ProcessNcView embedded />}
     </main>
   )

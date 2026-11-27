@@ -18,8 +18,11 @@ import { getTodayCheckStatuses } from '@/app/actions/today-status'
 import { detectFloor } from './floor'
 import { isDayOffDate, isWeekend } from './date-utils'
 import { recordFloor, recordLineId } from './process-checklist'
+import { BARCODE_STATUSES, BARCODE_STATUS_LABEL, type TraceBarcode } from './trace'
+import { TRACE_BARCODE_COLLECTION } from './trace-barcode'
 import type { WorkflowStatus } from './non-conformity'
 import type { FloorTask } from './my-tasks'
+import { MANUAL_ABSENCES_COLLECTION, type ManualAbsence } from '@/lib/manual-absences'
 
 export interface MissingCheck {
   kind: '설비' | '5S' | '온습도' | '공정'
@@ -190,7 +193,7 @@ function customerNcStatus(row: { countermeasurePlan: WorkflowStatus; processingR
   return 'in_progress'
 }
 
-export async function getDashboardStats() {
+export async function getDashboardStats(targetDate?: string) {
   const [
     docs, companies, documentTypes, products, inventory, workLogs,
     customerNc, processNc, processChecks, processTemplates, hiddenLines, auditLogs,
@@ -205,8 +208,9 @@ export async function getDashboardStats() {
     selectAll<any>('dailyCheckSheets'), selectAll<any>('dailyCheckEntries'),
     selectAll<any>('fiveSTargets'), selectAll<any>('fiveSSheets'), selectAll<any>('fiveSEntries'),
     selectAll<any>('tempHumidityTargets'), selectAll<any>('tempHumiditySheets'), selectAll<any>('tempHumidityEntries'),
-    getTodayCheckStatuses(),
+    getTodayCheckStatuses(targetDate),
   ])
+  const traceBarcodes = await listRecords<TraceBarcode>(TRACE_BARCODE_COLLECTION)
   const auditRows = await getSetting<unknown>('customer-audits', null)
   const customerAudits = (Array.isArray(auditRows)
     ? auditRows.filter((row) => row && typeof row === 'object' && typeof (row as { id?: string }).id === 'string' && !(row as { id: string }).id.startsWith('sample-'))
@@ -218,7 +222,7 @@ export async function getDashboardStats() {
     closed: customerAudits.reduce((sum, row) => sum + (Number(row.done) || 0), 0),
   }
 
-  const todayIso = localDate()
+  const todayIso = targetDate ?? localDate()
   const todayCompact = todayIso.replace(/-/g, '')
   const todayCount = docs.filter((d) => d.createdAt?.startsWith(todayIso)).length
 
@@ -227,7 +231,7 @@ export async function getDashboardStats() {
     .slice(0, 8)
 
   // 최근 6개월 문서 등록 건수
-  const now = new Date()
+  const now = new Date(`${todayIso}T00:00:00`)
   const monthly = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -255,6 +259,11 @@ export async function getDashboardStats() {
 
   const movements = collectMovements(docs, inventory)
   const groups = applyFloor3WorkLogs(buildStockGroups(movements), workLogs)
+  // 장기 재고: 재고가 남아 있는데 마지막 입출고가 LONG_STOCK_DAYS일 넘게 지난 품목
+  const LONG_STOCK_DAYS = 30
+  const longCut = new Date(now.getFullYear(), now.getMonth(), now.getDate() - LONG_STOCK_DAYS)
+  const longCutCompact = `${longCut.getFullYear()}${String(longCut.getMonth() + 1).padStart(2, '0')}${String(longCut.getDate()).padStart(2, '0')}`
+  const isLongStock = (g: (typeof groups)[number]) => g.stock > 0 && compactDate(g.lastDate) < longCutCompact
   const inbound = movements.filter((m) => m.kind === '입고')
   const outbound = movements.filter((m) => m.kind === '출고')
   const recentMovement = (rows: typeof inbound) =>
@@ -292,23 +301,56 @@ export async function getDashboardStats() {
     outbound: outboundMonthly[index]?.count ?? 0,
   }))
   const flow = buildLotFlow(movements)
-  const flowStages = (['waiting', 'working', 'ready', 'done'] as const).map((key) => {
-    const rows = flow.lots.filter((lot) => lot.stage === key)
-    const shown = key === 'done'
-      ? [...rows].sort((a, b) => (b.lastShipDate || b.inbound.issueDate).localeCompare(a.lastShipDate || a.inbound.issueDate)).slice(0, 3)
-      : rows.slice(0, 4)
-    return {
+  // 바코드 상태 분포: 입고 → 작업중 → 작업완료 → 출하대기 → 출하완료
+  const barcodeStatus = {
+    total: traceBarcodes.length,
+    stages: BARCODE_STATUSES.map((key) => ({
       key,
-      count: rows.length,
-      lots: shown.map((lot) => ({
-        id: lot.inbound.id,
-        company: lot.inbound.company,
-        product: lot.inbound.product,
-        remaining: lot.remaining,
-        unit: lot.inbound.unit,
-      })),
-    }
+      label: BARCODE_STATUS_LABEL[key],
+      count: traceBarcodes.filter((row) => row.status === key).length,
+    })),
+  }
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const daysSince = (value: string) => {
+    const digits = compactDate(value)
+    if (digits.length !== 8) return null
+    const date = new Date(Number(digits.slice(0, 4)), Number(digits.slice(4, 6)) - 1, Number(digits.slice(6, 8)))
+    return Math.max(0, Math.round((todayStart - date.getTime()) / 86_400_000))
+  }
+  // 출고 완료는 누적되면 흐름을 가리므로 최근 일주일치만 센다.
+  const FLOW_DONE_DAYS = 7
+  /** 입고 후 이만큼 지나도록 출고가 끝나지 않으면 오래 머문 LOT으로 본다. */
+  const FLOW_STALE_DAYS = 14
+  const flowView = (lots: typeof flow.lots) => ({
+    open: lots.filter((lot) => lot.stage !== 'done').length,
+    stages: (['waiting', 'working', 'ready', 'done'] as const).map((key) => {
+      const rows = key === 'done'
+        ? lots
+          .filter((lot) => lot.stage === 'done' && (daysSince(lot.lastShipDate || lot.inbound.issueDate) ?? 0) <= FLOW_DONE_DAYS)
+          .sort((a, b) => compactDate(b.lastShipDate || b.inbound.issueDate).localeCompare(compactDate(a.lastShipDate || a.inbound.issueDate)))
+        : lots
+          .filter((lot) => lot.stage === key)
+          .sort((a, b) => compactDate(b.inbound.issueDate).localeCompare(compactDate(a.inbound.issueDate)))
+      return {
+        key,
+        count: rows.length,
+        stale: key === 'done' ? 0 : rows.filter((lot) => (daysSince(lot.inbound.issueDate) ?? 0) > FLOW_STALE_DAYS).length,
+        lots: rows.slice(0, 5).map((lot) => ({
+          id: lot.inbound.id,
+          company: lot.inbound.company,
+          product: lot.inbound.product,
+          remaining: lot.remaining,
+          unit: lot.inbound.unit,
+          age: daysSince(lot.inbound.issueDate),
+          shipDate: lot.lastShipDate,
+        })),
+      }
+    }),
   })
+  const flowFloors = Object.fromEntries(['1', '2', '3'].map((floor) => [
+    floor,
+    flowView(flow.lots.filter((lot) => detectFloor(lot.inbound.floor) === floor)),
+  ])) as Record<'1' | '2' | '3', ReturnType<typeof flowView>>
   const recentWork = [...workLogs]
     .sort((a, b) => `${b.workDate}${b.updatedAt ?? b.createdAt}`.localeCompare(`${a.workDate}${a.updatedAt ?? a.createdAt}`))
     .slice(0, 5)
@@ -327,9 +369,11 @@ export async function getDashboardStats() {
   const lines = processTemplates.filter((t) => !hidden.has(t.id))
   const visibleLineIds = new Set(lines.map((line) => line.id))
   const processFloors = [...new Set(lines.map((line) => String(line.floor)))]
-  const processCovered = (floor: string) => processChecks.some((row) =>
-    row.writtenDate === todayIso && String(recordFloor(row)) === floor && visibleLineIds.has(recordLineId(row)),
+  // 공정 점검은 점검표(라인)마다 따로 본다. 층은 그 층 점검표를 모두 써야 완료다.
+  const lineCovered = (line: (typeof lines)[number]) => processChecks.some((row) =>
+    row.writtenDate === todayIso && String(recordFloor(row)) === String(line.floor) && recordLineId(row) === line.id,
   )
+  const linesOnFloor = (floor: string) => lines.filter((line) => String(line.floor) === floor)
   const lastProcessCheck = [...processChecks].sort((a, b) => `${b.writtenDate}${b.writtenTime}`.localeCompare(`${a.writtenDate}${a.writtenTime}`))[0]
 
   const floorOf = (value: unknown) => String(value ?? '').replace(/층$/, '')
@@ -340,9 +384,9 @@ export async function getDashboardStats() {
       .map((t) => ({ kind: '5S' as const, name: t.name, floor: floorOf(t.floor), href: `/checksheets/5s/${t.id}` })),
     ...tempTargets.filter((t) => today.temp[t.id] === 'missing')
       .map((t) => ({ kind: '온습도' as const, name: t.name, floor: floorOf(t.floor), href: `/checksheets/temp-humidity/${t.id}` })),
-    ...processFloors
-      .filter((floor) => !today.weekend && !processCovered(floor))
-      .map((floor) => ({ kind: '공정' as const, name: '공정 점검', floor, href: `/process-check?floor=${floor}` })),
+    ...(today.weekend ? [] : lines)
+      .filter((line) => !lineCovered(line))
+      .map((line) => ({ kind: '공정' as const, name: line.name, floor: String(line.floor), href: `/process-check?floor=${line.floor}` })),
   ].sort((a, b) => a.floor.localeCompare(b.floor) || a.name.localeCompare(b.name, 'ko'))
 
   const floorTally = new Map<string, FloorCheck>(['1', '2', '3'].map((floor) => [floor, { floor, done: 0, missing: 0 }]))
@@ -356,8 +400,8 @@ export async function getDashboardStats() {
   for (const item of equipment) countFloor(item.floor, today.daily[item.id])
   for (const item of fiveSTargets) countFloor(item.floor, today.fiveS[item.id])
   for (const item of tempTargets) countFloor(item.floor, today.temp[item.id])
-  for (const floor of processFloors) {
-    countFloor(floor, today.weekend ? 'off' : processCovered(floor) ? 'done' : 'missing')
+  for (const line of lines) {
+    countFloor(String(line.floor), today.weekend ? 'off' : lineCovered(line) ? 'done' : 'missing')
   }
   const floorChecks = [...floorTally.values()]
 
@@ -367,9 +411,9 @@ export async function getDashboardStats() {
     return { done: values.filter((s) => s === 'done').length, due: values.filter((s) => s !== 'off').length }
   }
   const processProgress = (floor?: string) => {
-    const list = floor ? processFloors.filter((item) => item === floor) : processFloors
+    const list = floor ? linesOnFloor(floor) : lines
     return {
-      done: list.filter((item) => processCovered(item)).length,
+      done: today.weekend ? 0 : list.filter(lineCovered).length,
       due: today.weekend ? 0 : list.length,
     }
   }
@@ -478,8 +522,9 @@ export async function getDashboardStats() {
       checkTask('5s', '3정 5S 점검', '/checksheets/5s', fiveSTargets, today.fiveS)
       checkTask('temp', '온·습도 점검', '/checksheets/temp-humidity', tempTargets, today.temp)
       if (processFloors.includes(floor)) {
-        const covered = processCovered(floor)
-        tasks.push({ key: `${floor}:process`, label: '공정 점검 작성', href: `/process-check?floor=${floor}`, detail: covered ? '작성 완료' : '미작성', done: covered })
+        const floorLines = linesOnFloor(floor)
+        const written = floorLines.filter(lineCovered).length
+        tasks.push({ key: `${floor}:process`, label: '공정 점검 작성', href: `/process-check?floor=${floor}`, detail: `${written}/${floorLines.length}`, done: written === floorLines.length })
       }
     }
     if (floor === '3') {
@@ -532,17 +577,19 @@ export async function getDashboardStats() {
       todayIn: inbound.filter((m) => compactDate(m.issueDate) === todayCompact).length,
       todayOut: outbound.filter((m) => compactDate(m.issueDate) === todayCompact).length,
       stockItems: groups.length,
-      stockPositive: groups.filter((g) => g.stock > 0).length,
-      stockZero: groups.filter((g) => g.stock === 0).length,
-      shortage: groups.filter((g) => g.stock < 0).length,
+      stockPositive: groups.filter((g) => g.stock > 0 && !isLongStock(g)).length,
+      stockLong: groups.filter(isLongStock).length,
+      stockZero: groups.filter((g) => g.stock <= 0).length,
       lines: lines.map((t) => ({ id: t.id, floor: t.floor, name: t.name, records: processChecks.filter((c) => c.lineId === t.id).length })),
       checkRecords: processDays,
       span,
       omitted: processOmitted,
       lastCheck: lastProcessCheck ? `${lastProcessCheck.writtenDate}` : null,
       workLogs: workLogs.length,
+      todayWork: workLogs.filter((w) => w.workDate === todayIso).length,
       views: {
-        flow: { stages: flowStages, unregistered: flow.unregistered.length, open: flow.lots.filter((lot) => lot.stage !== 'done').length },
+        flow: { ...flowView(flow.lots), unregistered: flow.unregistered.length, doneDays: FLOW_DONE_DAYS, staleDays: FLOW_STALE_DAYS, floors: flowFloors },
+        barcodeStatus,
         inbound: { recent: recentInbound, monthly: inboundMonthly },
         outbound: { recent: recentOutbound, monthly: outboundMonthly },
         trend: { week: weekTrend, month: monthTrend },
@@ -575,9 +622,24 @@ async function absenceLists(today: string) {
       start: draft.startDate,
       end: draft.endDate,
       leaveType: draft.leaveType,
+      manual: false,
     }]
-  }).sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, 'ko'))
-  return { leaves }
+  })
+  // 관리자가 결재 없이 직접 등록한 출장·연차·반차도 같은 목록에 합친다.
+  const manual = (await listRecords<ManualAbsence>(MANUAL_ABSENCES_COLLECTION))
+    .filter((row) => row.end >= today)
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      start: row.start,
+      end: row.end,
+      leaveType: row.kind,
+      place: row.place,
+      reason: row.reason,
+      manual: true,
+    }))
+  const all = [...leaves, ...manual].sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, 'ko'))
+  return { leaves: all }
 }
 
 export type DashboardStats = Awaited<ReturnType<typeof getDashboardStats>>

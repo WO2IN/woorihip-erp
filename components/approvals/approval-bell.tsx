@@ -49,7 +49,7 @@ export function ApprovalHeaderActions() {
       aria-current={onApprovals ? 'page' : undefined}
       aria-label={count > 0 ? `결재 현황, 확인하지 않은 항목 ${count}건` : '결재 현황'}
       className={cn(
-        'inline-flex h-8 items-center gap-2 rounded-lg border py-1 pl-1 pr-3 text-sm transition-colors',
+        'inline-flex h-8 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border py-1 pl-1 pr-1 text-sm transition-colors sm:pr-3',
         onApprovals
           ? 'border-sky-300 bg-sky-50 text-sky-950 dark:border-sky-400/40 dark:bg-sky-400/15 dark:text-sky-50'
           : 'border-border bg-card text-foreground hover:bg-muted',
@@ -65,7 +65,7 @@ export function ApprovalHeaderActions() {
       >
         {label}
       </span>
-      <span className="font-semibold leading-none">결재 현황</span>
+      <span className="hidden font-semibold leading-none sm:inline">결재 현황</span>
     </Link>
   )
 }

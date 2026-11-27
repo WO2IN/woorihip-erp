@@ -29,6 +29,7 @@ import { RiskEditor } from '@/components/risk/risk-editor'
 import { RiskCriteria, RiskImprove, RiskMaster } from '@/components/risk/risk-extra'
 import { DistributionBar, FIELD, LABEL, MethodPicker, Panel, Pill, ProgressMini, StatCard, TH, THEAD, type Tone } from '@/components/risk/risk-ui'
 import { PAGE_SHELL, PageHeader } from '@/components/shared/page-header'
+import { SectionTabs } from '@/components/shared/section-tabs'
 import { Button } from '@/components/ui/button'
 import { getAuthHeaders, getJsonAuthHeaders } from '@/lib/auth-client'
 import {
@@ -199,32 +200,18 @@ export function RiskView() {
         title="위험성평가"
         description="구역별 평가를 보고, 항목을 눌러 고칩니다."
       />
-      <nav aria-label="위험성평가 메뉴" className="-mt-2 flex flex-wrap items-center gap-x-6 border-b border-border">
-        {[...TABS.filter((item) => item.key !== 'new'), ...(editing ? [{ key: 'edit' as const, label: '평가표', hint: editing.area || editing.title, icon: Table2 }] : [])].map((item) => {
-          const selected = tab === item.key
-          const Icon = item.icon
-          return (
-            <button
-              key={item.key}
-              type="button"
-              aria-current={selected ? 'page' : undefined}
-              title={item.hint}
-              onClick={() => openTab(item.key, item.key === 'edit' ? editing?.id || '' : '')}
-              className={cn(
-                '-mb-px inline-flex items-center gap-1.5 border-b-2 px-0.5 py-3 text-[15px] transition-colors',
-                selected ? 'border-red-600 font-bold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Icon className={cn('size-4', selected && 'text-red-600')} />
-              {item.label}
-            </button>
-          )
-        })}
-        <Button type="button" className="mb-2 ml-auto h-9 rounded-lg px-3.5" aria-current={tab === 'new' ? 'page' : undefined} onClick={() => openTab('new')}>
-          <Plus className="size-4" />
-          새 평가
-        </Button>
-      </nav>
+      <SectionTabs
+        label="위험성평가 메뉴"
+        items={[...TABS.filter((item) => item.key !== 'new'), ...(editing ? [{ key: 'edit' as const, label: '평가표', hint: editing.area || editing.title, icon: Table2 }] : [])]}
+        value={tab}
+        onChange={(key) => openTab(key, key === 'edit' ? editing?.id || '' : '')}
+        actions={
+          <Button type="button" className="h-9 rounded-lg px-3.5" aria-current={tab === 'new' ? 'page' : undefined} onClick={() => openTab('new')}>
+            <Plus className="size-4" />
+            새 평가
+          </Button>
+        }
+      />
       <div className="min-w-0">
       {loading || !settings ? (
         <div className="rounded-xl border border-dashed border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">위험성평가를 불러오는 중입니다.</div>
